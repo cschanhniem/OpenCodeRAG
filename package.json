@@ -64,7 +64,7 @@
   },
   "dependencies": {
     "@lancedb/lancedb": "^0.29.0",
-    "apache-arrow": "^21.1.0",
+    "apache-arrow": "18.1.0",
     "chokidar": "^4.0.3",
     "commander": "^13.1.0",
     "tree-sitter-wasm": "^1.0.2",
