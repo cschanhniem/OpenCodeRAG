@@ -18,7 +18,7 @@
       ".xml", ".csproj", ".sln",
       ".rs", ".rb", ".kt", ".kts", ".swift"
     ],
-    "excludeDirs": [".opencode", "node_modules", ".git", ".opencode", "dist", "build", "__pycache__", ".venv"],
+    "excludeDirs": [".opencode", "node_modules", ".git", "dist", "build", "__pycache__", ".venv"],
     "chunkOverlap": 0
   },
   "vectorStore": {
