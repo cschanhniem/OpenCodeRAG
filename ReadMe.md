@@ -80,55 +80,11 @@ npm install --legacy-peer-deps
 ## Configuration
 
 Create `opencode-rag.json` in the project root (auto-detected) or pass via
-`--config`.
+`--config`. The repository's own [`opencode-rag.json`](./opencode-rag.json) serves
+as a complete example with all available options.
 
-```json
-{
-  "embedding": {
-    "provider": "ollama",
-    "baseUrl": "http://localhost:11434/api",
-    "apiKey": "",
-    "model": "embeddinggemma",
-    "timeoutMs": 30000,
-    "proxy": {
-      "url": "",
-      "username": "",
-      "password": "",
-      "noProxy": "localhost,127.0.0.1,.local,.internal"
-    }
-  },
-  "indexing": {
-    "includeExtensions": [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".py", ".java", ".go", ".rs", ".rb", ".kt", ".kts", ".swift", ".md", ".c", ".h", ".cpp", ".cc", ".cxx", ".hpp", ".hxx", ".cs", ".aspx", ".razor", ".cshtml", ".json", ".html", ".htm", ".css", ".xml", ".csproj", ".sln"],
-    "excludeDirs": ["node_modules", ".git", ".opencode", "dist", "build", "__pycache__", ".venv"],
-    "chunkOverlap": 0,
-    "minFileSizeBytes": 1024
-  },
-  "vectorStore": {
-    "path": "./.opencode/rag_db"
-  },
-  "retrieval": {
-    "topK": 10
-  },
-  "openCode": {
-    "enabled": true,
-    "maxContextChunks": 5,
-    "overrideRead": false,
-    "autoIndex": {
-      "enabled": true,
-      "debounceMs": 5000,
-      "intervalMs": 300000
-    }
-  },
-  "logging": {
-    "level": "info",
-    "logFilePath": "./.opencode/opencode-rag.log"
-  },
-  "chunkers": []
-}
-```
-
-Config files support partial overrides — missing keys fall back to defaults
-(shown above). Deep merging is applied per section.
+Config files support partial overrides — missing keys fall back to defaults.
+Deep merging is applied per section.
 
 ### Embedding Providers
 
