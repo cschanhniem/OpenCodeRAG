@@ -14,6 +14,12 @@ export interface ProxyConfig {
   noProxy?: string;
 }
 
+export interface AutoIndexConfig {
+  enabled: boolean;
+  debounceMs: number;
+  intervalMs: number;
+}
+
 export interface RagConfig {
   embedding: {
     provider: "ollama" | "openai";
@@ -27,6 +33,7 @@ export interface RagConfig {
     includeExtensions: string[];
     excludeDirs: string[];
     chunkOverlap: number;
+    minFileSizeBytes?: number;
   };
   vectorStore: {
     path: string;
@@ -37,6 +44,7 @@ export interface RagConfig {
   openCode: {
     enabled: boolean;
     maxContextChunks: number;
+    autoIndex?: AutoIndexConfig;
   };
   chunkers?: ChunkerConfig[];
 }
@@ -94,6 +102,7 @@ export const DEFAULT_CONFIG: RagConfig = {
       ".venv",
     ],
     chunkOverlap: 0,
+    minFileSizeBytes: 1024,
   },
   vectorStore: {
     path: "./.opencode/rag_db",
@@ -104,6 +113,11 @@ export const DEFAULT_CONFIG: RagConfig = {
   openCode: {
     enabled: true,
     maxContextChunks: 5,
+    autoIndex: {
+      enabled: true,
+      debounceMs: 5000,
+      intervalMs: 300000,
+    },
   },
 };
 
@@ -135,10 +149,19 @@ export function loadConfig(filePath: string): RagConfig {
       ...DEFAULT_CONFIG.retrieval,
       ...parsed.retrieval,
     },
-    openCode: {
-      ...DEFAULT_CONFIG.openCode,
-      ...parsed.openCode,
-    },
+    openCode: (() => {
+      const base = DEFAULT_CONFIG.openCode;
+      const user: Partial<typeof base> = (parsed as { openCode?: Partial<typeof base> }).openCode ?? {};
+      const merged: typeof base = {
+        ...base,
+        ...user,
+        autoIndex: {
+          ...base.autoIndex,
+          ...(user.autoIndex ?? {}),
+        } as AutoIndexConfig,
+      };
+      return merged;
+    })(),
     chunkers: parsed.chunkers ?? DEFAULT_CONFIG.chunkers,
   };
 }

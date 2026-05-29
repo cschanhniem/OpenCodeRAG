@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { DEFAULT_CONFIG, type RagConfig } from "../../core/config.js";
-import { loadManifest } from "../../core/manifest.js";
+import { loadManifest, normalizeFilePath } from "../../core/manifest.js";
 import {
   createWatchPassScheduler,
   getIndexStatusSummary,
@@ -38,6 +38,7 @@ function testConfig(): RagConfig {
       ...DEFAULT_CONFIG.indexing,
       includeExtensions: [".ts"],
       excludeDirs: ["node_modules", ".git", ".opencode"],
+      minFileSizeBytes: 0,
     },
   };
 }
@@ -133,6 +134,78 @@ describe("indexer", () => {
     });
 
     assert.equal(stats.skippedEmptyFiles, 1);
+    assert.equal(stats.removedFiles, 1);
+    assert.equal(await store.count(), 0);
+  });
+
+  it("skips files smaller than minFileSizeBytes", async () => {
+    const smallFilePath = path.join(workspaceDir, "src", "small.ts");
+    const largeFilePath = path.join(workspaceDir, "src", "large.ts");
+
+    // Config with a min file size of 50 bytes
+    const customConfig: RagConfig = {
+      ...testConfig(),
+      indexing: { ...testConfig().indexing, minFileSizeBytes: 50 },
+    };
+
+    await writeFile(smallFilePath, "// short"); // 9 bytes
+    await writeFile(largeFilePath, "// This is a much longer file with more content to exceed the min size threshold."); // > 50 bytes
+
+    const stats = await runIndexPass({
+      cwd: workspaceDir,
+      storePath: storeDir,
+      config: customConfig,
+      store,
+      embedder,
+    });
+
+    assert.equal(stats.skippedSmallFiles, 1);
+    assert.equal(stats.newFiles, 1);
+    assert.equal(stats.finalCount, 1);
+    assert.equal(await store.count(), 1);
+
+    const manifest = await loadManifest(storeDir);
+    assert.equal(manifest.status, "ok");
+    assert.ok(!manifest.manifest.files[normalizeFilePath(smallFilePath)]);
+    assert.ok(manifest.manifest.files[normalizeFilePath(largeFilePath)]);
+  });
+
+  it("removes too small files from the index", async () => {
+    const filePath = path.join(workspaceDir, "src", "shrinking.ts");
+    await writeFile(filePath, "// large enough file content to be indexed initially");
+
+    const initialConfig: RagConfig = {
+      ...testConfig(),
+      indexing: { ...testConfig().indexing, minFileSizeBytes: 10 },
+    };
+
+    await runIndexPass({
+      cwd: workspaceDir,
+      storePath: storeDir,
+      config: initialConfig,
+      store,
+      embedder,
+    });
+
+    assert.equal(await store.count(), 1);
+
+    // Shrink the file below the threshold
+    await writeFile(filePath, "//tiny");
+
+    const shrinkConfig: RagConfig = {
+      ...testConfig(),
+      indexing: { ...testConfig().indexing, minFileSizeBytes: 50 },
+    };
+
+    const stats = await runIndexPass({
+      cwd: workspaceDir,
+      storePath: storeDir,
+      config: shrinkConfig,
+      store,
+      embedder,
+    });
+
+    assert.equal(stats.skippedSmallFiles, 1);
     assert.equal(stats.removedFiles, 1);
     assert.equal(await store.count(), 0);
   });

@@ -7,11 +7,13 @@ import { LanceDBStore } from "./vectorstore/lancedb.js";
 import { retrieve } from "./retriever/retriever.js";
 import { loadChunkersFromConfig } from "./chunker/loader.js";
 import { appendDebugLog } from "./core/fileLogger.js";
+import { createBackgroundIndexer } from "./watcher.js";
 import { existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 
 const configCache = new Map<string, RagConfig>();
+const backgroundIndexers = new Map<string, { close: () => Promise<void> }>();
 
 const SEARCH_TOOLS = new Set(["glob", "grep", "read", "list"]);
 const CONTEXT_TOOL_NAME = "opencode-rag-context";
@@ -326,6 +328,8 @@ type CreateRagHooksOptions = {
   storePath: string;
   logFilePath: string;
   dependencies?: Partial<RagPluginDependencies>;
+  store?: VectorStore;
+  embedder?: EmbeddingProvider;
 };
 
 export function createRagHooks(options: CreateRagHooksOptions): Hooks {
@@ -333,8 +337,8 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
     ...defaultDependencies,
     ...options.dependencies,
   };
-  const embedder = dependencies.createEmbedder(options.cfg);
-  const store = dependencies.createStore(options.storePath);
+  const embedder = options.embedder ?? dependencies.createEmbedder(options.cfg);
+  const store = options.store ?? dependencies.createStore(options.storePath);
 
   appendDebugLog(options.logFilePath, {
     scope: "plugin",
@@ -590,16 +594,72 @@ export const ragPlugin: Plugin = async (
 
   const storePath = path.resolve(input.directory, cfg.vectorStore.path);
 
+  // Close existing indexer for this directory if one exists (e.g. on plugin reload)
+  const existingIndexer = backgroundIndexers.get(input.directory);
+  if (existingIndexer) {
+    try {
+      await existingIndexer.close();
+    } catch (err) {
+      appendDebugLog(logFilePath, {
+        scope: "plugin",
+        message: "Failed to close existing background indexer",
+        error: err,
+      });
+    }
+    backgroundIndexers.delete(input.directory);
+  }
+
   appendDebugLog(logFilePath, {
     scope: "plugin",
     message: `OpenCode plugin enabled for ${input.directory}`,
   });
 
-  return createRagHooks({
+  // Probe vector dimension and create store with correct dimension
+  const embedder = createEmbedder(cfg);
+  let vectorDimension = 384;
+  try {
+    const probe = await embedder.embed(["dimension-probe"]);
+    if (probe && probe[0] && probe[0].length > 0 && typeof probe[0][0] === "number") {
+      vectorDimension = (probe[0] as number[]).length;
+    }
+    appendDebugLog(logFilePath, {
+      scope: "plugin",
+      message: `Vector dimension: ${vectorDimension}`,
+    });
+  } catch (err) {
+    appendDebugLog(logFilePath, {
+      scope: "plugin",
+      message: `Dimension probe failed, falling back to ${vectorDimension}`,
+      error: err,
+    });
+  }
+
+  const store = new LanceDBStore(storePath, vectorDimension);
+
+  const hooks = createRagHooks({
     cfg,
     storePath,
     logFilePath,
+    embedder,
+    store,
   });
+
+  // Start background auto-indexer if enabled
+  const autoIndexCfg = cfg.openCode.autoIndex ?? { enabled: true, debounceMs: 5000, intervalMs: 300000 };
+  if (autoIndexCfg.enabled) {
+    const indexer = createBackgroundIndexer({
+      cwd: input.directory,
+      storePath,
+      config: cfg,
+      store,
+      embedder,
+      logFilePath,
+    });
+
+    backgroundIndexers.set(input.directory, indexer);
+  }
+
+  return hooks;
 };
 
 export default ragPlugin;

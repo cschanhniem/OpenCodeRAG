@@ -9,11 +9,11 @@ import { LanceDBStore } from "./vectorstore/lancedb.js";
 import { retrieve } from "./retriever/retriever.js";
 import {
   createWatchPassScheduler,
+  createWatchIgnore,
   getIndexStatusSummary,
   runIndexPass,
   type IndexRunStats,
 } from "./indexer.js";
-import { manifestPathFor } from "./core/manifest.js";
 
 interface CliOptions {
   config?: string;
@@ -79,27 +79,8 @@ function logIndexSummary(logFilePath: string, stats: IndexRunStats): void {
   logCliInfo(logFilePath, "index", `  Deleted:          ${stats.deletedFiles}`);
   logCliInfo(logFilePath, "index", `  Removed:          ${stats.removedFiles}`);
   logCliInfo(logFilePath, "index", `  Empty skipped:    ${stats.skippedEmptyFiles}`);
+  logCliInfo(logFilePath, "index", `  Small skipped:    ${stats.skippedSmallFiles}`);
   logCliInfo(logFilePath, "index", `  Chunks written:   ${stats.totalChunks}`);
-}
-
-function createWatchIgnore(
-  cwd: string,
-  config: RagConfig,
-  storePath: string
-): (watchedPath: string) => boolean {
-  const manifestPath = manifestPathFor(storePath);
-  const excludeDirs = new Set(config.indexing.excludeDirs);
-
-  return (watchedPath: string): boolean => {
-    const resolved = path.resolve(watchedPath);
-    if (resolved.startsWith(storePath)) return true;
-    if (resolved === manifestPath) return true;
-
-    const relative = path.relative(cwd, resolved);
-    if (!relative || relative.startsWith("..")) return false;
-    const segments = relative.split(path.sep);
-    return segments.some((segment) => excludeDirs.has(segment));
-  };
 }
 
 function formatDuration(ms: number): string {

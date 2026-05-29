@@ -2,17 +2,11 @@
   "embedding": {
     "provider": "ollama",
     "baseUrl": "http://127.0.0.1:11434/api",
-    "apiKey": "",
-    "model": "snowflake-arctic-embed2:latest",
-    "timeoutMs": 5000,
-    "proxy": {
-      "url": "",
-      "username": "",
-      "password": "",
-      "noProxy": ""
-    }
+    "model": "embeddinggemma:latest",
+    "timeoutMs": 30000
   },
   "indexing": {
+    "minFileSizeBytes": 1024,
     "includeExtensions": [
       ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs",
       ".py", ".java", ".go",
@@ -35,7 +29,11 @@
   },
   "openCode": {
     "enabled": true,
-    "maxContextChunks": 10
-  },
-  "chunkers": []
+    "maxContextChunks": 10,
+    "autoIndex": {
+      "enabled": true,
+      "debounceMs": 2000,
+      "intervalMs": 300000
+    }
+  }
 }

@@ -8,8 +8,8 @@ MVP implemented. All core modules are built and tested:
 - Vector storage (LanceDB)
 - Retrieval pipeline
 - CLI (index, query, clear, status)
-- OpenCode plugin (chat.message hook)
-- Test suite (336 tests, 0 failures)
+- OpenCode plugin (chat.message hook + background auto-indexing)
+- Test suite (342 tests, 0 failures)
 
 Design docs: `ReadMe.md` (project docs), `PLANNING.md` (roadmap + brainstorming),
 `docs/designs/2026-05-28-rag-plugin-mvp-design.md` (architecture design).
@@ -57,8 +57,10 @@ src/
     retriever.ts      — retrieve(query, embedder, store, options)
   types/
     opencode-plugin.d.ts  — local type declaration for @opencode-ai/plugin
+  indexer.ts          — runIndexPass, scanWorkspace, createWatchPassScheduler, createWatchIgnore
+  watcher.ts          — createBackgroundIndexer (chokidar watcher + debounced scheduler + periodic timer)
   cli.ts              — commander: index, query, clear, status
-  plugin.ts           — ragPlugin: chat.message hook
+  plugin.ts           — ragPlugin: chat.message hook + background auto-indexing
   index.ts            — public API re-exports + plugin default export
   __tests__/          — mirrors module structure
 ```
@@ -66,7 +68,7 @@ src/
 ## Commands
 
 ```bash
-npm test              # node --import tsx --test "src/**/*.test.ts"
+npm test              # node --import tsx --test --test-force-exit "src/**/*.test.ts"
 npm run typecheck     # tsc --noEmit
 npm run cli           # tsx src/cli.ts
 ```
@@ -125,6 +127,7 @@ adding a dependency.
 - Individual file: `node --import tsx --test src/__tests__/chunker/fallback.test.ts`
 - LanceDB tests use `memory://` URI — data discarded after test
 - LanceDB tests need native binary support (works on Win/Linux/Mac x64+arm)
+- `--test-force-exit` is required because chokidar and LanceDB leave open handles; without it the test suite hangs after completion
 
 ### Config loading
 - `loadConfig()` deep-merges per section (not recursive)
@@ -163,6 +166,17 @@ When behind a corporate proxy:
 - Ollama may return either `{ embedding: number[] }` or `{ embeddings: number[][] }`; accept both shapes.
 - `embedding.timeoutMs` defaults to 30000 ms. The previous 5000 ms default was too short for cold starts and caused indexing failures.
 - If OpenCode starts returning no context, check whether the embedding call is still reaching the raw socket path before assuming retrieval is empty.
+
+### Background auto-indexing
+- `createBackgroundIndexer()` in `src/watcher.ts` manages a chokidar file watcher, a debounced reindex scheduler, and a periodic safety-net timer.
+- The watcher uses `createWatchIgnore()` (exported from `src/indexer.ts`) to exclude the vector store path, manifest file, and configured `excludeDirs`.
+- The plugin (`src/plugin.ts`) spawns one background indexer per workspace directory using a `Map<string, BackgroundIndexer>` for cleanup on reload.
+- `autoIndex` config (`openCode.autoIndex`) controls `enabled`, `debounceMs` (default 5000), and `intervalMs` (default 300000).
+- `minFileSizeBytes` in `indexing` (default 1024) skips tiny files during indexing; files below the threshold are also removed from the store if previously indexed.
+
+### Plugins and module structure
+- `createRagHooks` now accepts optional pre-created `store` and `embedder` instances via `CreateRagHooksOptions`, allowing the plugin to create them with a probed vector dimension before passing them in.
+- The plugin probes the embedding dimension by sending a single `"dimension-probe"` request at startup; falls back to **384** if the probe fails.
 
 ## Adding a New Language Chunker
 

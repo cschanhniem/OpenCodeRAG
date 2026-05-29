@@ -5,6 +5,7 @@ import type { RagConfig } from "./core/config.js";
 import {
   computeFileHash,
   loadManifest,
+  manifestPathFor,
   normalizeFilePath,
   saveManifest,
   type FileManifest,
@@ -20,6 +21,7 @@ export interface IndexRunStats {
   deletedFiles: number;
   removedFiles: number;
   skippedEmptyFiles: number;
+  skippedSmallFiles: number;
   totalChunks: number;
   finalCount: number;
   manifestStatus: "ok" | "missing" | "corrupt";
@@ -42,6 +44,7 @@ interface WorkspaceFile {
   content: string;
   hash: string;
   isEmpty: boolean;
+  isTooSmall: boolean;
 }
 
 interface Logger {
@@ -107,15 +110,18 @@ async function scanWorkspace(cwd: string, config: RagConfig): Promise<WorkspaceF
     new Set(config.indexing.excludeDirs)
   );
 
+  const minSize = config.indexing.minFileSizeBytes ?? 0;
   const workspaceFiles: WorkspaceFile[] = [];
   for (const filePath of files) {
     const content = await fs.readFile(filePath, "utf-8");
+    const byteLength = Buffer.byteLength(content, "utf-8");
     workspaceFiles.push({
       filePath,
       normalizedPath: normalizeFilePath(filePath),
       content,
       hash: computeFileHash(content),
       isEmpty: content.trim().length === 0,
+      isTooSmall: !content.trim().length === false && byteLength < minSize,
     });
   }
 
@@ -131,6 +137,7 @@ function createIndexStats(totalFiles: number, manifestStatus: IndexRunStats["man
     deletedFiles: 0,
     removedFiles: 0,
     skippedEmptyFiles: 0,
+    skippedSmallFiles: 0,
     totalChunks: 0,
     finalCount: 0,
     manifestStatus,
@@ -201,6 +208,19 @@ export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexR
         logger.info(`  ${path.relative(options.cwd, file.filePath)} (empty, removed from index)`);
       } else {
         logger.info(`  ${path.relative(options.cwd, file.filePath)} (empty, skipped)`);
+      }
+      continue;
+    }
+
+    if (file.isTooSmall) {
+      stats.skippedSmallFiles++;
+      if (previous) {
+        await options.store.deleteByFilePath(file.normalizedPath);
+        delete manifest.files[file.normalizedPath];
+        stats.removedFiles++;
+        logger.info(`  ${path.relative(options.cwd, file.filePath)} (too small, removed from index)`);
+      } else {
+        logger.info(`  ${path.relative(options.cwd, file.filePath)} (too small, skipped)`);
       }
       continue;
     }
@@ -294,7 +314,7 @@ export async function getIndexStatusSummary(
 
   for (const file of workspaceFiles) {
     const previous = manifest.files[file.normalizedPath];
-    if (file.isEmpty) {
+    if (file.isEmpty || file.isTooSmall) {
       if (previous) pendingFiles++;
       continue;
     }
@@ -397,5 +417,25 @@ export function createWatchPassScheduler(
       }
       resolveWaiters();
     },
+  };
+}
+
+export function createWatchIgnore(
+  cwd: string,
+  config: RagConfig,
+  storePath: string
+): (watchedPath: string) => boolean {
+  const manifestPath = manifestPathFor(storePath);
+  const excludeDirs = new Set(config.indexing.excludeDirs);
+
+  return (watchedPath: string): boolean => {
+    const resolved = path.resolve(watchedPath);
+    if (resolved.startsWith(storePath)) return true;
+    if (resolved === manifestPath) return true;
+
+    const relative = path.relative(cwd, resolved);
+    if (!relative || relative.startsWith("..")) return false;
+    const segments = relative.split(path.sep);
+    return segments.some((segment) => excludeDirs.has(segment));
   };
 }
