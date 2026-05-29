@@ -65,11 +65,41 @@ Workspace Files
 
 ## Installation
 
+### Linux
+
+`install.sh` sets up the local OpenCode plugin wrapper after the project is built.
+
 ```bash
 git clone <repo-url>
 cd OpenCodeRAG
-npm install --legacy-peer-deps
+npm ci --legacy-peer-deps
+./install.sh
 ```
+
+### Windows
+
+Run the equivalent commands manually:
+
+```powershell
+git clone <repo-url>
+cd OpenCodeRAG
+npm ci --legacy-peer-deps
+npm run build
+New-Item -ItemType Directory -Force .opencode\plugins | Out-Null
+@'
+{
+  "type": "module"
+}
+'@ | Set-Content .opencode\plugins\package.json
+@'
+import { ragPlugin } from "../../dist/plugin.js";
+
+export default ragPlugin;
+export const server = ragPlugin;
+'@ | Set-Content .opencode\plugins\rag-plugin.js
+```
+
+Restart OpenCode after installing.
 
 ### Dependencies
 
@@ -220,15 +250,29 @@ chat.
 After cloning and installing dependencies:
 
 ```bash
-# Option 1: Use the project-local auto-loaded plugin
-# The repo already includes .opencode/plugins/rag-plugin.ts
+# Option 1: Linux install script
+./install.sh
 
-# Option 2: Build and install via npm pack
+# Option 2: Windows manual install
 npm run build
+New-Item -ItemType Directory -Force .opencode\plugins | Out-Null
+@'
+{
+  "type": "module"
+}
+'@ | Set-Content .opencode\plugins\package.json
+@'
+import { ragPlugin } from "../../dist/plugin.js";
+
+export default ragPlugin;
+export const server = ragPlugin;
+'@ | Set-Content .opencode\plugins\rag-plugin.js
+
+# Option 3: Build and install via npm pack
 npm pack
 opencode plugin .\opencode-rag-0.1.0.tgz
 
-# Option 3: Install from npm (once published)
+# Option 4: Install from npm (once published)
 opencode plugin opencode-rag
 ```
 
