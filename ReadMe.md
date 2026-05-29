@@ -327,6 +327,7 @@ interface SearchResult {
 | Ruby       | AST (tree-sitter)              | methods, classes, modules, singleton methods |
 | Kotlin     | AST (tree-sitter)              | functions, classes, interfaces, objects, properties |
 | Swift      | AST (tree-sitter)              | functions, classes, structs, enums, protocols, extensions, variables |
+| LaTeX      | Regex section split            | chapter/section/subsection/subsubsection boundaries |
 | PDF        | Paragraph-based (text extraction) | groups small paragraphs, splits oversized |
 | (other)    | Line-based (100 lines/chunk)   | raw text blocks                           |
 
@@ -414,7 +415,7 @@ imports. No test library dependencies.
 ## Limitations
 
 - Embedding model dimension is auto-probed at startup; falls back to 384 if probing fails.
-- 20 built-in chunkers (AST for 16, regex for 3, PDF text for 1) + configurable fallback
+- 21 built-in chunkers (AST for 16, regex for 4, PDF text for 1) + configurable fallback
 
 ## Privacy
 
