@@ -85,18 +85,18 @@ git clone <repo-url>
 cd OpenCodeRAG
 npm ci --legacy-peer-deps
 npm run build
-New-Item -ItemType Directory -Force .opencode\plugins | Out-Null
+New-Item -ItemType Directory -Force .opencode/plugins | Out-Null
 @'
 {
   "type": "module"
 }
-'@ | Set-Content .opencode\plugins\package.json
+'@ | Set-Content .opencode/plugins/package.json
 @'
 import { ragPlugin } from "../../dist/plugin.js";
 
 export default ragPlugin;
 export const server = ragPlugin;
-'@ | Set-Content .opencode\plugins\rag-plugin.js
+'@ | Set-Content .opencode/plugins/rag-plugin.js
 ```
 
 Restart OpenCode after installing.
@@ -255,18 +255,18 @@ After cloning and installing dependencies:
 
 # Option 2: Windows manual install
 npm run build
-New-Item -ItemType Directory -Force .opencode\plugins | Out-Null
+New-Item -ItemType Directory -Force .opencode/plugins | Out-Null
 @'
 {
   "type": "module"
 }
-'@ | Set-Content .opencode\plugins\package.json
+'@ | Set-Content .opencode/plugins/package.json
 @'
 import { ragPlugin } from "../../dist/plugin.js";
 
 export default ragPlugin;
 export const server = ragPlugin;
-'@ | Set-Content .opencode\plugins\rag-plugin.js
+'@ | Set-Content .opencode/plugins/rag-plugin.js
 
 # Option 3: Build and install via npm pack
 npm pack
