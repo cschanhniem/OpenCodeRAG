@@ -8,14 +8,12 @@ import { retrieve } from "./retriever/retriever.js";
 import { loadChunkersFromConfig } from "./chunker/loader.js";
 import { appendDebugLog } from "./core/fileLogger.js";
 import { createBackgroundIndexer } from "./watcher.js";
-import { createRagReadTool } from "./opencode/create-read-tool.js";
 import { existsSync } from "node:fs";
 import path from "node:path";
 
 const configCache = new Map<string, RagConfig>();
 const backgroundIndexers = new Map<string, { close: () => Promise<void> }>();
 
-const SEARCH_TOOLS = new Set(["glob", "grep", "list"]);
 const CONTEXT_TOOL_NAME = "opencode-rag-context";
 const CONTEXT_MARKER = "opencode-rag retrieved context";
 
@@ -24,12 +22,6 @@ type RetrievalQueryHints = {
   pathHints?: string[];
   languageHints?: string[];
   topK?: number;
-};
-
-type ToolExecuteAfterOutput = {
-  title: string;
-  output: string;
-  metadata: unknown;
 };
 
 function appendVerboseLog(
@@ -194,29 +186,6 @@ function buildRetrievalQuery(hints: RetrievalQueryHints): string {
   return parts.join("\n").trim();
 }
 
-function normalizeToolOutput(output: string): string {
-  return output.replace(/\r\n/g, "\n").trim();
-}
-
-function buildToolQuery(tool: string, output: string): string {
-  const normalized = normalizeToolOutput(output);
-  if (!normalized) return "";
-
-  const lines = normalized
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-    .slice(0, 40);
-
-  if (lines.length === 0) return "";
-
-  return [
-    `OpenCode used the ${tool} tool while searching for relevant files and code.`,
-    "Use these discovered paths and matches as retrieval hints:",
-    ...lines,
-  ].join("\n");
-}
-
 function dedupeResults(results: SearchResult[]): SearchResult[] {
   const seen = new Set<string>();
   const deduped: SearchResult[] = [];
@@ -290,6 +259,41 @@ type CreateRagHooksOptions = {
   embedder?: EmbeddingProvider;
 };
 
+function formatFileList(results: SearchResult[], worktree: string): string {
+  const fileMap = new Map<string, { lines: number[]; scores: number[] }>();
+
+  for (const r of results) {
+    const m = r.chunk.metadata;
+    const existing = fileMap.get(m.filePath);
+    if (existing) {
+      existing.lines.push(m.startLine, m.endLine);
+      existing.scores.push(r.score);
+    } else {
+      fileMap.set(m.filePath, {
+        lines: [m.startLine, m.endLine],
+        scores: [r.score],
+      });
+    }
+  }
+
+  const sorted = [...fileMap.entries()]
+    .sort((a, b) => Math.max(...b[1].scores) - Math.max(...a[1].scores))
+    .slice(0, 10);
+
+  if (sorted.length === 0) return "";
+
+  const lines: string[] = [];
+  for (const [filePath, info] of sorted) {
+    const relPath = path.relative(worktree, filePath);
+    const minLine = Math.min(...info.lines);
+    const maxLine = Math.max(...info.lines);
+    const lang = results.find((r) => r.chunk.metadata.filePath === filePath)?.chunk.metadata.language ?? "";
+    lines.push(`${relPath} (${lang}, lines ${minLine}-${maxLine})`);
+  }
+
+  return lines.join("\n");
+}
+
 /**
  * Extract the user message text from chat.message hook input/output.
  *
@@ -338,8 +342,6 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
     scope: "plugin",
     message: "OpenCode plugin initialized",
   });
-
-  const overrideRead = options.cfg.openCode.overrideRead !== false;
 
   const retrievalTool = tool({
     description:
@@ -454,18 +456,6 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
     [CONTEXT_TOOL_NAME]: retrievalTool,
   };
 
-  if (overrideRead) {
-    tools.read = createRagReadTool({
-      worktree: options.worktree,
-      config: options.cfg,
-      embedder,
-      store,
-      logFilePath: options.logFilePath,
-      sessionLastMessage,
-      sessionRetrievalCache,
-    });
-  }
-
   return {
     async event({ event }) {
       //appendVerboseLog(options.logFilePath, "event", "opencode event received", event);
@@ -477,103 +467,45 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
         message: "system guidance injected",
       });
 
-      const guidance: string[] = [
+      const guidance = [
         "OpenCodeRAG is available through the `opencode-rag-context` tool.",
         "Use it before planning, editing, or answering when you need code provenance, surrounding implementation, or file-level evidence.",
         "Prefer narrow queries and add path or language hints when they are known.",
       ];
 
-      if (overrideRead) {
-        guidance.push(
-          "The `read` tool is also backed by OpenCodeRAG and returns only relevant indexed chunks instead of full file contents."
-        );
-      }
-
       output.system.unshift(guidance.join(" "));
     },
     async "chat.message"(input, output) {
       try {
-        // Extract and store the user message text for lazy retrieval
         const text = extractUserMessageText(input, output);
-        if (text.length > 0) {
-          sessionLastMessage.set(input.sessionID, text);
+        if (text.length === 0) return;
+
+        sessionLastMessage.set(input.sessionID, text);
+
+        const count = await store.count();
+        if (count === 0) return;
+
+        const results = await dependencies.retrieve(text, embedder, store, {
+          topK: options.cfg.retrieval.topK,
+        });
+
+        if (results.length === 0) return;
+
+        const suggestionList = formatFileList(results, options.worktree);
+
+        if (!suggestionList) return;
+
+        const parts = output?.parts ?? (output?.message as Record<string, unknown>)?.parts;
+        if (Array.isArray(parts) && parts.length > 0) {
+          const first = parts[0] as Record<string, unknown>;
+          if (typeof first.text === "string") {
+            first.text = `${first.text}\n\n${suggestionList}`;
+          }
         }
       } catch (err) {
         appendDebugLog(options.logFilePath, {
           scope: "chat.message",
-          message: "failed to extract user message text",
-          error: err,
-        });
-      }
-    },
-    async "tool.execute.after"(hookInput, output) {
-      try {
-        if (!SEARCH_TOOLS.has(hookInput.tool)) return;
-
-        appendVerboseLog(options.logFilePath, "tool.execute.after", `tool.execute.after hook invoked for ${hookInput.tool}`, {
-          input: hookInput,
-          output,
-        });
-
-        const toolOutput = typeof output.output === "string" ? output.output : "";
-        const extraQuery = buildToolQuery(hookInput.tool, toolOutput);
-        if (extraQuery.length === 0) {
-          appendVerboseLog(options.logFilePath, "tool.execute.after", "skipped retrieval because the tool output did not contain usable hints", {
-            tool: hookInput.tool,
-            toolOutput,
-          });
-
-          return;
-        }
-
-        const count = await store.count();
-        if (count === 0) {
-          appendVerboseLog(options.logFilePath, "tool.execute.after", "skipped retrieval because no chunks are indexed", {
-            tool: hookInput.tool,
-            toolOutput,
-            extraQuery,
-          });
-
-          return;
-        }
-
-        const context = formatContext(
-          await loadRetrievedResults(
-            extraQuery,
-            embedder,
-            store,
-            options.cfg,
-            dependencies.retrieve,
-            options.cfg.openCode.maxContextChunks
-          )
-        );
-
-        if (!context) {
-          appendVerboseLog(options.logFilePath, "tool.execute.after", "retrieval produced no context", {
-            tool: hookInput.tool,
-            toolOutput,
-            extraQuery,
-          });
-
-          return;
-        }
-
-        if (hookInput.tool === "read") {
-          output.output = context;
-        } else {
-          output.output = `${toolOutput}\n${context}`.trim();
-        }
-
-        appendVerboseLog(options.logFilePath, "tool.execute.after", "appended retrieval context to tool output", {
-          tool: hookInput.tool,
-          toolOutput,
-          extraQuery,
-          context,
-        });
-      } catch (err) {
-        appendDebugLog(options.logFilePath, {
-          scope: "tool.execute.after",
-          message: "tool.execute.after hook error",
+          message: "failed to suggest related files",
           error: err,
         });
       }

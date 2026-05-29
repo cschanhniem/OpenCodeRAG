@@ -19,7 +19,7 @@ embeddings and vector similarity.
 - **Local vector store** — LanceDB with L2 distance scoring, memory mode for
   testing.
 - **CLI** — index, query, clear, status commands.
-- **OpenCode plugin** — registers a RAG-backed `read` tool override, exposes a chunk retrieval tool, and injects relevant code context into search tool results.
+- **OpenCode plugin** — exposes a chunk retrieval tool and suggests relevant files after each user message via the `chat.message` hook.
 
 ## Architecture
 
@@ -112,10 +112,7 @@ Create `opencode-rag.json` in the project root (auto-detected) or pass via
   "openCode": {
     "enabled": true,
     "maxContextChunks": 5,
-    "overrideRead": true,
-    "allowRangeReadFallback": false,
-    "maxReadOutputChars": 20000,
-    "readNoResultsBehavior": "hint",
+    "overrideRead": false,
     "autoIndex": {
       "enabled": true,
       "debounceMs": 5000,
@@ -235,37 +232,29 @@ manifest file itself. Press `Ctrl+C` to stop.
 The plugin registers:
 
 1. **`opencode-rag-context`** — a custom retrieval tool for chunk-level evidence
-2. **`read` override** — replaces the built-in read tool with a RAG-powered version that returns indexed chunks instead of full file contents (configurable via `openCode.overrideRead`)
-3. **`tool.execute.after`** — hooks into `glob`, `grep`, and `list` to append relevant RAG context alongside search results
+2. **`chat.message`** — after each user message, automatically retrieves relevant indexed files and appends a compact suggestion list to the message text
 
-In all cases it:
-1. Builds a retrieval query from the tool arguments or tool output
+#### Chat Message File Suggestions
+
+After you send a message, the plugin:
+1. Extracts the user's message text
 2. Runs semantic retrieval against the indexed workspace
-3. Formats top results as code blocks with file path and line numbers
-4. Injects the formatted context into the tool result output
+3. Groups results by file, sorts by best chunk score, and formats a compact file list:
+   ```
+   src/plugin.ts (typescript, lines 10-42)
+   src/core/config.ts (typescript, lines 66-145)
+   ```
+4. Appends the list (max 10 files) to your message text
 
-The `opencode-rag-context` tool is the preferred entry point for agents when they need file provenance, surrounding implementation details, or a narrow code slice before taking action.
+Only file paths, language, and line ranges are shown — no scores or code snippets. This gives the agent lightweight hints about which files are relevant without inflating the context window.
 
-#### Read Override Tool
-
-When `openCode.overrideRead` is `true` (default), the plugin registers a custom `read` tool that returns only the most relevant indexed code chunks for the requested file, rather than the full file content. This saves tokens while preserving the code context the agent needs.
-
-The tool accepts the same arguments as the built-in `read`:
-- `filePath` / `path` / `absolutePath` — file to read
-- `offset` / `limit` / `startLine` / `endLine` — line range hints for chunk filtering
-- `query` / `reason` — free-text retrieval query to guide chunk selection
-
-If no query is provided, the tool builds one from the file path and requested line range.
-
-**Config options:**
+**Config:**
 
 | Option | Default | Description |
 | ------ | ------- | ----------- |
-| `openCode.overrideRead` | `true` | Set to `false` to keep the built-in read tool |
-| `openCode.maxReadOutputChars` | `20000` | Maximum characters in the read tool output |
-| `openCode.readNoResultsBehavior` | `"hint"` | Behavior when no indexed chunks match the requested file: `"hint"` explains no chunks were found, `"empty"` returns empty output, `"error"` returns a clear error |
-
-When `readNoResultsBehavior` is `"error"`, the tool suggests verifying the file was indexed and checking the file path.
+| `openCode.overrideRead` | `false` | Set to `true` to restore the legacy RAG-backed `read` tool (deprecated) |
+| `openCode.maxContextChunks` | `5` | Maximum chunks per retrieval (affects `opencode-rag-context` tool output) |
+| `retrieval.topK` | `10` | Number of chunks fetched per query (controls chat.message file suggestion breadth) |
 
 Errors during retrieval are silently caught — a failed search won't break the
 chat.
@@ -407,18 +396,17 @@ node --import tsx --test src/__tests__/chunker/fallback.test.ts
 
 Project structure:
 ```
-src/
-  core/          — interfaces.ts, config.ts
-  chunker/       — grammar.ts, base.ts, language chunkers, fallback.ts, factory.ts, uuid.ts
-  embedder/      — ollama.ts, openai.ts, factory.ts
-  opencode/      — create-read-tool.ts, read-fallback.ts, read-query.ts, tool-args.ts, read-format.ts
-  vectorstore/   — lancedb.ts
-  retriever/     — retriever.ts
-  types/         — opencode-plugin.d.ts
-  indexer.ts     — incremental indexing + watch scheduling
-  watcher.ts     — background indexer (chokidar + debounced scheduler + periodic timer)
-  cli.ts, plugin.ts, plugin-entry.ts, index.ts
-  __tests__/     — mirrors the module structure
+  src/
+    core/          — interfaces.ts, config.ts
+    chunker/       — grammar.ts, base.ts, language chunkers, fallback.ts, factory.ts, uuid.ts
+    embedder/      — ollama.ts, openai.ts, factory.ts
+    vectorstore/   — lancedb.ts
+    retriever/     — retriever.ts
+    types/         — opencode-plugin.d.ts
+    indexer.ts     — incremental indexing + watch scheduling
+    watcher.ts     — background indexer (chokidar + debounced scheduler + periodic timer)
+    cli.ts, plugin.ts, plugin-entry.ts, index.ts
+    __tests__/     — mirrors the module structure
 ```
 
 Test framework is Node's built-in runner (`node:test`) with `tsx` for TypeScript
@@ -428,7 +416,6 @@ imports. No test library dependencies.
 
 - Embedding model dimension is auto-probed at startup; falls back to 384 if probing fails.
 - 19 built-in chunkers (AST for 16, regex for 3) + configurable fallback
-- The read override tool requires the file to be indexed — non-indexed files return a no-results message (configurable via `readNoResultsBehavior`)
 
 ## Privacy
 

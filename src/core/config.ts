@@ -21,8 +21,6 @@ export interface AutoIndexConfig {
   intervalMs: number;
 }
 
-export type ReadNoResultsBehavior = "hint" | "empty" | "error";
-
 export interface RagConfig {
   embedding: {
     provider: "ollama" | "openai";
@@ -49,10 +47,6 @@ export interface RagConfig {
     maxContextChunks: number;
     autoIndex?: AutoIndexConfig;
     overrideRead?: boolean;
-    allowRangeReadFallback?: boolean;
-    maxReadOutputChars?: number;
-    readNoResultsBehavior?: ReadNoResultsBehavior;
-    readRelatedFilesMax?: number;
   };
   chunkers?: ChunkerConfig[];
   logging: LoggingConfig;
@@ -127,11 +121,7 @@ export const DEFAULT_CONFIG: RagConfig = {
   openCode: {
     enabled: true,
     maxContextChunks: 5,
-    overrideRead: true,
-    allowRangeReadFallback: false,
-    maxReadOutputChars: 20000,
-    readNoResultsBehavior: "hint",
-    readRelatedFilesMax: 5,
+    overrideRead: false,
     autoIndex: {
       enabled: true,
       debounceMs: 5000,

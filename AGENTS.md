@@ -39,10 +39,10 @@ src/
   chunker/
     grammar.ts        — tree-sitter init, language loader, walkTree()
     base.ts           — TreeSitterChunker abstract class
-    typescript.ts     — nodeTypes: function_declaration, method_definition, class_declaration, ...
-    python.ts         — nodeTypes: function_definition, class_definition, decorated_definition
-    java.ts           — nodeTypes: method_declaration, class_declaration, interface_declaration, ...
-    go.ts             — nodeTypes: function_declaration, method_declaration, type_declaration
+    typescript.ts     — ...
+    python.ts         — ...
+    java.ts           — ...
+    go.ts             — ...
     markdown.ts       — regex heading-splitter, code-block aware
     fallback.ts       — line-based 100-line chunks
     factory.ts        — getChunker(filePath) by extension, chunkFile()
@@ -58,9 +58,9 @@ src/
   types/
     opencode-plugin.d.ts  — local type declaration for @opencode-ai/plugin
   indexer.ts          — runIndexPass, scanWorkspace, createWatchPassScheduler, createWatchIgnore
-  watcher.ts          — createBackgroundIndexer (chokidar watcher + debounced scheduler + periodic timer)
+  watcher.ts          — createBackgroundIndexer (chokidar + debounced scheduler + periodic timer)
   cli.ts              — commander: index, query, clear, status
-  plugin.ts           — ragPlugin: chat.message hook + background auto-indexing
+  plugin.ts           — ragPlugin: context tool + chat.message hook + background auto-indexing
   index.ts            — public API re-exports + plugin default export
   __tests__/          — mirrors module structure
 ```
@@ -173,6 +173,15 @@ When behind a corporate proxy:
 - The plugin (`src/plugin.ts`) spawns one background indexer per workspace directory using a `Map<string, BackgroundIndexer>` for cleanup on reload.
 - `autoIndex` config (`openCode.autoIndex`) controls `enabled`, `debounceMs` (default 5000), and `intervalMs` (default 300000).
 - `minFileSizeBytes` in `indexing` (default 1024) skips tiny files during indexing; files below the threshold are also removed from the store if previously indexed.
+
+### Plugin architecture — chat.message file suggestions
+- The plugin registers an `opencode-rag-context` tool (for chunk-level retrieval) and a `chat.message` hook.
+- On each user message, the `chat.message` hook runs retrieval and appends a compact file suggestion list to `output.parts[0].text`.
+- `formatFileList()` in `src/plugin.ts` groups results by file path, sorts by best score, and formats as `path (lang, lines N-M)` — max 10 files, no scores or snippets.
+- Paths in file suggestions are made relative via `path.relative(worktree, ...)`.
+- `extractUserMessageText()` attempts to find user message text from `output.message` (via parts/text) then falls back to `output.message.content`.
+- The old read override (`src/opencode/`, 5 modules) and `tool.execute.after` hooks (glob/grep/list) have been removed in favor of this single chat.message hook.
+- `overrideRead` config option kept for backward compatibility, defaults to `false`.
 
 ### Plugins and module structure
 - `createRagHooks` now accepts optional pre-created `store` and `embedder` instances via `CreateRagHooksOptions`, allowing the plugin to create them with a probed vector dimension before passing them in.
