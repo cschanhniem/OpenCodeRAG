@@ -112,7 +112,7 @@ export const DEFAULT_CONFIG: RagConfig = {
       ".venv",
     ],
     chunkOverlap: 0,
-    minFileSizeBytes: 1024,
+    minFileSizeBytes: 10,
   },
   vectorStore: {
     path: "./.opencode/rag_db",
