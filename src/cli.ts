@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import path from "node:path";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import chokidar from "chokidar";
 import { loadConfig, DEFAULT_CONFIG, resolveLogConfig, type RagConfig } from "./core/config.js";
 import { appendDebugLog } from "./core/fileLogger.js";
@@ -342,6 +343,96 @@ program
       console.error(`\nStatus check failed: ${message}`);
       process.exit(1);
     }
+  });
+
+function generateDefaultConfigJson(): string {
+  return JSON.stringify(
+    {
+      $schema: "https://raw.githubusercontent.com/MrDoe/OpenCodeRAG/main/opencode-rag.schema.json",
+      embedding: {
+        provider: DEFAULT_CONFIG.embedding.provider,
+        baseUrl: DEFAULT_CONFIG.embedding.baseUrl,
+        model: DEFAULT_CONFIG.embedding.model,
+        timeoutMs: DEFAULT_CONFIG.embedding.timeoutMs,
+      },
+      indexing: {
+        includeExtensions: DEFAULT_CONFIG.indexing.includeExtensions,
+        excludeDirs: DEFAULT_CONFIG.indexing.excludeDirs,
+        chunkOverlap: DEFAULT_CONFIG.indexing.chunkOverlap,
+        minFileSizeBytes: DEFAULT_CONFIG.indexing.minFileSizeBytes,
+      },
+      vectorStore: {
+        path: DEFAULT_CONFIG.vectorStore.path,
+      },
+      retrieval: {
+        topK: DEFAULT_CONFIG.retrieval.topK,
+      },
+      openCode: {
+        enabled: DEFAULT_CONFIG.openCode.enabled,
+        maxContextChunks: DEFAULT_CONFIG.openCode.maxContextChunks,
+        overrideRead: DEFAULT_CONFIG.openCode.overrideRead,
+        autoIndex: {
+          enabled: DEFAULT_CONFIG.openCode.autoIndex!.enabled,
+          debounceMs: DEFAULT_CONFIG.openCode.autoIndex!.debounceMs,
+          intervalMs: DEFAULT_CONFIG.openCode.autoIndex!.intervalMs,
+        },
+      },
+      logging: {
+        level: DEFAULT_CONFIG.logging.level,
+        logFilePath: DEFAULT_CONFIG.logging.logFilePath,
+      },
+    },
+    null,
+    2
+  ) + "\n";
+}
+
+const DOT_OPENCODE_GITIGNORE_CONTENT = [
+  "# Ignore the LanceDB vector store (binary data)",
+  "rag_db/",
+  "",
+  "# Ignore logs",
+  "opencode-rag.log",
+  "",
+].join("\n");
+
+program
+  .command("init")
+  .description("Create opencode-rag.json config and supporting files in the current workspace")
+  .option("-f, --force", "overwrite existing files")
+  .action(async (options: { force?: boolean }) => {
+    const cwd = process.cwd();
+    const configPath = path.join(cwd, "opencode-rag.json");
+    const opencodeDir = path.join(cwd, ".opencode");
+    const gitignorePath = path.join(opencodeDir, ".gitignore");
+
+    console.log("Initializing OpenCodeRAG in workspace...\n");
+
+    // Create .opencode/ directory
+    if (!existsSync(opencodeDir)) {
+      mkdirSync(opencodeDir, { recursive: true });
+      console.log("  Created:  .opencode/");
+    } else {
+      console.log("  Exists:   .opencode/");
+    }
+
+    // Create .opencode/.gitignore
+    if (!existsSync(gitignorePath) || options.force) {
+      writeFileSync(gitignorePath, DOT_OPENCODE_GITIGNORE_CONTENT, "utf-8");
+      console.log(`  ${existsSync(gitignorePath) ? "Overwrite" : "Created"}: .opencode/.gitignore`);
+    } else {
+      console.log("  Exists:   .opencode/.gitignore");
+    }
+
+    // Create opencode-rag.json
+    if (!existsSync(configPath) || options.force) {
+      writeFileSync(configPath, generateDefaultConfigJson(), "utf-8");
+      console.log(`  ${existsSync(configPath) ? "Overwrite" : "Created"}: opencode-rag.json`);
+    } else {
+      console.log("  Exists:   opencode-rag.json");
+    }
+
+    console.log("\nDone. Edit opencode-rag.json to configure, then run `opencode-rag index`.");
   });
 
 if (
