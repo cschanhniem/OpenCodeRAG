@@ -3,7 +3,7 @@
 Local-first RAG plugin for OpenCode — semantic code search powered by
 embeddings and vector similarity.
 
-**Published on npm as [`opencode-rag-plugin`](https://www.npmjs.com/package/opencode-rag-plugin).** (*not* opencode-rag)
+**Published on npm as [`opencode-rag-plugin`](https://www.npmjs.com/package/opencode-rag-plugin)** (**not opencode-rag**).
 
 ## Features
 
