@@ -6,7 +6,7 @@
 
 > ⚠️ **Do not confuse with `opencode-rag`** — that is a discontinued project by a different author.
 
-OpenCodeRAG reduces token usage by replacing expensive file-read tool calls with targeted, vector-similarity-based chunk retrieval. Large codebases along with a local dedicated GPU benefit most, but even a modern CPU handles most workloads without a GPU.
+OpenCodeRAG reduces token usage by replacing expensive file-read tool calls with targeted, vector-similarity-based chunk retrieval. Large codebases and files on a local dedicated GPU benefit most in terms of performance, but even a modern CPU handles most workloads without a GPU.
 
 ---
 
