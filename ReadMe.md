@@ -1,29 +1,31 @@
 # OpenCodeRAG
 
-Local-first RAG plugin for OpenCode to enable semantic code search with embeddings and vector similarity.
+This is RAG plugin for OpenCode to enable semantic code search with local embedding LLMs by using vector similarity.
 
-The primary aim is to save tokens by offloading expensive tool calls (mostly file reads) to a locally hosted embedding LLM. When the codebase consists of many large files, mayor speed improvements are possible (depending on the local hardware). In most cases, a modern CPU is performant enough.
+The primary aim of this plugin is to save tokens by offloading expensive tool calls (file reads) to a locally hosted embedding LLM.
 
-**Published on npm as [`opencode-rag-plugin`](https://www.npmjs.com/package/opencode-rag-plugin)** (**this is not opencode-rag**).
+If the codebase consists of many large files, major speed improvements are possible (depending on the hardware). But in most cases, a modern CPU is performant enough.
+
+**Published on npm as [`opencode-rag-plugin`](https://www.npmjs.com/package/opencode-rag-plugin)** (**Don't confuse with opencode-rag, this is a discontinued project by someone else**).
 
 ## Features
 
-- **AST-aware chunking** — splits code into functions, classes, methods using
+- **AST-aware chunking**: splits code into functions, classes, methods using
   tree-sitter for 16 languages, plus regex-based chunking for 4 markup/config/doc
   formats (Markdown, Razor, .sln, LaTeX). Falls back to line-based chunking for
   unrecognized formats.
-- **Incremental indexing** — manifest-backed indexing skips unchanged files,
-  removes deleted entries, and updates only changed files.
-- **Watch mode** — `index --watch` re-indexes on file changes with debounced,
+- **Incremental indexing**: manifest-backed indexing skips unchanged files,
+  removes deleted entries, and re-indexes only changed files.
+- **Watch mode**: `index --watch` re-indexes on file changes with debounced,
   serialized passes.
-- **Pluggable chunkers** — add custom language chunkers via config or programmatic API.
-- **Configurable embeddings** — Ollama (default) or OpenAI-compatible providers.
+- **Pluggable chunkers**: add custom language chunkers via config or programmatic API.
+- **Configurable embeddings**: Ollama (default) or OpenAI-compatible providers.
   Batch embedding with configurable batch size.
-- **Hybrid search** — TF×IDF keyword index combined with vector search (weighted fusion) for improved precision on code identifiers and function names.
-- **Local vector store** — LanceDB with L2 distance scoring, memory mode for
+- **Hybrid search**: TF×IDF keyword index combined with vector search (weighted fusion) for improved precision on code identifiers and function names.
+- **Local vector store**: LanceDB with L2 distance scoring, memory mode for
   testing.
-- **CLI** — index, query, clear, status commands.
-- **OpenCode plugin** — exposes a chunk retrieval tool, suggests relevant files after each user message, and auto-injects high-confidence code chunks directly into the message to save tool-call round-trips.
+- **CLI Interface**: index, query, clear, status commands for testing purposes.
+- **OpenCode Plugin**: exposes a chunk retrieval tool, suggests relevant files after each user message, and auto-injects high-confidence code chunks directly into the message to save tool-call round-trips.
 
 ## Architecture
 
