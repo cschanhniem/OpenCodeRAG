@@ -106,6 +106,30 @@ opencode-rag init
 
 Add `--skip-install` if you only want the files without installing dependencies.
 
+### Uninstallation
+
+To completely remove OpenCodeRAG from your system, run the uninstall script:
+
+**Windows:**
+```powershell
+.\install.ps1 uninstall
+```
+
+**Linux/macOS:**
+```bash
+./install.sh uninstall
+```
+
+This will remove:
+- CLI wrapper from `~/.local/bin/`
+- Plugin installations from `~/.config/opencode/node_modules/`
+- Plugin installations from `~/.opencode/node_modules/`
+- .tgz package files
+- Plugin entries from OpenCode configuration files
+- Legacy workspace-local plugin files
+
+After uninstallation, restart OpenCode if it is running.
+
 ### Dependencies
 
 ### Dependencies
@@ -254,6 +278,10 @@ npm install --prefix ~/.config/opencode/ opencode-rag-plugin-1.2.0.tgz
 
 # Option 3: Bootstrap workspace only (uses npm version)
 opencode-rag init
+
+# Uninstall (removes all global copies)
+./install.sh uninstall     # Linux/macOS
+.\install.ps1 uninstall    # Windows
 ```
 
 The plugin auto-detects configuration from `opencode-rag.json` or

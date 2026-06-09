@@ -193,6 +193,7 @@ When behind a corporate proxy:
 - `install.ps1` / `install.sh` install the plugin globally by: (1) `npm run build` + `npm pack`, (2) `npm install --prefix ~/.opencode/` and `--prefix ~/.config/opencode/`, (3) adding `"opencode-rag-plugin"` to `~/.config/opencode/opencode.jsonc` plugin array.
 - **NEVER call `opencode plugin <name> --global` in an install script** — it downloads the npm-published version, which can differ from the locally built version. If the npm version is stale, OpenCode loads the wrong code. The `opencode.jsonc` registration alone is sufficient for plugin discovery.
 - Do NOT mix manual npm-pack installation with `opencode plugin` CLI registration; choose one. Our scripts use the manual path (build from source) because the npm version may lag behind.
+- To uninstall, run `install.ps1 uninstall` or `install.sh uninstall`, which removes all global copies from `~/.local/bin/`, `~/.config/opencode/node_modules/`, `~/.opencode/node_modules/`, and cleans up `.tgz` files and config entries.
 
 ### `opencode-rag init` — workspace-local plugin fallback
 - `opencode-rag init` always creates `.opencode/plugins/rag-plugin.js` as a workspace-local fallback, even when global registration exists. This file re-exports from `node_modules/` and gives OpenCode a reliable local entry point.
