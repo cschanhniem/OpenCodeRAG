@@ -1,8 +1,9 @@
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const originalCwd = process.cwd;
 
@@ -97,5 +98,16 @@ describe("opencode-rag init", () => {
     const afterContent = readFileSync(configPath, "utf-8");
     const parsed = JSON.parse(afterContent);
     assert.equal(parsed.embedding.provider, "ollama", "should contain defaults after force");
+  });
+
+  it("resolves symlinked cli entrypoints", async () => {
+    const cliModuleUrl = new URL("../cli.ts", import.meta.url).href;
+    const symlinkPath = join(tmpDir, "opencode-rag-cli-symlink.js");
+    symlinkSync(fileURLToPath(new URL("../cli.ts", import.meta.url)), symlinkPath);
+
+    const { shouldAutoRunCli } = await import("../cli.js");
+
+    assert.equal(shouldAutoRunCli(cliModuleUrl, symlinkPath), true);
+    assert.equal(shouldAutoRunCli(cliModuleUrl, undefined), false);
   });
 });

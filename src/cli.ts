@@ -1,6 +1,7 @@
+#!/usr/bin/env node
 import { Command } from "commander";
 import path from "node:path";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import chokidar from "chokidar";
@@ -670,12 +671,20 @@ program
     console.log("\nDone. Restart OpenCode if it is running, then run `opencode-rag index` in this workspace.");
   });
 
-if (
-  import.meta.url === `file://${process.argv[1]?.replace(/\\/g, "/")}` ||
-  process.argv[1]?.endsWith("cli.ts") ||
-  process.argv[1]?.endsWith("cli.js")
-) {
-  program.parseAsync(process.argv);
+export function shouldAutoRunCli(moduleUrl: string, argv1?: string): boolean {
+  if (!argv1) {
+    return false;
+  }
+
+  try {
+    return moduleUrl === `file://${realpathSync(argv1).replace(/\\/g, "/")}`;
+  } catch {
+    return false;
+  }
+}
+
+if (shouldAutoRunCli(import.meta.url, process.argv[1])) {
+  void program.parseAsync(process.argv);
 }
 
 export async function runCli(argv: string[] = process.argv): Promise<void> {
