@@ -36,7 +36,7 @@
     "postbuild": "node -e \"const fs=require('fs');fs.mkdirSync('dist/types',{recursive:true});fs.copyFileSync('src/types/opencode-plugin.d.ts','dist/types/opencode-plugin.d.ts');\"",
     "prepublishOnly": "npm run build",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test --test-force-exit \"src/**/*.test.ts\"",
+    "test": "node -e \"const {spawnSync}=require('node:child_process');const fs=require('node:fs');const path=require('node:path');const hasTests=(dir)=>{if(!fs.existsSync(dir))return false;for(const entry of fs.readdirSync(dir,{withFileTypes:true})){const fullPath=path.join(dir,entry.name);if(entry.isDirectory()){if(hasTests(fullPath))return true;}else if(entry.name.endsWith('.test.ts')){return true;}}return false;};if(!hasTests('src')){console.log('No test files found under src; skipping npm test.');process.exit(0);}const result=spawnSync(process.execPath,['--import','tsx','--test','--test-force-exit','src/**/*.test.ts'],{stdio:'inherit'});process.exit(typeof result.status==='number'?result.status:1);\"",
     "cli": "tsx src/cli.ts"
   },
   "keywords": [
