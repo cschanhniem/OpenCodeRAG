@@ -212,10 +212,11 @@ async function retrieveContext(
   embedder: EmbeddingProvider,
   store: VectorStore,
   topK: number,
-  retrieveFn: typeof retrieve = retrieve
+  retrieveFn: typeof retrieve = retrieve,
+  minScore = 0
 ): Promise<SearchResult[]> {
   if (query.trim().length === 0) return [];
-  return retrieveFn(query, embedder, store, { topK });
+  return retrieveFn(query, embedder, store, { topK, minScore });
 }
 
 async function loadRetrievedResults(
@@ -227,9 +228,10 @@ async function loadRetrievedResults(
   topK = cfg.retrieval.topK,
   extraQuery?: string
 ): Promise<SearchResult[]> {
-  const primaryResults = await retrieveContext(query, embedder, store, topK, retrieveFn);
+  const minScore = cfg.retrieval.minScore;
+  const primaryResults = await retrieveContext(query, embedder, store, topK, retrieveFn, minScore);
   const extraResults = extraQuery
-    ? await retrieveContext(extraQuery, embedder, store, topK, retrieveFn)
+    ? await retrieveContext(extraQuery, embedder, store, topK, retrieveFn, minScore)
     : [];
 
   return dedupeResults([...primaryResults, ...extraResults])
@@ -491,6 +493,7 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
 
         const results = await dependencies.retrieve(text, embedder, store, {
           topK: options.cfg.retrieval.topK,
+          minScore: options.cfg.retrieval.minScore,
         });
 
         if (results.length === 0) return;

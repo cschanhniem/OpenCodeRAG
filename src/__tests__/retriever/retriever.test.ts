@@ -111,4 +111,29 @@ describe("retrieve", () => {
     await retrieve("query", embedder, store);
     assert.equal(receivedTopK, 10);
   });
+
+  it("filters results below minScore", async () => {
+    const embedder = makeEmbedder([[0.1, 0.2, 0.3]]);
+    const store = makeStore([
+      { score: 0.9, chunk: { id: "a", content: "high", metadata: { filePath: "a.ts", startLine: 1, endLine: 2, language: "ts" } } },
+      { score: 0.4, chunk: { id: "b", content: "low", metadata: { filePath: "b.ts", startLine: 1, endLine: 2, language: "ts" } } },
+      { score: 0.7, chunk: { id: "c", content: "mid", metadata: { filePath: "c.ts", startLine: 1, endLine: 2, language: "ts" } } },
+    ]);
+
+    const results = await retrieve("query", embedder, store, { minScore: 0.6 });
+    assert.equal(results.length, 2);
+    assert.equal(results[0]!.score, 0.9);
+    assert.equal(results[1]!.score, 0.7);
+  });
+
+  it("returns all results when minScore is 0", async () => {
+    const embedder = makeEmbedder([[0.1, 0.2, 0.3]]);
+    const store = makeStore([
+      { score: 0.9, chunk: { id: "a", content: "high", metadata: { filePath: "a.ts", startLine: 1, endLine: 2, language: "ts" } } },
+      { score: 0.4, chunk: { id: "b", content: "low", metadata: { filePath: "b.ts", startLine: 1, endLine: 2, language: "ts" } } },
+    ]);
+
+    const results = await retrieve("query", embedder, store, { minScore: 0 });
+    assert.equal(results.length, 2);
+  });
 });

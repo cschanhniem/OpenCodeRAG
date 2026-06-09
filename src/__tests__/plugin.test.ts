@@ -168,7 +168,7 @@ describe("ragPlugin", () => {
     const { dependencies, getSeen } = makeDependencies(results, 2);
     const hooks = createRagHooks({
       cfg: makeConfig({
-        retrieval: { topK: 7 },
+        retrieval: { topK: 7, minScore: 0 },
         openCode: { enabled: true, maxContextChunks: 5 },
       }),
       storePath: "memory://",
@@ -233,31 +233,31 @@ describe("ragPlugin", () => {
       const { dependencies } = makeDependencies(results, 1);
       const logFilePath = path.join(tempDir, ".opencode", "opencode-rag.log");
       const hooks = createRagHooks({
-        cfg: makeConfig({
-          retrieval: { topK: 7 },
-          openCode: { enabled: true, maxContextChunks: 5 },
-        }),
-        storePath: "memory://",
-        logFilePath,
-        store: populatedStore,
-        dependencies,
-        worktree: testWorktree,
-      });
+      cfg: makeConfig({
+        retrieval: { topK: 7, minScore: 0 },
+        openCode: { enabled: true, maxContextChunks: 5 },
+      }),
+      storePath: "memory://",
+      logFilePath,
+      store: populatedStore,
+      dependencies,
+      worktree: testWorktree,
+    });
 
-      const retrievalTool = hooks.tool?.["opencode-rag-context"] as ToolDefinition;
-      assert.ok(retrievalTool, "expected chunk retrieval tool to be registered");
+    const retrievalTool = hooks.tool?.["opencode-rag-context"] as ToolDefinition;
+    assert.ok(retrievalTool, "expected chunk retrieval tool to be registered");
 
-      await retrievalTool.execute(
-        {
-          query: "Locate the chunking entry point",
-          pathHints: ["src/plugin.ts"],
-          languageHints: ["typescript"],
-          topK: 4,
-        },
-        makeToolContext() as never
-      );
+    await retrievalTool.execute(
+      {
+        query: "Locate the chunking entry point",
+        pathHints: ["src/plugin.ts"],
+        languageHints: ["typescript"],
+        topK: 4,
+      },
+      makeToolContext() as never
+    );
 
-      const logContent = readFileSync(logFilePath, "utf8");
+    const logContent = readFileSync(logFilePath, "utf8");
       assert.ok(logContent.includes("  export function chunkEntryPoint() {\n    return true;\n  }"));
       assert.ok(!logContent.includes("export function chunkEntryPoint() {\\n  return true;\\n}"));
     } finally {

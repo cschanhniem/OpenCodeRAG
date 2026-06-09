@@ -9,11 +9,11 @@ function run(cmd) {
 }
 
 try {
+  if (!dry) run('git push origin main');
+  else console.log('(dry run) would run: git push origin main');
+
   if (!dry) run('npm version patch');
   else console.log('(dry run) would run: npm version patch');
-
-  //if (!dry) run('git push origin main');
-  //else console.log('(dry run) would run: git push origin main');
 
   const tag = execSync('git describe --tags --abbrev=0').toString().trim();
   console.log('Detected tag:', tag);

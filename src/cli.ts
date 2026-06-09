@@ -432,7 +432,8 @@ program
       logCliInfo(logFilePath, "query", `Searching ${indexedCount} indexed chunks...`);
 
       const topK = parseInt(options.topK ?? "10", 10);
-      const results = await retrieve(query, embedder, store, { topK });
+      const minScore = config.retrieval.minScore;
+      const results = await retrieve(query, embedder, store, { topK, minScore });
 
       if (results.length === 0) {
         logCliInfo(logFilePath, "query", "No results found.");
@@ -557,6 +558,7 @@ function generateDefaultConfigJson(): string {
       },
       retrieval: {
         topK: DEFAULT_CONFIG.retrieval.topK,
+        minScore: DEFAULT_CONFIG.retrieval.minScore,
       },
       openCode: {
         enabled: DEFAULT_CONFIG.openCode.enabled,

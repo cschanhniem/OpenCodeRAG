@@ -43,6 +43,7 @@ export interface RagConfig {
   };
   retrieval: {
     topK: number;
+    minScore: number;
   };
   openCode: {
     enabled: boolean;
@@ -129,6 +130,7 @@ export const DEFAULT_CONFIG: RagConfig = {
   },
   retrieval: {
     topK: 10,
+    minScore: 0,
   },
   openCode: {
     enabled: true,

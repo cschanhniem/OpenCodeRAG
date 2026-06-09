@@ -2,6 +2,7 @@ import type { EmbeddingProvider, VectorStore, SearchResult } from "../core/inter
 
 export interface RetrieveOptions {
   topK?: number;
+  minScore?: number;
 }
 
 export async function retrieve(
@@ -11,6 +12,7 @@ export async function retrieve(
   options: RetrieveOptions = {}
 ): Promise<SearchResult[]> {
   const topK = options.topK ?? 10;
+  const minScore = options.minScore ?? 0;
 
   const embeddings = await embedder.embed([query]);
   const embedding = embeddings[0];
@@ -23,5 +25,6 @@ export async function retrieve(
     return [];
   }
 
-  return store.search(embedding as number[], topK);
+  const results = await store.search(embedding as number[], topK);
+  return results.filter((r) => r.score >= minScore);
 }
