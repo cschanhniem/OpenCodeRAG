@@ -219,4 +219,4 @@ You can easily inject custom chunkers without modifying the source code via `ope
 
 **100% Local Processing by Default.**  
 Whether you use it via CLI or as an agent plugin, OpenCodeRAG honors privacy strictly. Embeddings are generated locally by Ollama, and the vector database (LanceDB) is stored right in your project's directory. **No source code or embeddings ever leave your machine** unless you explicitly configure a third-party API like OpenAI.
-```
+
