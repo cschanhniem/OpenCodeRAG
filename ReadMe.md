@@ -69,10 +69,10 @@ OpenCodeRAG intelligently processes your query in OpenCode and your codebase for
 
 ## OpenCode Integration
 
-If you are using OpenCode, the plugin enhances your agent seamlessly with two main features:
+When are using OpenCode, the plugin enhances your agent with two main features:
 
 ### 1. Auto-Injection (Background Context)
-After every message you send, the plugin silently searches your codebase.
+After every message you send, the plugin effectively searches your vector-indexed codebase:
 - **High-confidence results (score ≥ 0.75):** Actual code chunks are injected directly into your prompt, giving the agent instant context without a tool-call round-trip.
 - **Lower-confidence results:** A compact list of suggested files is appended instead (e.g., `src/plugin.ts (lines 10-42)`).
 
