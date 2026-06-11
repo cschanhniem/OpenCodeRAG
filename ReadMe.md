@@ -5,7 +5,7 @@ It features a seamless integration with [OpenCode](https://opencode.ai) and offe
 
 [![npm version](https://img.shields.io/npm/v/opencode-rag-plugin.svg)](https://www.npmjs.com/package/opencode-rag-plugin)
 
-> ⚠️ **Note:** Don't confuse this with `opencode-rag`, which is a discontinued project by a different author. Ensure you are using **`opencode-rag-plugin`**.
+> ⚠️ **Note:** Don't confuse this with the npm-package `opencode-rag`, which is a discontinued project by a different author. Ensure you are using **`opencode-rag-plugin`**.
 
 **Why Using OpenCodeRAG?**  
 OpenCodeRAG aims to reduce LLM token usage by replacing expensive full-file reads with targeted, vector-similarity-based chunk retrieval. 
