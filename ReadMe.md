@@ -155,7 +155,7 @@ After each user message, a `chat.message` hook appends up to 10 relevant file su
 
 ## CLI Interface
 
-The CLI interface (`opencode-rag`) provides full access to build, manage, and search your project's vector database, even without opening OpenCode.
+The CLI interface (`opencode-rag`) provides full access to build, manage, and search your project's vector database, even without using OpenCode.
 This is mainly intended for testing/debugging purposes, but can also be integrated into your own applications or scripts.
 
 ```bash
