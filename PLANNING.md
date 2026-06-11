@@ -2,31 +2,61 @@
 
 ## ✅ Completed / Shipped
 
+### Chunking & Indexing
+
 - [x] AST-based code chunking for 16 languages: TypeScript, Python, Java, Go, C, C++, C#, JavaScript, Rust, Ruby, Kotlin, Swift, JSON, HTML, CSS, XML
-- [x] Regex/document chunking for Markdown, Razor, .sln, and LaTeX plus document text extraction for PDF, DOCX, DOC, and Excel
+- [x] Regex/document chunking for Markdown, Razor, .sln, and LaTeX
+- [x] Document text extraction for PDF, DOCX, DOC, and Excel
 - [x] Line-based fallback chunking for unsupported formats
-- [x] Embedding providers (Ollama + OpenAI, factory-pattern dispatch)
-- [x] Proxy-aware embedding transport with config/env support, auth headers, and localhost direct-request bypass
-- [x] Vector storage (LanceDB with `memory://` test mode)
-- [x] Retrieval pipeline (embed → search → score → return)
-- [x] CLI (`init`, `index`, `query`, `clear`, `status` via commander)
-- [x] Workspace bootstrap via `opencode-rag init` for project-local OpenCode plugin setup
-- [x] OpenCode plugin with `opencode-rag-context`, `experimental.chat.system.transform`, `chat.message` file suggestions, and background auto-indexing
+- [x] Pluggable chunkers via `Chunker` interface and config-loaded custom chunkers (`loadChunkersFromConfig()`)
 - [x] Incremental indexing (file-hash-based, manifest-backed, diff-aware)
 - [x] File watching and background re-indexing with debounced, serialized passes
+
+### Embedding & Storage
+
+- [x] Embedding providers (Ollama + OpenAI, factory-pattern dispatch)
+- [x] Proxy-aware embedding transport with config/env support, auth headers, and raw socket localhost bypass
+- [x] Dimension probing at startup (auto-detect embedding size, fallback to 384)
+- [x] Vector storage (LanceDB with `memory://` test mode)
 - [x] Pluggable storage via `VectorStore` interface
-- [x] Pluggable chunkers via `Chunker` interface and config-loaded custom chunkers
 - [x] Pluggable embedders via `EmbeddingProvider` interface
-- [x] JSON config with deep-merged partial overrides
 - [x] Batch embedding (configurable batch size)
-- [x] Configurable file logging
-- [x] Published npm package: `opencode-rag-plugin`
-- [x] Expanded automated test suite (511 tests, Node built-in runner)
-- [x] Auto-context injection on `chat.message` — high-confidence chunks are injected directly into messages, saving tool-call round-trips
+
+### Retrieval
+
+- [x] Retrieval pipeline (embed → search → score → return)
 - [x] Hybrid search (TF×IDF keyword + vector fusion) — weighted `(1-kw)*vScore + kw*kScore` merging with CamelCase/snake_case tokenizer
+- [x] Session-level retrieval cache (avoids re-embedding repeated queries)
+- [x] Auto-context injection on `chat.message` — high-confidence chunks are injected directly into messages, saving tool-call round-trips
+- [x] Configurable auto-inject settings (`minScore`, `maxChunks`, `maxTokens`, `enabled`)
+
+### OpenCode Plugin
+
+- [x] `opencode-rag-context` tool for chunk-level retrieval
+- [x] `chat.message` hook with file suggestions and auto-injection
+- [x] RAG-backed read override tool — shadows OpenCode's built-in read, appends related code chunks and suggests related files when retrieval finds relevant results
+- [x] TUI plugin module (OpenTUI + Solid.js sidebar panel)
+- [x] `PluginModule` export pattern for OpenCode v1.17.0 compatibility
+- [x] Background auto-indexing via `createBackgroundIndexer()`
+
+### CLI & Distribution
+
+- [x] CLI (`init`, `index`, `query`, `clear`, `status` via commander)
+- [x] Full `init` command lifecycle: generates `.opencode/plugins/rag-plugin.js` + `rag-tui.js`, `.gitignore`, `package.json`; runs `npm install`; cleans stale global plugin registrations; `--skip-install` flag
+- [x] Install scripts (`install.ps1` / `install.sh`) — build, pack, install to `~/.opencode/`, register in `opencode.jsonc`, CLI wrapper, full uninstall mode
+- [x] Release automation script (`scripts/release-patch.js` with `--dry` support)
+- [x] Multi-entry package exports: plugin, server, library, TUI
+- [x] Published npm package: `opencode-rag-plugin`
+
+### Config & Quality
+
+- [x] JSON config with deep-merged partial overrides
+- [x] Configurable file logging
+- [x] Expanded automated test suite (511+ tests, Node built-in runner)
 
 ## Short Term
 
+- [ ] LLM-based re-ranking layer (cross-encoder or lightweight model after vector search)
 - [ ] Query rewriting / multi-variant expansion
 - [ ] Context window optimization (dedup, merge adjacent chunks)
 - [ ] Better ranking/diversity for `chat.message` file suggestions
@@ -36,11 +66,11 @@
 
 - [ ] Cross-file relationship graph (imports, call graph)
 - [ ] Dependency-aware search
-- [ ] LLM-based re-ranking layer
-- [ ] Multi-repo support
+- [ ] Multi-repo / cross-workspace search
 - [ ] IDE context awareness (current file, cursor position)
 - [ ] Prompt template customization
 - [ ] Debugging tools (inspecting embeddings, result explanations)
+- [ ] Memory / persistent context across sessions (retain coding patterns, decisions, and conventions)
 
 ## Long Term
 
@@ -50,6 +80,7 @@
 - [ ] Agent-based code navigation
 - [ ] Richer non-code / multimodal support (diagrams, API specs, JSON schemas, YAML configs)
 - [ ] Access control (per-folder permissions, sensitive file exclusion)
+- [ ] Web UI for browsing indexed chunks, search results, and index health
 
 ---
 
@@ -57,14 +88,13 @@
 
 ## 1. 🔁 Incremental Indexing + Watch Mode
 
-Implemented with a manifest sidecar beside the LanceDB dataset. Indexing now
-hashes files, skips unchanged files, updates modified files, removes deleted,
-empty, or too-small files, and safely rebuilds if the manifest is missing or
-corrupt while the store already contains rows.
+**✅ Implemented.** Manifest sidecar beside the LanceDB dataset. Indexing hashes
+files, skips unchanged, updates modified, removes deleted/empty/too-small files,
+and safely rebuilds if manifest is missing or corrupt.
 
-Watch mode (`index --watch`) uses chokidar to trigger debounced incremental
-passes on add/change/unlink events. Passes are serialized, and the plugin uses
-the same scheduling model for background auto-indexing inside OpenCode.
+Watch mode (`index --watch`) uses chokidar for debounced incremental passes.
+Passes are serialized. The plugin uses the same scheduling for background
+auto-indexing inside OpenCode.
 
 ## 2. 🧠 Query Enhancement
 
@@ -84,7 +114,9 @@ Drastically improves precision for ambiguous queries.
 
 ## 5. 🧱 Hybrid Search (Keyword + Vector)
 
-Implemented as TF×IDF inverted index with zero dependencies. `retrieval.hybridSearch.keywordWeight` controls the fusion balance (default 0.4). Tokenizer handles CamelCase, snake_case, and code-specific patterns.
+**✅ Implemented.** TF×IDF inverted index with zero dependencies.
+`retrieval.hybridSearch.keywordWeight` controls the fusion balance (default 0.4).
+Tokenizer handles CamelCase, snake_case, and code-specific patterns.
 
 ## 6. 🧾 Context Window Optimization
 
@@ -146,25 +178,52 @@ why a particular chunk or file was retrieved for a query.
 Quantized embeddings to reduce storage, pruning stale entries, and garbage
 collection on unused chunks.
 
+## 17. 🧠 Persistent Session Memory
+
+Retain coding patterns, project conventions, and past decisions across sessions.
+Inspired by [opencode-mem](https://github.com/tickernelz/opencode-mem)'s
+approach: store structured memories in a local vector DB, auto-capture insights
+from conversations, and inject relevant memories into future prompts. Could
+complement the existing RAG retrieval with a "project memory" layer.
+
+## 18. 🌐 Web UI for Index Inspection
+
+A lightweight web dashboard (like opencode-mem's `http://127.0.0.1:4747`) for
+browsing indexed chunks, inspecting search results, viewing index health/stats,
+and debugging retrieval quality. Useful for understanding what the system
+"knows" about a codebase.
+
+## 19. 🏢 Multi-Workspace Awareness
+
+Support indexing and searching across multiple related repositories. Enable
+cross-project queries for monorepo setups or microservice architectures. Could
+use per-workspace vector shards with a unified query layer (similar to
+opencode-mem's `scope: "all-projects"`).
+
 ---
 
 # 🎯 Summary
 
-**OpenCodeRAG** now delivers a local-first semantic code search pipeline with
+**OpenCodeRAG** delivers a local-first semantic code search pipeline with
 AST and document-aware chunking, incremental/background indexing, configurable
-embeddings with proxy support, LanceDB vector storage, a bootstrap-aware CLI,
-and OpenCode plugin integration.
+embeddings with proxy support, LanceDB vector storage, a full-lifecycle CLI,
+OpenCode plugin integration with read-override and TUI modules, and
+install/release automation.
 
 Key strengths:
 
 - Local + privacy-first
 - Modular architecture (interfaces + factory/adapter patterns)
-- Workspace-native bootstrap via `opencode-rag init`
+- Workspace-native bootstrap via `opencode-rag init` (plugins, gitignore, npm install, stale cleanup)
 - Broad source and document coverage without native grammar build tools
+- RAG-backed read tool that enriches file reads with related code chunks
+- Hybrid keyword + vector search with configurable fusion weights
+- Install scripts for one-command global setup and uninstall
 
 Key next steps:
 
-1. Hybrid search + re-ranking for retrieval quality
+1. LLM-based re-ranking for retrieval precision
 2. Code graph integration for structural code understanding
 3. Context window optimization for better prompt packing
 4. Query rewriting and retrieval explainability
+5. Persistent session memory across coding sessions
