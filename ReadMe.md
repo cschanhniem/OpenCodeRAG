@@ -188,7 +188,9 @@ OpenCodeRAG uses advanced AST (Abstract Syntax Tree) parsing via `tree-sitter` f
 
 ---
 
-## 🛠 Developer Guide & Architecture
+## Developer Guide
+
+Developers are welcome! If you fixed a bug or implemented a new feature, just submit your pull request to this repository.
 
 ### Architecture Flow
 ```text
