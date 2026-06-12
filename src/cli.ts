@@ -14,7 +14,7 @@ import { loadChunkersFromConfig } from "./chunker/loader.js";
 import { createEmbedder } from "./embedder/factory.js";
 import { createDescriptionProvider } from "./describer/factory.js";
 import { retrieve } from "./retriever/retriever.js";
-import type { KeywordIndex } from "./core/interfaces.js";
+import type { KeywordIndex, SearchResult } from "./core/interfaces.js";
 import {
   createWatchPassScheduler,
   createWatchIgnore,
@@ -534,7 +534,8 @@ program
       const minScore = config.retrieval.minScore;
       const keywordIndex = await loadCliKeywordIndex(path.resolve(cwd, config.vectorStore.path), logFilePath);
       const hybridCfg = config.retrieval.hybridSearch;
-      const results = await retrieve(query, embedder, store, { topK, minScore, keywordIndex, keywordWeight: hybridCfg?.keywordWeight, queryPrefix: config.embedding.queryPrefix });
+      const rawResults = await retrieve(query, embedder, store, { topK, minScore, keywordIndex, keywordWeight: hybridCfg?.keywordWeight, queryPrefix: config.embedding.queryPrefix });
+      const results = dedupeResults(rawResults);
 
       if (results.length === 0) {
         logCliInfo(logFilePath, "query", c.warn("No results found."));
@@ -940,6 +941,24 @@ program
  * Resolves the first argv entry so symlinked binaries compare against the
  * real file path, and returns false if the path cannot be resolved.
  */
+function dedupeResults(results: SearchResult[]): SearchResult[] {
+  const seen = new Set<string>();
+  const deduped: SearchResult[] = [];
+  for (const result of results) {
+    const chunk = result.chunk;
+    const key = [
+      chunk.metadata.filePath,
+      chunk.metadata.startLine,
+      chunk.metadata.endLine,
+      chunk.content,
+    ].join(":");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(result);
+  }
+  return deduped;
+}
+
 export function shouldAutoRunCli(moduleUrl: string, argv1?: string): boolean {
   if (!argv1) {
     return false;
