@@ -10,7 +10,8 @@
 - [x] Line-based fallback chunking for unsupported formats
 - [x] Pluggable chunkers via `Chunker` interface and config-loaded custom chunkers (`loadChunkersFromConfig()`)
 - [x] Incremental indexing (file-hash-based, manifest-backed, diff-aware)
-- [x] File watching and background re-indexing with debounced, serialized passes
+- [x] File watching and background re-indexing with debounced, serialized passes, watcher status file
+- [x] Enhanced chunk descriptions with relative paths and line numbers in both LLM and non-LLM modes
 
 ### Embedding & Storage
 
@@ -21,6 +22,8 @@
 - [x] Pluggable storage via `VectorStore` interface
 - [x] Pluggable embedders via `EmbeddingProvider` interface
 - [x] Batch embedding (configurable batch size)
+- [x] Auto-detection of LanceDB schema (`tableHasDescriptionColumn()`) for seamless upgrades
+- [x] Robust `clear()` via `dropDatabase()`
 
 ### Retrieval
 
@@ -35,24 +38,29 @@
 - [x] `opencode-rag-context` tool for chunk-level retrieval
 - [x] `chat.message` hook with file suggestions and auto-injection
 - [x] RAG-backed read override tool — shadows OpenCode's built-in read, appends related code chunks and suggests related files when retrieval finds relevant results
-- [x] TUI plugin module (OpenTUI + Solid.js sidebar panel)
+- [x] TUI plugin module (OpenTUI + Solid.js sidebar panel) with model picker dropdowns for embedding/description providers
 - [x] `PluginModule` export pattern for OpenCode v1.17.0 compatibility
-- [x] Background auto-indexing via `createBackgroundIndexer()`
+- [x] Background auto-indexing via `createBackgroundIndexer()` with watcher status file
+- [x] API key auto-resolution from OpenCode provider config files
 
 ### CLI & Distribution
 
-- [x] CLI (`init`, `index`, `query`, `clear`, `status` via commander)
+- [x] CLI (`init`, `index`, `query`, `clear`, `status`, `list`, `show`, `dump` via commander)
 - [x] Full `init` command lifecycle: generates `.opencode/plugins/rag-plugin.js` + `rag-tui.js`, `.gitignore`, `package.json`; runs `npm install`; cleans stale global plugin registrations; `--skip-install` flag
 - [x] Install scripts (`install.ps1` / `install.sh`) — build, pack, install to `~/.opencode/`, register in `opencode.jsonc`, CLI wrapper, full uninstall mode
 - [x] Release automation script (`scripts/release-patch.js` with `--dry` support)
 - [x] Multi-entry package exports: plugin, server, library, TUI
 - [x] Published npm package: `opencode-rag-plugin`
+- [x] CLI query results deduplication
+- [x] `clear` command uses `store.dropDatabase()` for clean slate
 
 ### Config & Quality
 
 - [x] JSON config with deep-merged partial overrides
+- [x] Runtime overrides system (`runtime-overrides.json`) for live TUI config changes with 5s TTL
 - [x] Configurable file logging
-- [x] Expanded automated test suite (511+ tests, Node built-in runner)
+- [x] Manifest schema versioning with corruption detection and automatic rebuild
+- [x] Expanded automated test suite (589+ tests, Node built-in runner)
 
 ## Short Term
 
@@ -94,7 +102,8 @@ and safely rebuilds if manifest is missing or corrupt.
 
 Watch mode (`index --watch`) uses chokidar for debounced incremental passes.
 Passes are serialized. The plugin uses the same scheduling for background
-auto-indexing inside OpenCode.
+auto-indexing inside OpenCode, now writing `watcher-status.json` to the store
+path for observability of background indexing state.
 
 ## 2. 🧠 Query Enhancement
 
@@ -218,6 +227,10 @@ Key strengths:
 - Broad source and document coverage without native grammar build tools
 - RAG-backed read tool that enriches file reads with related code chunks
 - Hybrid keyword + vector search with configurable fusion weights
+- TUI settings menu with model picker for embedding and description providers
+- Runtime overrides system for live config changes without editing JSON files
+- API key auto-resolution from OpenCode provider config
+- Manifest schema versioning with auto-rebuild on format changes
 - Install scripts for one-command global setup and uninstall
 
 Key next steps:
@@ -227,3 +240,4 @@ Key next steps:
 3. Context window optimization for better prompt packing
 4. Query rewriting and retrieval explainability
 5. Persistent session memory across coding sessions
+6. Web UI for index inspection and search result browsing

@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import chokidar from "chokidar";
 import pc from "picocolors";
 import { loadConfig, DEFAULT_CONFIG, resolveLogConfig, type RagConfig } from "./core/config.js";
+import { resolveApiKey } from "./core/resolve-api-key.js";
 
 import { appendDebugLog } from "./core/fileLogger.js";
 import { loadChunkersFromConfig } from "./chunker/loader.js";
@@ -75,10 +76,12 @@ function logCliInfo(logFilePath: string, scope: string, message: string): void {
 }
 
 async function resolveConfig(opt: CliOptions, logFilePath: string): Promise<RagConfig> {
+  const worktree = process.cwd();
   if (opt.config) {
     try {
       const configPath = path.resolve(opt.config);
       const cfg = loadConfig(configPath);
+      resolveApiKey(cfg, worktree);
       await loadChunkersFromConfig(cfg, path.dirname(configPath));
       logCliInfo(logFilePath, "config", `${c.label("Config:")} ${c.file(configPath)}`);
       return logConfigDetails(logFilePath,cfg);
@@ -91,6 +94,7 @@ async function resolveConfig(opt: CliOptions, logFilePath: string): Promise<RagC
     const configPath = path.resolve(loc);
     try {
       const cfg = loadConfig(configPath);
+      resolveApiKey(cfg, worktree);
       await loadChunkersFromConfig(cfg, path.dirname(configPath));
       logCliInfo(logFilePath, "config", `${c.label("Config:")} ${c.file(configPath)}`);
       return logConfigDetails(logFilePath, cfg);
@@ -396,7 +400,7 @@ program
       const embedder = createEmbedder(config);
 
       // Detect actual vector dimension from the model
-      const probe = await embedder.embed(["dimension-probe"]);
+      const probe = await embedder.embed(["dimension-probe"], "query");
       let vectorDimension = 384;
       if (probe && probe[0] && probe[0].length > 0 && typeof probe[0][0] === "number") {
         vectorDimension = (probe[0] as number[]).length;

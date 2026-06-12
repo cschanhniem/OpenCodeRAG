@@ -4,7 +4,9 @@ import { createElement, insert, setProp } from "@opentui/solid";
 import { readFileSync, existsSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { Provider } from "@opencode-ai/sdk/v2";
 import { loadRuntimeOverrides, saveRuntimeOverride } from "./core/runtime-overrides.js";
+import { PROVIDER_DEFAULTS } from "./core/provider-defaults.js";
 
 let _version: string | undefined;
 function getVersion(): string {
@@ -208,8 +210,9 @@ function readJsonFile<T = Record<string, unknown>>(filePath: string): T | undefi
 type SettingEntry = {
   path: string[];
   label: string;
-  type: "boolean" | "number";
-  currentValue: boolean | number;
+  type: "boolean" | "number" | "string";
+  currentValue: boolean | number | string;
+  options?: { title: string; value: string; description?: string; category?: string }[];
 };
 
 type SettingCategory = {
@@ -218,9 +221,105 @@ type SettingCategory = {
   entries: SettingEntry[];
 };
 
+function buildModelOptions(providers: readonly Provider[]): { title: string; value: string; description?: string; category?: string }[] {
+  const options: { title: string; value: string; description?: string; category?: string }[] = [];
+  for (const provider of providers) {
+    if (!provider.models) continue;
+    for (const [modelId, model] of Object.entries(provider.models)) {
+      options.push({
+        title: model.name ?? modelId,
+        value: `${provider.id}/${modelId}`,
+        description: provider.name,
+        category: provider.name,
+      });
+    }
+  }
+  options.sort((a, b) => {
+    if ((a.category ?? "") < (b.category ?? "")) return -1;
+    if ((a.category ?? "") > (b.category ?? "")) return 1;
+    return (a.title ?? "").localeCompare(b.title ?? "");
+  });
+  options.push({ title: "Custom\u2026", value: "__custom__", description: "Enter provider/model manually" });
+  return options;
+}
+
+function providerIdToRagProvider(providerId: string): string {
+  if (providerId === "ollama") return "ollama";
+  const defaults = PROVIDER_DEFAULTS[providerId];
+  if (defaults) return providerId;
+  return "openai";
+}
+
+function resolveProviderBaseUrl(provider: Provider): string {
+  const baseUrl = (provider.options?.baseURL as string) ?? "";
+  if (provider.id === "ollama") {
+    const clean = baseUrl.replace(/\/+$/, "");
+    return clean ? `${clean}/api` : PROVIDER_DEFAULTS.ollama!.defaultBaseUrl + "/api";
+  }
+  const defaults = PROVIDER_DEFAULTS[provider.id];
+  return baseUrl || (defaults?.defaultBaseUrl ?? "https://api.openai.com/v1");
+}
+
+function saveConfigValue(configPath: string, path: string[], value: unknown): void {
+  try {
+    const data: Record<string, unknown> = JSON.parse(readFileSync(configPath, "utf-8"));
+    let target = data;
+    for (let i = 0; i < path.length - 1; i++) {
+      const key = path[i]!;
+      if (!target[key] || typeof target[key] !== "object") {
+        target[key] = {};
+      }
+      target = target[key] as Record<string, unknown>;
+    }
+    target[path[path.length - 1]!] = value;
+    writeFileSync(configPath, JSON.stringify(data, null, 2), "utf-8");
+  } catch {
+    // silently ignore write errors
+  }
+}
+
+function saveModelSelection(
+  storePath: string,
+  configPath: string,
+  selectionValue: string,
+  path: string[],
+  providers?: readonly Provider[]
+): string | undefined {
+  const section = path[0]!;
+  if (selectionValue === "__custom__") return undefined;
+
+  const parts = selectionValue.split("/");
+  if (parts.length < 2) return undefined;
+
+  const providerId = parts[0]!;
+  const modelId = parts.slice(1).join("/");
+
+  const provider = providers?.find((p) => p.id === providerId);
+  const ragProvider = providerIdToRagProvider(providerId);
+  const baseUrl = provider ? resolveProviderBaseUrl(provider) : "";
+
+  saveRuntimeOverride(storePath, [section, "provider"], ragProvider);
+  saveConfigValue(configPath, [section, "provider"], ragProvider);
+  saveRuntimeOverride(storePath, [section, "model"], modelId);
+  saveConfigValue(configPath, [section, "model"], modelId);
+  if (baseUrl) {
+    saveRuntimeOverride(storePath, [section, "baseUrl"], baseUrl);
+    saveConfigValue(configPath, [section, "baseUrl"], baseUrl);
+  }
+
+  const apiKey = (provider?.options?.apiKey as string) ?? "";
+  if (apiKey) {
+    saveRuntimeOverride(storePath, [section, "apiKey"], apiKey);
+    saveConfigValue(configPath, [section, "apiKey"], apiKey);
+  }
+
+  return selectionValue;
+}
+
 function buildSettingCategories(
   cfg: Record<string, unknown>,
   ro: Record<string, unknown>,
+  providers?: readonly Provider[],
 ): SettingCategory[] {
   const retrievalCfg = (cfg.retrieval ?? {}) as Record<string, unknown>;
   const retrievalRo = (ro.retrieval ?? {}) as Record<string, unknown>;
@@ -236,6 +335,17 @@ function buildSettingCategories(
 
   const descCfg = (cfg.description ?? {}) as Record<string, unknown>;
   const descRo = (ro.description ?? {}) as Record<string, unknown>;
+
+  const embeddingCfg = (cfg.embedding ?? {}) as Record<string, unknown>;
+  const embeddingRo = (ro.embedding ?? {}) as Record<string, unknown>;
+
+  const modelOptions = providers ? buildModelOptions(providers) : undefined;
+
+  function displayModel(roProvider: unknown, roModel: unknown, cfgProvider: unknown, cfgModel: unknown, defaultProvider: string, defaultModel: string): string {
+    const p = (roProvider as string) ?? (cfgProvider as string) ?? defaultProvider;
+    const m = (roModel as string) ?? (cfgModel as string) ?? defaultModel;
+    return `${p}/${m}`;
+  }
 
   return [
     {
@@ -311,6 +421,19 @@ function buildSettingCategories(
       ],
     },
     {
+      id: "embedding",
+      label: "Embedding",
+      entries: [
+        {
+          path: ["embedding", "model"],
+          label: "Model",
+          type: "string",
+          currentValue: displayModel(embeddingRo.provider, embeddingRo.model, embeddingCfg.provider, embeddingCfg.model, "ollama", "embeddinggemma:latest"),
+          options: modelOptions,
+        },
+      ],
+    },
+    {
       id: "description",
       label: "LLM Descriptions",
       entries: [
@@ -319,6 +442,13 @@ function buildSettingCategories(
           label: "LLM descriptions",
           type: "boolean",
           currentValue: (descRo.enabled as boolean) ?? (descCfg.enabled as boolean) ?? true,
+        },
+        {
+          path: ["description", "model"],
+          label: "Model",
+          type: "string",
+          currentValue: displayModel(descRo.provider, descRo.model, descCfg.provider, descCfg.model, "ollama", "qwen2.5:3b"),
+          options: modelOptions,
         },
       ],
     },
@@ -335,7 +465,7 @@ async function openSettingsDialog(api: {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     toast: (input: any) => void;
   };
-  state: { path: { worktree: string | undefined } };
+  state: { path: { worktree: string | undefined }; provider?: readonly Provider[] };
 }): Promise<void> {
   const worktree = api.state.path.worktree;
   if (!worktree) return;
@@ -356,15 +486,15 @@ async function openSettingsDialog(api: {
   const vs = cfg.vectorStore as Record<string, unknown> | undefined;
   const storeRelPath = (vs?.path as string) ?? ".opencode/rag_db";
   const storePath = resolve(worktree, storeRelPath);
+  const providers = api.state.provider;
 
   function getCurrentOverrides(): Record<string, unknown> {
     return loadRuntimeOverrides(storePath) as unknown as Record<string, unknown>;
   }
 
-  // Build options for a category or setting list
   function showCategoryMenu(): void {
     const ro = getCurrentOverrides();
-    const cats = buildSettingCategories(cfg, ro);
+    const cats = buildSettingCategories(cfg, ro, providers);
     const options = [
       ...cats.map((c) => ({
         title: c.label,
@@ -397,7 +527,7 @@ async function openSettingsDialog(api: {
       ...cat.entries.map((s) => ({
         title: `${s.label}: ${s.type === "boolean" ? (s.currentValue ? "Yes" : "No") : String(s.currentValue)}`,
         value: s.path.join("."),
-        description: s.type === "boolean" ? "Select to toggle" : "Select to edit",
+        description: s.options ? "Select to open model picker" : (s.type === "boolean" ? "Select to toggle" : "Select to edit"),
       })),
       { title: "\u2190 Back", value: "__back__", description: "Return to categories" },
     ];
@@ -416,9 +546,12 @@ async function openSettingsDialog(api: {
             const entry = cat.entries.find((s) => s.path.join(".") === option.value);
             if (!entry) return;
 
-            if (entry.type === "boolean") {
+            if (entry.options) {
+              showModelPicker(entry, cat);
+            } else if (entry.type === "boolean") {
               const newVal = !entry.currentValue;
               saveRuntimeOverride(storePath, entry.path, newVal);
+              saveConfigValue(configPath!, entry.path, newVal);
               api.ui.toast({
                 variant: "success",
                 title: "Settings",
@@ -426,7 +559,7 @@ async function openSettingsDialog(api: {
               });
               entry.currentValue = newVal;
               showSettingMenu(cat);
-            } else {
+            } else if (entry.type === "number") {
               api.ui.dialog.replace(
                 () =>
                   api.ui.DialogPrompt({
@@ -437,6 +570,7 @@ async function openSettingsDialog(api: {
                       const num = parseFloat(input);
                       if (!isNaN(num)) {
                         saveRuntimeOverride(storePath, entry.path, num);
+                        saveConfigValue(configPath!, entry.path, num);
                         api.ui.toast({
                           variant: "success",
                           title: "Settings",
@@ -451,7 +585,84 @@ async function openSettingsDialog(api: {
                     },
                   }),
               );
+            } else {
+              api.ui.dialog.replace(
+                () =>
+                  api.ui.DialogPrompt({
+                    title: `Edit ${entry.label}`,
+                    placeholder: "Enter new value",
+                    value: String(entry.currentValue),
+                    onConfirm: (input: string) => {
+                      saveRuntimeOverride(storePath, entry.path, input);
+                      saveConfigValue(configPath!, entry.path, input);
+                      api.ui.toast({
+                        variant: "success",
+                        title: "Settings",
+                        message: `${entry.label}: ${input}`,
+                      });
+                      entry.currentValue = input;
+                      showSettingMenu(cat);
+                    },
+                    onCancel: () => {
+                      showSettingMenu(cat);
+                    },
+                  }),
+              );
             }
+          },
+        }),
+    );
+  }
+
+  function showModelPicker(entry: SettingEntry, cat: SettingCategory): void {
+    api.ui.dialog.replace(
+      () =>
+        api.ui.DialogSelect({
+          title: `Select ${entry.label}`,
+          placeholder: "Search models\u2026",
+          options: entry.options ?? [],
+          onSelect: (option: { title: string; value: string }) => {
+            if (option.value === "__custom__") {
+              api.ui.dialog.replace(
+                () =>
+                  api.ui.DialogPrompt({
+                    title: `Custom ${entry.label}`,
+                    placeholder: "e.g. ollama/my-model or openai/custom-model",
+                    value: typeof entry.currentValue === "string" ? entry.currentValue : "",
+                    onConfirm: (input: string) => {
+                      const saved = saveModelSelection(storePath, configPath!, input, entry.path, providers);
+                      if (saved) {
+                        entry.currentValue = saved;
+                      } else if (input) {
+                        saveRuntimeOverride(storePath, entry.path, input);
+                        saveConfigValue(configPath!, entry.path, input);
+                        entry.currentValue = input;
+                      }
+                      showSettingMenu(cat);
+                    },
+                    onCancel: () => showSettingMenu(cat),
+                  }),
+              );
+              return;
+            }
+            const saved = saveModelSelection(storePath, configPath!, option.value, entry.path, providers);
+            if (saved) {
+              entry.currentValue = saved;
+              api.ui.toast({
+                variant: "success",
+                title: "Settings",
+                message: `${entry.label}: ${saved}`,
+              });
+              const isEmbedding = entry.path[0] === "embedding";
+              if (isEmbedding) {
+                api.ui.toast({
+                  variant: "warning",
+                  title: "Settings",
+                  message: "Embedding changed. Re-index may be required. Restart OpenCode for changes.",
+                });
+              }
+            }
+            showSettingMenu(cat);
           },
         }),
     );

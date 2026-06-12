@@ -110,12 +110,28 @@ Running `opencode-rag init` creates the config file `opencode-rag.json` in your 
 | `openCode.autoInject.minScore` | `0.75` | Minimum relevance score to inject actual code (0–1). |
 | `retrieval.topK` | `10` | Default number of chunks fetched per query. |
 | `retrieval.hybridSearch.enabled` | `true` | Enables combined TF×IDF + vector search. |
+### TUI Settings Menu
 
-### Description-Based Embedding (Optional)
+When running inside OpenCode, the plugin provides a settings panel accessible from the OpenCode sidebar:
+- **Retrieval**: `topK`, `minScore`, `maxChunks`
+- **Embedding**: Model picker dropdown (populated from OpenCode's registered providers) with custom manual entry
+- **LLM Descriptions**: Enable/disable toggle, model picker dropdown
 
-When enabled, the indexer uses an LLM to generate natural-language descriptions of code chunks, then combines the description with the raw code for embedding. This captures both semantic meaning (from the description) and code-level similarity (from the code itself), dramatically improving search quality for natural language and code-based queries alike. 
+Settings are persisted to `${storePath}/runtime-overrides.json` and take precedence over `opencode-rag.json`. The plugin reloads these on a 5-second TTL.
 
-As this needs more processing power, it is recommended to keep this disabled if you don't use a dedicated GPU for inference.
+### API Key Auto-Resolution
+
+If you set `embedding.provider` or `description.provider` to `"openai"` but don't specify an `apiKey` in `opencode-rag.json`, the plugin automatically resolves the key from OpenCode's own provider configuration (`.opencode/opencode.json`, `opencode.json`, or `~/.config/opencode/opencode.jsonc`).
+
+### Manifest Schema Versioning
+
+The manifest file now contains a `schemaVersion` field. If the stored manifest has a mismatched version, a full index rebuild is triggered automatically — this prevents silent corruption when the manifest format changes between plugin versions.
+
+### Description-Based Embedding (Enabled by Default)
+
+The indexer uses an LLM to generate natural-language descriptions of code chunks, then combines the description with the raw code for embedding. This captures both semantic meaning (from the description) and code-level similarity (from the code itself), dramatically improving search quality for natural language and code-based queries alike. 
+
+> As this needs more processing power, it is recommended to disable it (`description.enabled: false`) if you don't have a dedicated GPU for inference or want to reduce latency during indexing.
 
 ```json
 {
@@ -125,7 +141,7 @@ As this needs more processing power, it is recommended to keep this disabled if 
     "baseUrl": "http://localhost:11434/api",
     "model": "qwen2.5:3b",
     "timeoutMs": 60000,
-    "systemPrompt": "You are a code analysis assistant. Given a code snippet, write a short (2-3 sentence) description of what the code does, its purpose, and key functionality. Focus on semantic meaning that would help someone searching for this code. Do not include code in your response."
+    "systemPrompt": "Describe code for semantic search in short simple words, simple grammar, no code, no comments."
   }
 }
 ```
@@ -138,7 +154,7 @@ As this needs more processing power, it is recommended to keep this disabled if 
 | `description.systemPrompt` | *(see above)* | Customizable system prompt for the LLM. |
 | `description.timeoutMs` | `60000` | Timeout per LLM call. |
 
-The embedded text is formed as `description + "\n\n" + code content`. The description and code are still stored as separate fields in LanceDB. Keyword search continues to use the raw code content. Set `description.enabled` to `false` to disable and embed raw code content instead. If the LLM call fails during indexing, the chunk falls back to embedding raw content with a warning logged.
+The embedded text is formed as `description + "\n\n" + code content`. The description and code are still stored as separate fields in LanceDB. Keyword search continues to use the raw code content. Even when LLM descriptions are disabled, chunk descriptions still include the file path and line range (e.g. `src/foo.ts, lines 10-42`). If the LLM call fails during indexing, the chunk falls back to embedding raw content with a warning logged.
 
 <details>
 <summary>View Logging Configuration</summary>

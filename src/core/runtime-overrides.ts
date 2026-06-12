@@ -22,8 +22,16 @@ export interface RuntimeOverrides {
       maxChunks?: number;
     };
   };
+  embedding?: {
+    provider?: string;
+    model?: string;
+    baseUrl?: string;
+  };
   description?: {
     enabled?: boolean;
+    provider?: string;
+    model?: string;
+    baseUrl?: string;
   };
 }
 
@@ -40,7 +48,7 @@ export function loadRuntimeOverrides(storePath: string): RuntimeOverrides {
 export function saveRuntimeOverride(
   storePath: string,
   path: string[],
-  value: boolean | number
+  value: boolean | number | string
 ): void {
   const overridePath = join(storePath, "runtime-overrides.json");
   const overrides = loadRuntimeOverrides(storePath);
@@ -96,10 +104,28 @@ export function applyRuntimeOverrides(
     }
   }
 
+  if (overrides.embedding) {
+    if (overrides.embedding.provider !== undefined) merged.embedding.provider = overrides.embedding.provider;
+    if (overrides.embedding.model !== undefined) merged.embedding.model = overrides.embedding.model;
+    if (overrides.embedding.baseUrl !== undefined) merged.embedding.baseUrl = overrides.embedding.baseUrl;
+  }
+
   if (overrides.description) {
     if (overrides.description.enabled !== undefined) {
       if (!merged.description) merged.description = { enabled: true, provider: "ollama", baseUrl: "http://127.0.0.1:11434/api", model: "qwen2.5:3b", systemPrompt: "" };
       merged.description.enabled = overrides.description.enabled;
+    }
+    if (overrides.description.provider !== undefined) {
+      if (!merged.description) merged.description = { enabled: true, provider: "ollama", baseUrl: "http://127.0.0.1:11434/api", model: "qwen2.5:3b", systemPrompt: "" };
+      merged.description.provider = overrides.description.provider;
+    }
+    if (overrides.description.model !== undefined) {
+      if (!merged.description) merged.description = { enabled: true, provider: "ollama", baseUrl: "http://127.0.0.1:11434/api", model: "qwen2.5:3b", systemPrompt: "" };
+      merged.description.model = overrides.description.model;
+    }
+    if (overrides.description.baseUrl !== undefined) {
+      if (!merged.description) merged.description = { enabled: true, provider: "ollama", baseUrl: "http://127.0.0.1:11434/api", model: "qwen2.5:3b", systemPrompt: "" };
+      merged.description.baseUrl = overrides.description.baseUrl;
     }
   }
 

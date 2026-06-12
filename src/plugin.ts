@@ -11,6 +11,7 @@ import { appendDebugLog } from "./core/fileLogger.js";
 import { loadRuntimeOverrides, applyRuntimeOverrides } from "./core/runtime-overrides.js";
 import { createBackgroundIndexer } from "./watcher.js";
 import { createRagReadTool } from "./opencode/create-read-tool.js";
+import { resolveApiKey } from "./core/resolve-api-key.js";
 import { existsSync } from "node:fs";
 import path from "node:path";
 
@@ -662,6 +663,8 @@ async function loadKeywordIndex(storePath: string, logFilePath: string): Promise
   }
 }
 
+
+
 export const ragPlugin: Plugin = async (
   input: PluginInput,
   _options?: Record<string, unknown>
@@ -674,6 +677,27 @@ export const ragPlugin: Plugin = async (
   }
 
   const storePath = path.resolve(input.directory, cfg.vectorStore.path);
+
+  // Apply runtime overrides before creating services
+  const overrides = loadRuntimeOverrides(storePath);
+  const effectiveCfg = applyRuntimeOverrides(cfg, overrides);
+
+  // Resolve API keys from env vars or OpenCode provider config if not set in opencode-rag.json
+  const hadEmbeddingKey = !!effectiveCfg.embedding.apiKey;
+  const hadDescriptionKey = !!effectiveCfg.description?.apiKey;
+  resolveApiKey(effectiveCfg, input.directory);
+  if (!hadEmbeddingKey && effectiveCfg.embedding.apiKey) {
+    appendDebugLog(logFilePath, {
+      scope: "plugin",
+      message: `Resolved OpenAI API key for embedding from ${process.env.OPENAI_API_KEY ? "OPENAI_API_KEY env var" : "OpenCode provider config"}`,
+    });
+  }
+  if (!hadDescriptionKey && effectiveCfg.description?.apiKey) {
+    appendDebugLog(logFilePath, {
+      scope: "plugin",
+      message: `Resolved OpenAI API key for description from ${process.env.OPENAI_API_KEY ? "OPENAI_API_KEY env var" : "OpenCode provider config"}`,
+    });
+  }
 
   // Close existing indexer for this directory if one exists (e.g. on plugin reload)
   const existingIndexer = backgroundIndexers.get(input.directory);
@@ -696,10 +720,10 @@ export const ragPlugin: Plugin = async (
   });
 
   // Probe vector dimension and create store with correct dimension
-  const embedder = createEmbedder(cfg);
+  const embedder = createEmbedder(effectiveCfg);
   let vectorDimension = 384;
   try {
-    const probe = await embedder.embed(["dimension-probe"]);
+    const probe = await embedder.embed(["dimension-probe"], "query");
     if (probe && probe[0] && probe[0].length > 0 && typeof probe[0][0] === "number") {
       vectorDimension = (probe[0] as number[]).length;
     }
@@ -721,13 +745,13 @@ export const ragPlugin: Plugin = async (
   const keywordIndex = await loadKeywordIndex(storePath, logFilePath);
 
   // Create description provider (enabled by default)
-  const descriptionConfig = cfg.description ?? { enabled: true, provider: "ollama" as const, baseUrl: "http://127.0.0.1:11434/api", model: "qwen2.5:3b", systemPrompt: "" };
+  const descriptionConfig = effectiveCfg.description ?? { enabled: true, provider: "ollama" as const, baseUrl: "http://127.0.0.1:11434/api", model: "qwen2.5:3b", systemPrompt: "" };
   const descriptionProvider = descriptionConfig.enabled
     ? createDescriptionProvider(descriptionConfig)
     : undefined;
 
   const hooks = createRagHooks({
-    cfg,
+    cfg: effectiveCfg,
     storePath,
     logFilePath,
     worktree: input.directory,
@@ -738,12 +762,12 @@ export const ragPlugin: Plugin = async (
   });
 
   // Start background auto-indexer if enabled
-  const autoIndexCfg = cfg.openCode.autoIndex ?? { enabled: true, debounceMs: 5000, intervalMs: 300000 };
+  const autoIndexCfg = effectiveCfg.openCode.autoIndex ?? { enabled: true, debounceMs: 5000, intervalMs: 300000 };
   if (autoIndexCfg.enabled) {
     const indexer = createBackgroundIndexer({
       cwd: input.directory,
       storePath,
-      config: cfg,
+      config: effectiveCfg,
       store,
       embedder,
       logFilePath,

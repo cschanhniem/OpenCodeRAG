@@ -71,11 +71,11 @@ describe("createEmbedder", () => {
       },
     });
     assert.throws(() => createEmbedder(config), {
-      message: "OpenAI provider requires an apiKey",
+      message: /openai provider requires an apiKey/,
     });
   });
 
-  it("throws for unknown provider", () => {
+  it("treats unknown provider as OpenAI-compatible and requires apiKey", () => {
     const config = makeConfig({
       embedding: {
         provider: "unknown" as "ollama",
@@ -85,7 +85,20 @@ describe("createEmbedder", () => {
       },
     });
     assert.throws(() => createEmbedder(config), {
-      message: /Unknown embedding provider/,
+      message: /requires an apiKey/,
     });
+  });
+
+  it("creates OpenAIProvider for unknown provider with apiKey", () => {
+    const config = makeConfig({
+      embedding: {
+        provider: "custom" as "ollama",
+        baseUrl: "https://custom.api/v1",
+        model: "custom-model",
+        apiKey: "custom-key",
+      },
+    });
+    const embedder = createEmbedder(config);
+    assert.equal(embedder.name, "openai");
   });
 });

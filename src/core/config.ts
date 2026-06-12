@@ -32,7 +32,7 @@ export interface AutoInjectConfig {
 
 export interface DescriptionConfig {
   enabled: boolean;
-  provider: "ollama" | "openai";
+  provider: string;
   baseUrl: string;
   model: string;
   apiKey?: string;
@@ -47,7 +47,7 @@ export interface DescriptionConfig {
 
 export interface RagConfig {
   embedding: {
-    provider: "ollama" | "openai";
+    provider: string;
     baseUrl: string;
     apiKey?: string;
     model: string;

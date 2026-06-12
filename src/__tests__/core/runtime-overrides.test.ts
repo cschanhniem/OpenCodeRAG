@@ -100,6 +100,35 @@ describe("saveRuntimeOverride", () => {
     const result = loadRuntimeOverrides(tmpDir);
     assert.equal(result.description?.enabled, false);
   });
+
+  it("handles string values", () => {
+    saveRuntimeOverride(tmpDir, ["embedding", "model"], "nomic-embed-text");
+    const result = loadRuntimeOverrides(tmpDir);
+    assert.equal(result.embedding?.model, "nomic-embed-text");
+  });
+
+  it("handles string enum values", () => {
+    saveRuntimeOverride(tmpDir, ["embedding", "provider"], "openai");
+    const result = loadRuntimeOverrides(tmpDir);
+    assert.equal(result.embedding?.provider, "openai");
+  });
+
+  it("overwrites string value with another string", () => {
+    saveRuntimeOverride(tmpDir, ["embedding", "baseUrl"], "http://localhost:11434/api");
+    saveRuntimeOverride(tmpDir, ["embedding", "baseUrl"], "http://custom:8080/api");
+    const result = loadRuntimeOverrides(tmpDir);
+    assert.equal(result.embedding?.baseUrl, "http://custom:8080/api");
+  });
+
+  it("mixes string and boolean overrides", () => {
+    saveRuntimeOverride(tmpDir, ["embedding", "provider"], "openai");
+    saveRuntimeOverride(tmpDir, ["embedding", "model"], "text-embedding-3-small");
+    saveRuntimeOverride(tmpDir, ["description", "enabled"], false);
+    const result = loadRuntimeOverrides(tmpDir);
+    assert.equal(result.embedding?.provider, "openai");
+    assert.equal(result.embedding?.model, "text-embedding-3-small");
+    assert.equal(result.description?.enabled, false);
+  });
 });
 
 describe("applyRuntimeOverrides", () => {
@@ -221,4 +250,65 @@ describe("applyRuntimeOverrides", () => {
     });
     assert.equal(result.description?.enabled, false);
   });
+
+  it("applies embedding.provider override", () => {
+    const result = applyRuntimeOverrides(DEFAULT_CONFIG, {
+      embedding: { provider: "openai" },
+    });
+    assert.equal(result.embedding.provider, "openai");
+  });
+
+  it("applies embedding.model override", () => {
+    const result = applyRuntimeOverrides(DEFAULT_CONFIG, {
+      embedding: { model: "text-embedding-3-small" },
+    });
+    assert.equal(result.embedding.model, "text-embedding-3-small");
+  });
+
+  it("applies embedding.baseUrl override", () => {
+    const result = applyRuntimeOverrides(DEFAULT_CONFIG, {
+      embedding: { baseUrl: "https://custom.api.com/v1" },
+    });
+    assert.equal(result.embedding.baseUrl, "https://custom.api.com/v1");
+  });
+
+  it("applies all embedding overrides simultaneously", () => {
+    const result = applyRuntimeOverrides(DEFAULT_CONFIG, {
+      embedding: { provider: "openai", model: "text-embedding-3-small", baseUrl: "https://api.openai.com/v1" },
+    });
+    assert.equal(result.embedding.provider, "openai");
+    assert.equal(result.embedding.model, "text-embedding-3-small");
+    assert.equal(result.embedding.baseUrl, "https://api.openai.com/v1");
+  });
+
+  it("applies description.provider override", () => {
+    const result = applyRuntimeOverrides(DEFAULT_CONFIG, {
+      description: { provider: "openai" },
+    });
+    assert.equal(result.description?.provider, "openai");
+  });
+
+  it("applies description.model override", () => {
+    const result = applyRuntimeOverrides(DEFAULT_CONFIG, {
+      description: { model: "gpt-4o-mini" },
+    });
+    assert.equal(result.description?.model, "gpt-4o-mini");
+  });
+
+  it("applies description.baseUrl override", () => {
+    const result = applyRuntimeOverrides(DEFAULT_CONFIG, {
+      description: { baseUrl: "https://custom.api.com/v1" },
+    });
+    assert.equal(result.description?.baseUrl, "https://custom.api.com/v1");
+  });
+
+  it("applies description.provider and model together with enabled", () => {
+    const result = applyRuntimeOverrides(DEFAULT_CONFIG, {
+      description: { provider: "openai", model: "gpt-4o-mini", enabled: true },
+    });
+    assert.equal(result.description?.provider, "openai");
+    assert.equal(result.description?.model, "gpt-4o-mini");
+    assert.equal(result.description?.enabled, true);
+  });
+
 });

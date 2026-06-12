@@ -9,7 +9,11 @@ MVP implemented. All core modules are built and tested:
 - Retrieval pipeline (vector + hybrid keyword/vector)
 - CLI (index, query, clear, status, list, show, dump)
 - OpenCode plugin (chat.message hook + auto-context injection + background auto-indexing + read-override)
-- Test suite (511 tests, 0 failures)
+- TUI settings menu (model selection for embedding/description providers)
+- Runtime overrides system (`runtime-overrides.json`) for live config changes
+- API key auto-resolution from OpenCode provider config
+- Manifest schema versioning with corruption detection
+- Test suite (589 tests, 1 integration test requiring opencode binary)
 
 Design docs: `ReadMe.md` (project docs), `PLANNING.md` (roadmap + brainstorming),
 `docs/designs/2026-05-28-rag-plugin-mvp-design.md` (architecture design).
@@ -318,6 +322,30 @@ OpenCode config. Instead, rely on `.opencode/plugins/*.js` auto-discovery:
 - Re-export syntax (`export { X as default } from ...`) produces the same result
   but is harder to inspect with DevTools or stack traces.
 
+### Runtime overrides (`runtime-overrides.json`)
+- The TUI settings menu writes to `${storePath}/runtime-overrides.json`. The plugin and `createRagHooks()` periodically reload these overrides (TTL: 5s) via `loadRuntimeOverrides()` + `applyRuntimeOverrides()`.
+- Override values take precedence over `opencode-rag.json` config values. Supported overrides: retrieval settings (`topK`, `minScore`, `maxChunks`), description settings (`enabled`, `provider`, `model`, `baseUrl`), and embedding settings (`provider`, `model`, `baseUrl`).
+- `saveRuntimeOverride()` in `src/core/runtime-overrides.ts` supports `boolean`, `number`, and `string` values.
+- The TUI prompt for numeric settings (`maxChunks`) and boolean toggles all persist to both `runtime-overrides.json` AND `opencode-rag.json` for consistency.
+
+### TUI Settings Menu
+- The TUI plugin (`src/tui.ts`) registers a settings panel accessed from the OpenCode sidebar.
+- Categories: Retrieval, Embedding, LLM Descriptions.
+- Embedding and Description settings include a **model picker** dropdown populated from OpenCode's registered providers (reads `api.state.provider`). Models are grouped by provider name, sorted alphabetically, with a "Custom…" option for manual entry.
+- Selecting a model auto-sets the corresponding provider (`ollama`/`openai`) and base URL (derived from the OpenCode provider config).
+- The TUI also provides a prompt-based editor for string/number settings and toggle switches for booleans.
+
+### Manifest schema versioning
+- `src/core/manifest.ts` now includes `SCHEMA_VERSION = 1` and a `schemaVersion` field in `FileManifest`.
+- `loadManifest()` checks `parsed.schemaVersion === SCHEMA_VERSION`. If the version doesn't match, it returns `status: "corrupt"`, triggering a full index rebuild.
+- `createEmptyManifest()` and `saveManifest()` always set `schemaVersion = SCHEMA_VERSION`.
+- This prevents data corruption issues when the manifest format changes between versions.
+
+### API key resolution from OpenCode provider config
+- `resolveApiKeyFromProviderConfig()` in `src/plugin.ts` reads OpenCode config files (`.opencode/opencode.json`, `opencode.json`, `~/.config/opencode/opencode.jsonc`) to find an `apiKey` for the `openai` provider.
+- If the embedding or description provider is `"openai"` but no `apiKey` is set in `opencode-rag.json`, the plugin auto-resolves it from the OpenCode config.
+- Config files may contain JSONC comments — they are stripped before parsing.
+
 ## Adding a New Language Chunker
 
 1. Create `src/chunker/<lang>.ts` extending `TreeSitterChunker`
@@ -360,6 +388,7 @@ both semantic meaning and code-level similarity.
 - On LLM failure, falls back to embedding raw content and logs a warning
 - Set `description.enabled: false` in config to disable and embed raw code instead
 - Config is in `src/core/config.ts` (`DescriptionConfig`), provider in `src/describer/`
+- Chunk descriptions now include relative path and line ranges (e.g. `src/foo.ts, lines 10-42`) even when LLM description is disabled, improving context
 
 ## OpenCodeRAG Plugin
 

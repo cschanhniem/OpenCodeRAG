@@ -1,8 +1,8 @@
 {
   "embedding": {
-    "provider": "ollama",
-    "baseUrl": "http://127.0.0.1:11434/api",
-    "model": "embeddinggemma",
+    "provider": "nvidia",
+    "baseUrl": "https://integrate.api.nvidia.com/v1",
+    "model": "nvidia/llama-nemotron-embed-vl-1b-v2",
     "timeoutMs": 60000,
     "documentPrefix": "",
     "queryPrefix": ""
@@ -91,11 +91,12 @@
   },
   "description": {
     "enabled": true,
-    "provider": "ollama",
-    "baseUrl": "http://127.0.0.1:11434/api",
-    "model": "qwen2.5:3b",
+    "provider": "openai",
+    "baseUrl": "https://api.openai.com/v1",
+    "model": "north-mini-code-free",
     "timeoutMs": 60000,
-    "systemPrompt": "Describe code for semantic search in short simple words, simple grammar, no code, no comments. If user message contains multiple chunks labeled === CHUNK N ===, describe each one separately, starting each with CHUNK N: followed by the description. For a single chunk, output description directly."
+    "systemPrompt": "Describe code for semantic search in short simple words, simple grammar, no code, no comments. If user message contains multiple chunks labeled === CHUNK N ===, describe each one separately, starting each with CHUNK N: followed by the description. For a single chunk, output description directly.",
+    "apiKey": "public"
   },
   "logging": {
     "level": "debug",
