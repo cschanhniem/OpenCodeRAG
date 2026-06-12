@@ -113,7 +113,9 @@ Running `opencode-rag init` creates the config file `opencode-rag.json` in your 
 
 ### Description-Based Embedding (Optional)
 
-When enabled, the indexer uses an LLM to generate natural-language descriptions of code chunks, then combines the description with the raw code for embedding. This captures both semantic meaning (from the description) and code-level similarity (from the code itself), dramatically improving search quality for natural language and code-based queries alike.
+When enabled, the indexer uses an LLM to generate natural-language descriptions of code chunks, then combines the description with the raw code for embedding. This captures both semantic meaning (from the description) and code-level similarity (from the code itself), dramatically improving search quality for natural language and code-based queries alike. 
+
+As this needs more processing power, it is recommended to keep this disabled if you don't use a dedicated GPU for inference.
 
 ```json
 {
