@@ -390,6 +390,30 @@ chunks with file paths, line ranges, and surrounding implementation.
 - `languageHints` (optional) — up to 10 language filters, e.g. `["typescript"]`
 - `topK` (optional) — result count (1-25, default 10)
 
+### `search_semantic` tool
+Search indexed code by meaning, not keywords. Use for conceptual questions like
+"How does authentication work?" or "Where is the chunking logic?".
+- `query` (required) — natural language description of what you're looking for
+- `pathHints` (optional) — up to 10 path filters
+- `languageHints` (optional) — up to 10 language filters
+- `topK` (optional) — result count (1-25, default 10)
+
+### `get_file_skeleton` tool
+Get a quick structural overview of a file without reading the full contents.
+Returns functions, classes, interfaces, and other declarations with line numbers.
+Uses tree-sitter for parsing (supports TypeScript, JavaScript, Python, Java, Go,
+Rust, C/C++, C#, Ruby, Swift, Kotlin, CSS, Markdown, and more).
+- `filePath` (required) — path to the file (relative to workspace root or absolute)
+
+### `find_usages` tool
+**Essential before editing a function or type.** Find every line in the
+indexed codebase that references a given symbol, with 2 lines of surrounding
+context. Uses the keyword index for precise matching and vector search for
+broader discovery. Detects and excludes the symbol's own definition.
+- `symbolName` (required) — the symbol to search for (function, variable, class, etc.)
+- `pathHint` (optional) — narrow search to a specific directory
+- `topK` (optional) — max results (1-50, default 30)
+
 ### Auto-injected context
 When retrieval confidence is high (score ≥ 0.75), the relevant code chunks are
 injected directly into the message. Look for blocks starting with

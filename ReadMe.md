@@ -71,11 +71,60 @@ This workspace has OpenCodeRAG installed for semantic code retrieval.
 ### `opencode-rag-context` tool
 Before planning, editing, or answering, use this tool to retrieve relevant code
 chunks with file paths, line ranges, and surrounding implementation.
-- `query` (required) — narrow, specific search
+- `query` (required) — narrow, specific search, e.g. `"authentication middleware setup"`
+- `pathHints` (optional) — up to 10 path filters, e.g. `["src/auth/"]`
+- `languageHints` (optional) — up to 10 language filters, e.g. `["typescript"]`
+- `topK` (optional) — result count (1–25, default 10)
+
+### `search_semantic` tool
+Search indexed code by meaning, not keywords. Use for conceptual questions like
+"How does authentication work?" or "Where is the chunking logic?".
+- `query` (required) — natural language description of what you're looking for
 - `pathHints` (optional) — up to 10 path filters
 - `languageHints` (optional) — up to 10 language filters
 - `topK` (optional) — result count (1–25, default 10)
+
+### `get_file_skeleton` tool
+Get a quick structural overview of a file without reading the full contents.
+Returns functions, classes, interfaces, and other declarations with line numbers.
+- `filePath` (required) — path to the file (relative to workspace root or absolute)
+
+### `find_usages` tool
+**Essential before editing a function or type.** Find every line in the
+indexed codebase that references a given symbol, with surrounding context.
+- `symbolName` (required) — the symbol to search for (function, variable, class, etc.)
+- `pathHint` (optional) — narrow search to a specific directory
+- `topK` (optional) — max results (1–50, default 30)
+
+### Indexing
+- Changed files are auto-indexed in the background (debounced 5s).
+- If searches return no results, run `opencode-rag index` in the terminal.
 ```
+
+## OpenCode Integration
+
+When using OpenCode, the plugin enhances your agent with two main features:
+
+### 1. Auto-Injection (Background Context)
+After every message you send, the plugin effectively searches your vector-indexed codebase:
+- **High-confidence results (score ≥ 0.75):** Actual code chunks are injected directly into your prompt, giving the agent instant context without a tool-call round-trip.
+- **Lower-confidence results:** A compact list of suggested files is appended instead (e.g., `src/plugin.ts (lines 10-42)`).
+
+### 2. Specialized Agent Tools
+
+The plugin registers several tools that OpenCode agents can invoke for code retrieval and analysis:
+
+| Tool | Purpose | Best Use Case |
+|------|---------|--------------|
+| `opencode-rag-context` | General-purpose code retrieval | Any code search with optional path/language filters |
+| `search_semantic` | Conceptual code search | *"How does authentication work?"*, *"Where is the chunking logic?"* |
+| `get_file_skeleton` | Quick file overview via AST parsing | Orienting in an unfamiliar file without reading it entirely |
+| `find_usages` | Symbol reference search | **Essential before editing** — shows every call site with context |
+| `read` (optional) | RAG-enhanced file read | Full file contents with supplementary context chunks |
+
+The system prompt automatically lists all available tools so agents know when to use each one.
+
+---
 
 ## Privacy & Security
 

@@ -11,6 +11,11 @@ import { appendDebugLog } from "./core/fileLogger.js";
 import { loadRuntimeOverrides, applyRuntimeOverrides } from "./core/runtime-overrides.js";
 import { createBackgroundIndexer } from "./watcher.js";
 import { createRagReadTool } from "./opencode/create-read-tool.js";
+import {
+  createSearchSemanticTool,
+  createFileSkeletonTool,
+  createFindUsagesTool,
+} from "./opencode/tools.js";
 import { resolveApiKey } from "./core/resolve-api-key.js";
 import { existsSync } from "node:fs";
 import path from "node:path";
@@ -538,9 +543,59 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
     },
   });
 
+  // ── Register tools ─────────────────────────────────────────────────────
   const tools: Record<string, ToolDefinition> = {
     [CONTEXT_TOOL_NAME]: retrievalTool,
   };
+
+  // Specialized agent tools
+  const effectiveCfg = getEffectiveCfg();
+  try {
+    const searchSemanticTool = createSearchSemanticTool({
+      store,
+      embedder,
+      cfg: effectiveCfg,
+      keywordIndex,
+      retrieveFn: dependencies.retrieve,
+    });
+    tools["search_semantic"] = searchSemanticTool;
+  } catch (err) {
+    appendDebugLog(options.logFilePath, {
+      scope: "plugin",
+      message: "Failed to register search_semantic tool",
+      error: err,
+    });
+  }
+
+  try {
+    const fileSkeletonTool = createFileSkeletonTool({
+      worktree: options.worktree,
+    });
+    tools["get_file_skeleton"] = fileSkeletonTool;
+  } catch (err) {
+    appendDebugLog(options.logFilePath, {
+      scope: "plugin",
+      message: "Failed to register get_file_skeleton tool",
+      error: err,
+    });
+  }
+
+  try {
+    const findUsagesTool = createFindUsagesTool({
+      store,
+      embedder,
+      cfg: effectiveCfg,
+      keywordIndex,
+      retrieveFn: dependencies.retrieve,
+    });
+    tools["find_usages"] = findUsagesTool;
+  } catch (err) {
+    appendDebugLog(options.logFilePath, {
+      scope: "plugin",
+      message: "Failed to register find_usages tool",
+      error: err,
+    });
+  }
 
   if (readOverride) {
     const readTool = createRagReadTool({
@@ -560,6 +615,12 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
     });
   }
 
+  const toolNames = Object.keys(tools).join(", ");
+  appendDebugLog(options.logFilePath, {
+    scope: "plugin",
+    message: `Registered tools: ${toolNames}`,
+  });
+
   return {
     async event({ event }) {
       //appendVerboseLog(options.logFilePath, "event", "opencode event received", event);
@@ -572,12 +633,15 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
       });
 
       const guidance = [
-        "OpenCodeRAG is available through the `opencode-rag-context` tool.",
-        "Use it before planning, editing, or answering when you need code provenance, surrounding implementation, or file-level evidence.",
-        "Prefer narrow queries and add path or language hints when they are known.",
+        "OpenCodeRAG tools are available:",
+        "- `opencode-rag-context`: general-purpose code retrieval (use for any code search)",
+        "- `search_semantic`: search code by concept/meaning (\"How does auth work?\")",
+        "- `get_file_skeleton`: quick structural outline of a file without reading it entirely",
+        "- `find_usages`: find where a symbol is referenced in the codebase (essential before editing)",
+        "Use these tools before planning, editing, or answering when you need code provenance.",
       ];
 
-      output.system.unshift(guidance.join(" "));
+      output.system.unshift(guidance.join("\n"));
     },
     async "chat.message"(input, output) {
       try {

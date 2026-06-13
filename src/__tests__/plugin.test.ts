@@ -139,6 +139,9 @@ describe("ragPlugin", () => {
       const enabledHooks = await ragPlugin({ directory: enabledDir } as PluginInput, {});
       assert.equal(typeof enabledHooks["chat.message"], "function");
       assert.ok(enabledHooks.tool?.["opencode-rag-context"]);
+      assert.ok(enabledHooks.tool?.["search_semantic"], "expected search_semantic tool");
+      assert.ok(enabledHooks.tool?.["get_file_skeleton"], "expected get_file_skeleton tool");
+      assert.ok(enabledHooks.tool?.["find_usages"], "expected find_usages tool");
     } finally {
       rmSync(disabledDir, { recursive: true, force: true });
       rmSync(enabledDir, { recursive: true, force: true });
@@ -352,7 +355,144 @@ describe("ragPlugin", () => {
     assert.equal(structured.metadata?.chunks, 0);
   });
 
-  it("adds system guidance for chunk retrieval", async () => {
+  it("registers search_semantic tool that returns results", async () => {
+    const results = [
+      makeResult(
+        "chunk-1",
+        "src/auth.ts",
+        10,
+        25,
+        "typescript",
+        "export function login() { return 'token'; }",
+        0.91
+      ),
+    ];
+
+    const { dependencies } = makeDependencies(results, 1);
+    const hooks = createRagHooks({
+      cfg: makeConfig({
+        retrieval: { topK: 7, minScore: 0 },
+        openCode: { enabled: true, maxContextChunks: 5 },
+      }),
+      storePath: "memory://",
+      logFilePath: path.join(tmpdir(), "opencode-rag.log"),
+      store: populatedStore,
+      dependencies,
+      worktree: testWorktree,
+    });
+
+    const semTool = hooks.tool?.["search_semantic"] as ToolDefinition;
+    assert.ok(semTool, "expected search_semantic tool to be registered");
+
+    const result = await semTool.execute(
+      { query: "How does authentication work?" },
+      makeToolContext() as never
+    );
+
+    assert.notEqual(typeof result, "string");
+    const structured = result as { title?: string; output: string };
+    assert.match(structured.title ?? "", /Semantic search/);
+    assert.match(structured.output, /auth\.ts:10-25/);
+    assert.match(structured.output, /login/);
+  });
+
+  it("returns empty result when search_semantic finds no matches", async () => {
+    const { dependencies } = makeDependencies([], 0);
+    const hooks = createRagHooks({
+      cfg: makeConfig(),
+      storePath: "memory://",
+      logFilePath: path.join(tmpdir(), "opencode-rag.log"),
+      dependencies,
+      worktree: testWorktree,
+    });
+
+    const semTool = hooks.tool?.["search_semantic"] as ToolDefinition;
+    assert.ok(semTool);
+
+    const result = await semTool.execute(
+      { query: "something not in the index" },
+      makeToolContext() as never
+    );
+
+    const structured = result as { output: string; metadata?: Record<string, unknown> };
+    assert.match(structured.output, /empty/);
+    assert.equal(structured.metadata?.indexed, false);
+  });
+
+  it("registers get_file_skeleton tool and reads current file", async () => {
+    const hooks = createRagHooks({
+      cfg: makeConfig(),
+      storePath: "memory://",
+      logFilePath: path.join(tmpdir(), "opencode-rag.log"),
+      dependencies: makeDependencies([], 0).dependencies,
+      worktree: testWorktree,
+    });
+
+    const skeletonTool = hooks.tool?.["get_file_skeleton"] as ToolDefinition;
+    assert.ok(skeletonTool, "expected get_file_skeleton tool");
+
+    // Read plugin.ts's own skeleton
+    const result = await skeletonTool.execute(
+      { filePath: "src/plugin.ts" },
+      makeToolContext() as never
+    );
+
+    const structured = result as { title?: string; output: string };
+    assert.match(structured.title ?? "", /Skeleton/);
+    // Should include known symbols from plugin.ts
+    assert.match(structured.output, /createRagHooks/);
+    assert.match(structured.output, /extractUserMessageText/);
+  });
+
+  it("registers find_usages tool", async () => {
+    const results = [
+      makeResult(
+        "chunk-1",
+        "src/auth.ts",
+        10,
+        25,
+        "typescript",
+        "export function login() {\n  const token = authenticate();\n  return token;\n}",
+        0.93
+      ),
+    ];
+
+    const storeWithResults: VectorStore = {
+      addChunks: async () => {},
+      search: async () => [],
+      count: async () => 5,
+      clear: async () => {},
+      deleteByFilePath: async () => {},
+    };
+
+    const { dependencies } = makeDependencies(results, 1);
+    const hooks = createRagHooks({
+      cfg: makeConfig({
+        retrieval: { topK: 7, minScore: 0 },
+        openCode: { enabled: true, maxContextChunks: 5 },
+      }),
+      storePath: "memory://",
+      logFilePath: path.join(tmpdir(), "opencode-rag.log"),
+      store: storeWithResults,
+      dependencies,
+      worktree: testWorktree,
+    });
+
+    const usageTool = hooks.tool?.["find_usages"] as ToolDefinition;
+    assert.ok(usageTool, "expected find_usages tool to be registered");
+
+    const result = await usageTool.execute(
+      { symbolName: "authenticate" },
+      makeToolContext() as never
+    );
+
+    const structured = result as { title?: string; output: string; metadata?: Record<string, unknown> };
+    assert.match(structured.title ?? "", /Usages/);
+    // Even though results come from the mock, the tool should process them
+    assert.ok(structured.metadata !== undefined);
+  });
+
+  it("adds system guidance mentioning all tools", async () => {
     const { dependencies } = makeDependencies([], 1);
     const hooks = createRagHooks({
       cfg: makeConfig(),
@@ -369,9 +509,11 @@ describe("ragPlugin", () => {
     await systemHook?.({ model: { providerID: "test", modelID: "test" } } as never, output as never);
 
     assert.ok(output.system.length > 0);
-    assert.match(output.system[0]!, /opencode-rag-context/);
-    assert.match(output.system[0]!, /Use it before planning/);
-    assert.doesNotMatch(output.system[0]!, /read tool is also backed/);
+    const guidance = output.system[0]!;
+    assert.match(guidance, /opencode-rag-context/);
+    assert.match(guidance, /search_semantic/);
+    assert.match(guidance, /get_file_skeleton/);
+    assert.match(guidance, /find_usages/);
   });
 
   it("suggests related files on chat.message", async () => {

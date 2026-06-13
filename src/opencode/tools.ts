@@ -1,0 +1,638 @@
+/**
+ * Specialized tool factories for autonomous agent workflows.
+ *
+ * Provides smaller, focused tools that are more efficient for agentic use:
+ * - search_semantic   → conceptual code search
+ * - get_file_skeleton → quick structural overview of a file
+ * - find_usages       → find where a symbol is used/referenced
+ *
+ * These complement the general-purpose opencode-rag-context tool.
+ */
+
+import { tool } from "@opencode-ai/plugin/tool";
+import type { ToolDefinition } from "@opencode-ai/plugin";
+import type { EmbeddingProvider, VectorStore, KeywordIndex, SearchResult } from "../core/interfaces.js";
+import type { RagConfig } from "../core/config.js";
+import { retrieve, type RetrieveOptions } from "../retriever/retriever.js";
+import { Parser } from "web-tree-sitter";
+import { initParser, loadLanguage, walkTree, type AstNode } from "../chunker/grammar.js";
+import { readFileSync } from "node:fs";
+import { resolve, isAbsolute } from "node:path";
+
+// ────────────────────────────────────────────────────────────────────────────
+// Skeleton configuration: file extension → tree-sitter grammar + node types
+// ────────────────────────────────────────────────────────────────────────────
+
+interface SkeletonConfig {
+  grammarName: string;
+  nodeTypes: string[];
+}
+
+const SKELETON_CONFIGS: Record<string, SkeletonConfig> = {
+  ".ts":    { grammarName: "typescript", nodeTypes: ["function_declaration", "method_definition", "class_declaration", "interface_declaration", "type_alias_declaration", "enum_declaration"] },
+  ".tsx":   { grammarName: "typescript", nodeTypes: ["function_declaration", "method_definition", "class_declaration", "interface_declaration", "type_alias_declaration", "enum_declaration", "arrow_function"] },
+  ".mts":   { grammarName: "typescript", nodeTypes: ["function_declaration", "method_definition", "class_declaration", "interface_declaration", "type_alias_declaration", "enum_declaration"] },
+  ".cts":   { grammarName: "typescript", nodeTypes: ["function_declaration", "method_definition", "class_declaration", "interface_declaration", "type_alias_declaration", "enum_declaration"] },
+  ".js":    { grammarName: "javascript", nodeTypes: ["function_declaration", "method_definition", "class_declaration", "arrow_function"] },
+  ".jsx":   { grammarName: "javascript", nodeTypes: ["function_declaration", "method_definition", "class_declaration", "arrow_function"] },
+  ".mjs":   { grammarName: "javascript", nodeTypes: ["function_declaration", "method_definition", "class_declaration", "arrow_function"] },
+  ".cjs":   { grammarName: "javascript", nodeTypes: ["function_declaration", "method_definition", "class_declaration", "arrow_function"] },
+  ".py":    { grammarName: "python", nodeTypes: ["function_definition", "class_definition", "decorated_definition"] },
+  ".java":  { grammarName: "java", nodeTypes: ["class_declaration", "method_declaration", "interface_declaration", "enum_declaration"] },
+  ".go":    { grammarName: "go", nodeTypes: ["function_declaration", "method_declaration", "type_declaration", "type_spec"] },
+  ".rs":    { grammarName: "rust", nodeTypes: ["function_item", "struct_item", "enum_item", "impl_item", "trait_item", "type_item"] },
+  ".c":     { grammarName: "c", nodeTypes: ["function_definition", "struct_specifier", "enum_specifier"] },
+  ".cpp":   { grammarName: "cpp", nodeTypes: ["function_definition", "class_specifier", "struct_specifier", "enum_specifier"] },
+  ".cxx":   { grammarName: "cpp", nodeTypes: ["function_definition", "class_specifier", "struct_specifier", "enum_specifier"] },
+  ".h":     { grammarName: "cpp", nodeTypes: ["function_definition", "class_specifier", "struct_specifier", "enum_specifier"] },
+  ".hpp":   { grammarName: "cpp", nodeTypes: ["function_definition", "class_specifier", "struct_specifier", "enum_specifier"] },
+  ".cs":    { grammarName: "c-sharp", nodeTypes: ["class_declaration", "method_declaration", "interface_declaration", "enum_declaration", "struct_declaration"] },
+  ".rb":    { grammarName: "ruby", nodeTypes: ["method", "class", "module"] },
+  ".swift": { grammarName: "swift", nodeTypes: ["function_declaration", "class_declaration", "struct_declaration", "enum_declaration", "protocol_declaration"] },
+  ".kt":    { grammarName: "kotlin", nodeTypes: ["function_declaration", "class_declaration", "interface_declaration", "object_declaration"] },
+  ".kts":   { grammarName: "kotlin", nodeTypes: ["function_declaration", "class_declaration", "interface_declaration", "object_declaration"] },
+  ".css":   { grammarName: "css", nodeTypes: ["rule_set"] },
+  ".md":    { grammarName: "markdown", nodeTypes: ["atx_heading"] },
+};
+
+/** Regex-based fallback for languages without tree-sitter WASM support. */
+const REGEX_SKELETON: Record<string, RegExp[]> = {
+  ".json": [/^(\s*)"(\w+)":/gm],
+  ".yaml": [/^(\w+):/gm],
+  ".yml":  [/^(\w+):/gm],
+  ".toml": [/^\[(\w+)\]/gm],
+  ".sh":   [/^(function\s+\w+|^\w+\s*\(\)\s*\{)/gm],
+  ".bash": [/^(function\s+\w+|^\w+\s*\(\)\s*\{)/gm],
+  ".zsh":  [/^(function\s+\w+|^\w+\s*\(\)\s*\{)/gm],
+  ".sql":  [/^(CREATE|ALTER|DROP|SELECT|INSERT|UPDATE|DELETE)\s/gim],
+};
+
+/**
+ * Return the file extension from a path (lowercase).
+ */
+function getExtension(filePath: string): string {
+  const dot = filePath.lastIndexOf(".");
+  return dot >= 0 ? filePath.slice(dot).toLowerCase() : "";
+}
+
+/**
+ * Resolve a file path relative to the workspace root.
+ */
+function resolveFilePath(filePath: string, worktree: string): string {
+  if (isAbsolute(filePath)) return filePath;
+  return resolve(worktree, filePath);
+}
+
+/**
+ * Extract structural outline from source code using tree-sitter.
+ * Falls back to regex patterns for languages without WASM grammars.
+ */
+async function extractSkeleton(
+  content: string,
+  ext: string
+): Promise<{ type: string; name: string; startLine: number; endLine: number }[]> {
+  const config = SKELETON_CONFIGS[ext];
+  if (!config) {
+    // Fallback: use regex patterns
+    const patterns = REGEX_SKELETON[ext];
+    if (!patterns) {
+      // Last fallback: line count
+      const lines = content.split("\n");
+      return [{ type: "file", name: `${lines.length} lines`, startLine: 1, endLine: lines.length }];
+    }
+
+    const items: { type: string; name: string; startLine: number; endLine: number }[] = [];
+    for (const pattern of patterns) {
+      let match: RegExpExecArray | null;
+      // Reset lastIndex
+      pattern.lastIndex = 0;
+      while ((match = pattern.exec(content)) !== null) {
+        const name = match[1] ?? match[0].trim();
+        const lineNum = content.slice(0, match.index).split("\n").length;
+        items.push({ type: ext.slice(1), name, startLine: lineNum, endLine: lineNum });
+      }
+    }
+    // Deduplicate by name
+    const seen = new Set<string>();
+    return items.filter((item) => {
+      const key = `${item.type}:${item.name}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
+  // Tree-sitter skeleton extraction
+  await initParser();
+  const lang = await loadLanguage(config.grammarName);
+  const parser = new Parser();
+  parser.setLanguage(lang);
+  const tree = parser.parse(content);
+  if (!tree) return [];
+
+  const nodeTypes = new Set(config.nodeTypes);
+  const astNodes: AstNode[] = walkTree(tree.rootNode, nodeTypes, content, 15);
+
+  return astNodes.map((node) => ({
+    type: node.type,
+    name: extractNodeName(node.text, node.type),
+    startLine: node.startLine,
+    endLine: node.endLine,
+  }));
+}
+
+/**
+ * Extract a human-readable name from a code node.
+ * For declarations, this is typically the identifier after the keyword.
+ */
+function extractNodeName(text: string, nodeType: string): string {
+  // Try first line only for large nodes
+  const firstLine = text.split("\n")[0] ?? text;
+
+  // Common patterns: "function foo(...)" or "class Foo ..." or "foo(...)" (arrow, method)
+  const nameMatch = firstLine.match(
+    /^(?:export\s+)?(?:async\s+)?(?:function\s+)?(?:\w+\s+)?(?:(\w+))\s*(?:[<(]|$)/
+  );
+
+  if (nameMatch) {
+    // Skip keywords
+    const keywordSet = new Set(["export", "async", "function", "class", "interface", "type", "enum", "struct", "impl", "trait", "def", "fun", "fn"]);
+    if (!keywordSet.has(nameMatch[1]!)) {
+      return nameMatch[1]!;
+    }
+    // Try next word
+    const secondMatch = firstLine.match(/^(?:export\s+)?(?:async\s+)?(?:function|class|interface|type|enum|struct|trait|impl|def|fun|fn)\s+(\w+)/);
+    if (secondMatch) return secondMatch[1]!;
+  }
+
+  // Last resort: return first 80 chars of first line
+  return firstLine.length > 80 ? firstLine.slice(0, 77) + "..." : firstLine;
+}
+
+/**
+ * Format a skeleton outline as a compact markdown string.
+ */
+function formatSkeleton(
+  items: { type: string; name: string; startLine: number; endLine: number }[]
+): string {
+  if (items.length === 0) return "_(no structural elements found)_";
+
+  const lines: string[] = [];
+  let prevDepth = 0;
+
+  for (const item of items) {
+    const depth = item.type === "file" ? 0 : 1;
+    const indent = "  ".repeat(depth);
+    const lineRange = item.startLine === item.endLine
+      ? `L${item.startLine}`
+      : `L${item.startLine}-${item.endLine}`;
+    const icon = typeIcon(item.type);
+
+    if (depth <= prevDepth) {
+      // Close previous block if needed
+    }
+
+    lines.push(`${indent}${icon} \`${item.name}\` ${lineRange}`);
+    prevDepth = depth;
+  }
+
+  return lines.join("\n");
+}
+
+function typeIcon(type: string): string {
+  if (type.includes("class") || type === "struct_specifier" || type === "struct_item" || type === "struct_declaration") return "□";
+  if (type.includes("interface") || type === "protocol_declaration" || type === "trait_item") return "◇";
+  if (type.includes("function") || type === "method" || type === "method_declaration" || type === "method_definition" || type === "arrow_function") return "ƒ";
+  if (type.includes("enum")) return "§";
+  if (type.includes("type") || type === "type_alias_declaration") return "τ";
+  if (type === "impl_item") return "⊞";
+  if (type === "rule_set") return "#";
+  if (type === "atx_heading") return "¶";
+  return "·";
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Tool 1: search_semantic
+// ────────────────────────────────────────────────────────────────────────────
+
+export interface SearchSemanticToolOptions {
+  store: VectorStore;
+  embedder: EmbeddingProvider;
+  cfg: RagConfig;
+  keywordIndex?: KeywordIndex;
+  retrieveFn?: typeof retrieve;
+}
+
+/**
+ * Create the `search_semantic` tool.
+ *
+ * Purpose: Answers conceptual questions about the codebase.
+ * "How does authentication work?" → returns relevant chunks.
+ *
+ * Internally uses the same RAG pipeline as opencode-rag-context but
+ * exposes a clean, focused interface for agents.
+ */
+export function createSearchSemanticTool(
+  options: SearchSemanticToolOptions
+): ToolDefinition {
+  const { store, embedder, cfg, keywordIndex } = options;
+  const retrieveFn = options.retrieveFn ?? retrieve;
+
+  return tool({
+    description:
+      "Search the indexed codebase by meaning, not just keywords. " +
+      "Use this for conceptual questions like 'How does authentication work?' " +
+      "or 'Where is the chunking logic implemented?'. " +
+      "Returns the most relevant code snippets with file paths and line numbers.",
+
+    args: {
+      query: tool.schema.string().min(1, "A search query is required."),
+      pathHints: tool.schema.array(tool.schema.string().min(1)).max(10).optional(),
+      languageHints: tool.schema.array(tool.schema.string().min(1)).max(10).optional(),
+      topK: tool.schema.number().int().min(1).max(25).optional(),
+    },
+
+    async execute(args) {
+      try {
+        const count = await store.count();
+        if (count === 0) {
+          return {
+            title: "Semantic search",
+            output: "The code index is empty. Run indexing first, then try your search again.",
+            metadata: { tool: "search_semantic", query: args.query, chunks: 0, indexed: false },
+          };
+        }
+
+        // Build a retrieval query with optional hints
+        const parts: string[] = [args.query.trim()];
+        if (args.pathHints?.length) parts.push(`Path hints: ${args.pathHints.join(", ")}`);
+        if (args.languageHints?.length) parts.push(`Language hints: ${args.languageHints.join(", ")}`);
+        const query = parts.join("\n");
+
+        const topK = args.topK ?? cfg.retrieval.topK;
+        const retrieveOpts: RetrieveOptions = {
+          topK,
+          minScore: cfg.retrieval.minScore,
+          keywordIndex,
+          keywordWeight: cfg.retrieval.hybridSearch?.keywordWeight,
+          queryPrefix: cfg.embedding.queryPrefix,
+        };
+
+        const results = await retrieveFn(query, embedder, store, retrieveOpts);
+
+        if (results.length === 0) {
+          return {
+            title: "Semantic search",
+            output: "No indexed code matched your query. Try different terms or broaden the search.",
+            metadata: { tool: "search_semantic", query: args.query, topK, chunks: 0, indexed: true },
+          };
+        }
+
+        // Compact formatting
+        const formatted = results.map((r) => {
+          const m = r.chunk.metadata;
+          const desc = r.chunk.description ? `> ${r.chunk.description}\n` : "";
+          return [
+            `**${m.filePath}:${m.startLine}-${m.endLine}** (${m.language}, relevance: ${r.score.toFixed(2)})`,
+            desc,
+            "```" + m.language,
+            r.chunk.content,
+            "```",
+          ].join("\n");
+        }).join("\n\n");
+
+        return {
+          title: `Semantic search (${results.length} chunks)`,
+          output: `**Semantic search results** for: "${args.query}"\n\n${formatted}`,
+          metadata: {
+            tool: "search_semantic",
+            query: args.query,
+            topK,
+            chunks: results.length,
+            indexed: true,
+          },
+        };
+      } catch (err) {
+        return {
+          title: "Semantic search",
+          output: "Search failed. The index may need to be rebuilt.",
+          metadata: { tool: "search_semantic", error: String(err) },
+        };
+      }
+    },
+  });
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Tool 2: get_file_skeleton
+// ────────────────────────────────────────────────────────────────────────────
+
+export interface FileSkeletonToolOptions {
+  worktree: string;
+}
+
+/**
+ * Create the `get_file_skeleton` tool.
+ *
+ * Purpose: Quickly orient in a file without reading it entirely.
+ * Returns a structural outline (functions, classes, interfaces, etc.)
+ * with line numbers, using tree-sitter for parsing.
+ */
+export function createFileSkeletonTool(
+  options: FileSkeletonToolOptions
+): ToolDefinition {
+  const { worktree } = options;
+
+  return tool({
+    description:
+      "Get a quick structural overview of a source file — functions, classes, " +
+      "interfaces, methods, and other top-level declarations with their line numbers. " +
+      "Use this to orient yourself in a file before reading the full contents. " +
+      "Supports TypeScript, JavaScript, Python, Java, Go, Rust, C/C++, C#, Ruby, Swift, Kotlin, and more.",
+
+    args: {
+      filePath: tool.schema.string().min(1, "A file path is required."),
+    },
+
+    async execute(args) {
+      try {
+        const resolvedPath = resolveFilePath(args.filePath, worktree);
+        const content = readFileSync(resolvedPath, "utf-8");
+        const ext = getExtension(args.filePath);
+
+        const skeleton = await extractSkeleton(content, ext);
+
+        // Build a summary line
+        const declCounts = new Map<string, number>();
+        for (const item of skeleton) {
+          const baseType = item.type.replace(/_declaration$|_definition$|_specifier$|_item$/, "");
+          declCounts.set(baseType, (declCounts.get(baseType) ?? 0) + 1);
+        }
+        const summary = [...declCounts.entries()]
+          .map(([t, c]) => `${c} ${t}`)
+          .join(", ");
+
+        return {
+          title: `Skeleton — ${args.filePath}`,
+          output: `**${args.filePath}**  \n${skeleton.length} structural elements (${summary || "—"})\n\n` +
+            formatSkeleton(skeleton) +
+            `\n\n_Use the read tool for full content._`,
+          metadata: {
+            tool: "get_file_skeleton",
+            filePath: args.filePath,
+            elements: skeleton.length,
+            language: ext.slice(1),
+          },
+        };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return {
+          title: "Skeleton",
+          output: `Could not read file: ${message}`,
+          metadata: { tool: "get_file_skeleton", filePath: args.filePath, error: message },
+        };
+      }
+    },
+  });
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Tool 3: find_usages
+// ────────────────────────────────────────────────────────────────────────────
+
+export interface FindUsagesToolOptions {
+  store: VectorStore;
+  embedder: EmbeddingProvider;
+  cfg: RagConfig;
+  keywordIndex?: KeywordIndex;
+  retrieveFn?: typeof retrieve;
+}
+
+/**
+ * Create the `find_usages` tool.
+ *
+ * Purpose: Find where a specific symbol/identifier is used or referenced
+ * in the codebase. Essential for agents before they modify a function.
+ *
+ * Strategy:
+ * 1. Use the keyword index for exact/similar token matches (fast, precise)
+ * 2. Fall back to vector search for broader referral discovery
+ * 3. Within matching chunks, extract the specific lines containing the symbol
+ *    plus 2 lines of surrounding context
+ */
+export function createFindUsagesTool(
+  options: FindUsagesToolOptions
+): ToolDefinition {
+  const { store, embedder, cfg, keywordIndex } = options;
+  const retrieveFn = options.retrieveFn ?? retrieve;
+
+  /**
+   * Given a list of lines and a symbol, return the lines that reference it
+   * with 2 lines of surrounding context. Avoids returning the definition line.
+   */
+  function extractUsageLines(
+    lines: string[],
+    symbol: string,
+    definitionLine?: number
+  ): { line: number; content: string; context: string[] }[] {
+    const usages: { line: number; content: string; context: string[] }[] = [];
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]!;
+      const lineNum = i + 1;
+
+      // Skip the definition line
+      if (definitionLine !== undefined && lineNum === definitionLine) continue;
+
+      // Check if line contains the symbol as a word (not just substring)
+      const symbolPattern = new RegExp(
+        `\\b${escapeRegex(symbol)}\\b`
+      );
+      if (!symbolPattern.test(line)) continue;
+
+      // Gather context lines (2 before, 2 after)
+      const ctxStart = Math.max(0, i - 2);
+      const ctxEnd = Math.min(lines.length, i + 3);
+      const contextLines = lines.slice(ctxStart, ctxEnd).map((l) => l.trimEnd());
+
+      usages.push({
+        line: lineNum,
+        content: line.trimEnd(),
+        context: contextLines,
+      });
+    }
+
+    return usages;
+  }
+
+  async function searchViaKeywordIndex(
+    symbol: string,
+    topK: number
+  ): Promise<SearchResult[]> {
+    if (!keywordIndex) return [];
+    return keywordIndex.search(symbol, topK);
+  }
+
+  async function searchViaVectorStore(
+    symbol: string,
+    topK: number
+  ): Promise<SearchResult[]> {
+    const count = await store.count();
+    if (count === 0) return [];
+
+    return retrieveFn(symbol, embedder, store, {
+      topK,
+      minScore: 0,
+      keywordIndex: undefined,
+      queryPrefix: cfg.embedding.queryPrefix,
+    });
+  }
+
+  function escapeRegex(s: string): string {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  return tool({
+    description:
+      "Find usages and references of a symbol (function, variable, class, etc.) " +
+      "across the indexed codebase. Essential before editing a function or type — " +
+      "it shows every line that references the symbol with surrounding context. " +
+      "Use this to understand the impact of a change.",
+
+    args: {
+      symbolName: tool.schema.string().min(1, "A symbol name is required."),
+      pathHint: tool.schema.string().optional(),
+      topK: tool.schema.number().int().min(1).max(50).optional(),
+    },
+
+    async execute(args) {
+      const symbolName = args.symbolName.trim();
+      const topK = args.topK ?? 30;
+
+      try {
+        // Phase 1: keyword index search (fast, precise)
+        const kwResults = await searchViaKeywordIndex(symbolName, topK);
+
+        // Phase 2: vector store search (broader)
+        const vsResults = await searchViaVectorStore(symbolName, topK * 2);
+
+        // Merge results: prefer keyword matches, deduplicate
+        const seen = new Set<string>();
+        const merged: SearchResult[] = [];
+
+        const addIfNew = (r: SearchResult) => {
+          const key = `${r.chunk.metadata.filePath}:${r.chunk.metadata.startLine}`;
+          if (seen.has(key)) return;
+          seen.add(key);
+          merged.push(r);
+        };
+
+        for (const r of kwResults) addIfNew(r);
+        for (const r of vsResults) addIfNew(r);
+
+        if (merged.length === 0) {
+          return {
+            title: `Usages of "${symbolName}"`,
+            output: `No usages found for \`${symbolName}\`. The symbol may not be indexed or may not exist in the codebase.`,
+            metadata: { tool: "find_usages", symbolName, matches: 0 },
+          };
+        }
+
+        // Process results: extract usages at line level
+        type UsageGroup = {
+          filePath: string;
+          language: string;
+          usages: { line: number; content: string; context: string[] }[];
+        };
+
+        const fileGroups = new Map<string, UsageGroup>();
+
+        for (const result of merged) {
+          const m = result.chunk.metadata;
+          const lines = result.chunk.content.split("\n");
+
+          // Try to find where the symbol is *defined* in this chunk
+          const defPattern = new RegExp(
+            `(?:function|class|interface|type|enum|const|let|var|def|fun|fn)\\s+${escapeRegex(symbolName)}\\b`
+          );
+          let definitionLine: number | undefined;
+          for (let i = 0; i < lines.length; i++) {
+            if (defPattern.test(lines[i]!)) {
+              definitionLine = m.startLine + i;
+              break;
+            }
+          }
+
+          const usages = extractUsageLines(lines, symbolName, definitionLine);
+
+          if (usages.length === 0) continue;
+
+          let group = fileGroups.get(m.filePath);
+          if (!group) {
+            group = { filePath: m.filePath, language: m.language, usages: [] };
+            fileGroups.set(m.filePath, group);
+          }
+
+          for (const u of usages) {
+            // Avoid duplicates within the same file
+            if (!group.usages.some((g) => g.line === u.line)) {
+              group.usages.push(u);
+            }
+          }
+        }
+
+        if (fileGroups.size === 0) {
+          return {
+            title: `Usages of "${symbolName}"`,
+            output: `No usages found for \`${symbolName}\`. The symbol appears in indexed chunks but no reference lines were found.`,
+            metadata: { tool: "find_usages", symbolName, matches: 0 },
+          };
+        }
+
+        // Format output
+        const lines: string[] = [];
+        const totalMatches = [...fileGroups.values()].reduce((s, g) => s + g.usages.length, 0);
+        lines.push(`**Usages of \`${symbolName}\`** — ${totalMatches} references across ${fileGroups.size} files\n`);
+
+        for (const [filePath, group] of fileGroups) {
+          // Sort usages by line number
+          group.usages.sort((a, b) => a.line - b.line);
+
+          lines.push(`### ${filePath} (${group.language})\n`);
+          lines.push("| Line | Code |");
+          lines.push("|------|------|");
+
+          for (const usage of group.usages) {
+            const ctx = usage.context;
+            const codeLine = ctx[Math.min(2, ctx.length - 1)] ?? usage.content;
+            const escaped = codeLine.length > 100
+              ? codeLine.slice(0, 97) + "..."
+              : codeLine;
+            lines.push(`| ${usage.line} | \`${escaped}\` |`);
+          }
+          lines.push("");
+        }
+
+        lines.push("---\n");
+        lines.push(`_Use \`get_file_skeleton\` for a quick file overview or \`search_semantic\` for broader context._`);
+
+        return {
+          title: `Usages of "${symbolName}" (${totalMatches} matches)`,
+          output: lines.join("\n"),
+          metadata: {
+            tool: "find_usages",
+            symbolName,
+            matches: totalMatches,
+            files: fileGroups.size,
+          },
+        };
+      } catch (err) {
+        return {
+          title: `Usages of "${symbolName}"`,
+          output: `Search failed: ${err instanceof Error ? err.message : String(err)}`,
+          metadata: { tool: "find_usages", symbolName, error: String(err) },
+        };
+      }
+    },
+  });
+}

@@ -4,11 +4,11 @@ OpenCodeRAG integrates with OpenCode as a plugin, providing semantic code search
 
 ## How the Plugin Works
 
-The plugin (`src/plugin.ts`) registers three integration points with OpenCode:
+The plugin (`src/plugin.ts`) registers several integration points with OpenCode:
 
-### 1. `opencode-rag-context` Tool
+### 1. General-Purpose Retrieval: `opencode-rag-context`
 
-A tool that any OpenCode agent can invoke to search the indexed codebase:
+The primary retrieval tool that any OpenCode agent can invoke to search the indexed codebase:
 
 **Parameters:**
 
@@ -20,6 +20,64 @@ A tool that any OpenCode agent can invoke to search the indexed codebase:
 | `topK` | No | Result count (1–25, default 10) |
 
 **Returns:** Formatted markdown with file paths, line ranges, score, language, content preview, and descriptions for each relevant chunk.
+
+### Specialized Agent Tools
+
+For autonomous agent workflows, the plugin also registers smaller, focused tools that are more efficient than the general-purpose tool for specific tasks:
+
+| Tool | Purpose | Args |
+|------|---------|------|
+| `search_semantic` | Search code by concept/meaning | `query` (req), `pathHints?`, `languageHints?`, `topK?` |
+| `get_file_skeleton` | Structural file overview via tree-sitter AST | `filePath` (req) |
+| `find_usages` | Find all references to a symbol | `symbolName` (req), `pathHint?`, `topK?` |
+
+#### `search_semantic`
+Conceptual code search — answers questions like *"How does authentication work?"* or *"Where is the chunking logic?"*. Internally uses the same RAG pipeline as `opencode-rag-context` (vector + hybrid keyword search) but exposes a cleaner, focused interface. Returns the most relevant code snippets with file paths, line numbers, and relevance scores.
+
+#### `get_file_skeleton`
+Provides a quick structural overview of a source file without reading its full contents. Uses tree-sitter to parse the file's AST and extract top-level declarations:
+
+- Functions, methods, arrow functions
+- Classes, interfaces, types, enums
+- Struct, trait, impl blocks (Rust), protocol declarations (Swift)
+- CSS rule sets, Markdown headings
+
+**Supported languages:** TypeScript, JavaScript, Python, Java, Go, Rust, C, C++, C#, Ruby, Swift, Kotlin, CSS, Markdown. Falls back to regex-based extraction or simple line count for unrecognized formats.
+
+**Example output:**
+```
+Skeleton — src/plugin.ts
+24 structural elements (9 function, 4 class, 3 interface, ...)
+
+ƒ createRagHooks  L398-L605
+ƒ buildRetrievalQuery  L193-L207
+□ TreeSitterChunker  L22-L58
+...
+```
+
+#### `find_usages`
+**Essential before editing a function, type, or variable.** Searches the indexed codebase for references to a given symbol and returns line-level matches with 2 lines of surrounding context:
+
+1. **Keyword index search** (fast, precise) — matches the symbol token in the inverted index
+2. **Vector store search** (broader) — finds semantically related references
+3. **Line extraction** — within each matching chunk, identifies the specific lines containing the symbol (excluding its own definition) and returns them with surrounding context
+
+**Output format:** Table grouped by file, showing line numbers and code excerpts.
+
+```
+Usages of "createRagHooks" — 5 references across 2 files
+
+### src/plugin.ts (typescript)
+| Line | Code |
+|------|------|
+| 521 | const findUsagesTool = createFindUsagesTool({ ... |
+| 615 | return createRagHooks({ cfg, storePath, ... |
+
+### src/__tests__/plugin.test.ts (typescript)
+| Line | Code |
+|------|------|
+| 178 | const hooks = createRagHooks({ ... |
+```
 
 ### 2. `chat.message` Hook — Auto-Injection
 
