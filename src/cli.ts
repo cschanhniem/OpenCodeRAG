@@ -950,9 +950,9 @@ program
     const skillsDir = path.join(opencodeDir, "skills");
     const skillDir = path.join(skillsDir, "opencode-rag");
     const skillPath = path.join(skillDir, "SKILL.md");
-    if (!existsSync(skillsDir)) {
-      mkdirSync(skillsDir, { recursive: true });
-      console.log(`  ${c.created("Created:")}  .opencode/skills/`);
+    if (!existsSync(skillDir)) {
+      mkdirSync(skillDir, { recursive: true });
+      console.log(`  ${c.created("Created:")}  .opencode/skills/opencode-rag/`);
     }
     const skillContent = generateSkillFile();
     const skillExists = existsSync(skillPath);
