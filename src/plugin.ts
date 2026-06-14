@@ -363,7 +363,7 @@ function formatFileList(results: SearchResult[], worktree: string): string {
     const lang = results.find((r) => r.chunk.metadata.filePath === filePath)?.chunk.metadata.language ?? "";
     lines.push(`${relPath} (${lang}, lines ${minLine}-${maxLine}, relevance ${relevance})`);
   }
-  lines.push(`\nRun "${CONTEXT_TOOL_NAME}" tool with path hints for targeted context.`);
+  lines.push("\nUse tools: opencode-rag-context(query, pathHints), search_semantic(query, pathHints, languageHints, topK), get_file_skeleton(filePath), find_usages(symbolName, pathHint, topK)");
   let linesReturn = lines.join("\n");
   return linesReturn;
 }
