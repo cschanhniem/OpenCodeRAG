@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 
 function isOpencodeAvailable(): boolean {
-  const result = spawnSync("opencode", ["--version"], { encoding: "utf-8" });
+  const result = spawnSync("opencode", ["--version"], { encoding: "utf-8", shell: true });
   return result.status === 0;
 }
 
