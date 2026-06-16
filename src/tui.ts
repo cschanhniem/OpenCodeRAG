@@ -189,9 +189,9 @@ function renderSidebar(
       text({ fg: theme.text }, [statusLine]),
       text({ fg: theme.textMuted }, [timeLine]),
       text({ fg: watcherRunning ? theme.accent : theme.textMuted }, [watcherLine]),
-      text({ fg: theme.textMuted }, ["Ctrl+Shift+R Settings"]),
-      text({ fg: theme.textMuted }, ["Ctrl+Enter -> Add Files"]),
-      text({ fg: theme.textMuted }, ["Alt+Enter -> Add Chunks"]),
+      text({ fg: theme.textMuted }, ["Ctrl+Shift+R → Settings"]),
+      text({ fg: theme.textMuted }, ["Ctrl+Enter → Add Files"]),
+      text({ fg: theme.textMuted }, ["Alt+Enter → Add Chunks"]),
     ],
   );
 }
