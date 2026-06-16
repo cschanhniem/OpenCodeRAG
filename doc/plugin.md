@@ -1,4 +1,4 @@
-# OpenCode Plugin Integration
+﻿# OpenCode Plugin Integration
 
 OpenCodeRAG integrates with OpenCode as a plugin, providing semantic code search directly within agent conversations.
 
@@ -202,6 +202,16 @@ The TUI plugin (`src/tui.ts`) registers a settings panel in the OpenCode sidebar
 - **Status sidebar**: Shows chunk count, provider/model info, last indexed time, watcher state
 - **Keyboard shortcut**: `Ctrl+Shift+R` opens the settings dialog
 - **Auto-refresh**: Status refreshes every 30 seconds
+
+### TUI Keyboard Shortcuts
+
+| Shortcut | Action |
+|---|---|
+| **Ctrl+Enter** | Retrieve and append a relevant file list to the prompt |
+| **Alt+Enter** | Retrieve and append full code chunks to the prompt |
+| **Ctrl+Shift+R** | Open the settings dialog |
+
+Both shortcuts read the current prompt text as the search query. If the prompt is empty, a toast reminds you to type first — no dialogs are opened. The +RAG button in the prompt area triggers the same file-list retrieval as Ctrl+Enter.
 
 ## Plugin Troubleshooting
 

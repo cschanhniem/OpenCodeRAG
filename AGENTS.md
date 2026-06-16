@@ -13,7 +13,7 @@ MVP implemented. All core modules are built and tested:
 - Runtime overrides system (`runtime-overrides.json`) for live config changes
 - API key auto-resolution from OpenCode provider config
 - Manifest schema versioning with corruption detection
-- Test suite (589 tests, 1 integration test requiring opencode binary)
+- Test suite (615 tests, 1 integration test requiring opencode binary)
 
 Design docs: `ReadMe.md` (project overview), `doc/` (detailed documentation),
 `PLANNING.md` (roadmap + brainstorming).
@@ -228,7 +228,7 @@ Query vs document differentiation:
 - **System prompt guidance (always):** `experimental.chat.system.transform` prepends a tool list to the system prompt on every message, ensuring agents always know the tools are available.
 - **Auto-injection:** On each user message, the `chat.message` hook runs retrieval. High-confidence results (score ≥ `autoInject.minScore`, default 0.75) are auto-injected as code chunks. No fallback is injected for low-confidence results — agents must use tools explicitly.
 - `formatAutoInjectContext()` respects `maxChunks` (default 3) and `maxTokens` (default 2000) budgets.
-- **TUI keyboard shortcuts:** Ctrl+Enter shows a file list of relevant files; Alt+Enter appends matching code chunks directly to the prompt.
+- **TUI keyboard shortcuts:** Ctrl+Enter appends a file list of relevant files to the prompt; Alt+Enter appends matching code chunks directly to the prompt. Both read the current prompt text via `TuiPromptRef.current.input` and never open dialogs — an empty prompt shows a toast instead.
 - When `openCode.readOverride` is `true`, the plugin registers a `read` tool backed by `createRagReadTool()` that shadows OpenCode's built-in read.
 
 ### Plugins and module structure
@@ -328,6 +328,32 @@ OpenCode config. Instead, rely on `.opencode/plugins/*.js` auto-discovery:
 - Embedding and Description settings include a **model picker** dropdown populated from OpenCode's registered providers (reads `api.state.provider`). Models are grouped by provider name, sorted alphabetically, with a "Custom…" option for manual entry.
 - Selecting a model auto-sets the corresponding provider (`ollama`/`openai`) and base URL (derived from the OpenCode provider config).
 - The TUI also provides a prompt-based editor for string/number settings and toggle switches for booleans.
+
+### TUI prompt ref interception (slots + PromptRef)
+- OpenCode's `session_prompt` slot renders with `mode="replace"`. If the slot function returns `null`, the child `<Prompt>` is suppressed — the slot falls back to children, but `props.ref` is never called on the plugin's wrapper.
+- **Solid.js slot props are reactive read-only proxies.** You cannot mutate `props.ref` on a slot prop object. `props.ref = wrapper` silently fails.
+- **The correct pattern:** Render the `Prompt` component yourself inside the slot function using `api.ui.Prompt()`. Wrap the `ref` callback to capture the `PromptRef` and pass it through to the original:
+  ```typescript
+  function makePromptRefWrapper(originalRef) {
+    return (r) => {
+      currentPromptRef = r;   // capture for hotkeys
+      originalRef?.(r);       // pass through to host
+    };
+  }
+  // In session_prompt slot:
+  return api.ui.Prompt({
+    sessionID: props.session_id,
+    visible: props.visible,
+    disabled: props.disabled,
+    onSubmit: props.on_submit,
+    ref: makePromptRefWrapper(props.ref),
+    right: element("Slot", { name: "session_prompt_right", session_id: props.session_id }),
+  });
+  ```
+- The `ref` prop on `session_prompt` and `home_prompt` slots is a setter function that OpenCode calls with the `PromptRef` object when the Prompt component mounts (inside the textarea's `ref` callback). `PromptRef.current` is a Solid.js reactive getter — always returns the latest prompt state.
+- `home_prompt` also has a `ref` prop. Register a slot for it to capture the ref on the home screen.
+- **`tui.prompt.append` event:** The Prompt listens for this event and calls `input.insertText()` on the textarea. Use it to programmatically append text to the prompt from a hotkey handler.
+- **Never open dialogs from hotkeys.** If the prompt is empty, show a toast instead. The hotkey should always use `currentPromptRef.current.input` (or a cached value) as the search query, not ask the user to type in a dialog.
 
 ### Manifest schema versioning
 - `src/core/manifest.ts` now includes `SCHEMA_VERSION = 1` and a `schemaVersion` field in `FileManifest`.

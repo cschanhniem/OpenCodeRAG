@@ -304,11 +304,11 @@ async function addChunksToPrompt(api: RagContextApi, query?: string): Promise<vo
     if (currentPromptRef) {
       const current = currentPromptRef.current.input;
       currentPromptRef.set({
-        input: current + formatted,
+        input: current + "\n" + formatted,
         mode: currentPromptRef.current.mode ?? "normal",
         parts: currentPromptRef.current.parts ?? [],
       });
-      currentPromptRef.focus();
+      currentPromptRef.submit();
     }
 
     api.ui.toast({
@@ -437,11 +437,11 @@ async function addFileListToPrompt(api: RagContextApi, query?: string): Promise<
     if (currentPromptRef) {
       const current = currentPromptRef.current.input;
       currentPromptRef.set({
-        input: current + formatted,
+        input: current + "\n" + formatted,
         mode: currentPromptRef.current.mode ?? "normal",
         parts: currentPromptRef.current.parts ?? [],
       });
-      currentPromptRef.focus();
+      currentPromptRef.submit();
     }
 
     api.ui.toast({
@@ -988,19 +988,40 @@ const plugin: TuiPluginModule & { id: string } = {
       },
     });
 
-    // Register prompt slots for "Add RAG Context" feature
+    // Register prompt slots for "Add RAG Context" feature.
+    // The session_prompt slot has mode="replace" — returning null suppresses
+    // the child Prompt entirely. Instead we render the Prompt ourselves so we
+    // can intercept the ref callback and capture the PromptRef.
+    function makePromptRefWrapper(
+      originalRef: ((r: TuiPromptRef | undefined) => void) | undefined,
+    ): (r: TuiPromptRef | undefined) => void {
+      return (r: TuiPromptRef | undefined) => {
+        currentPromptRef = r;
+        originalRef?.(r);
+      };
+    }
+
     api.slots.register({
       order: 901,
       slots: {
         session_prompt(_ctx, props) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const refCallback = (props as any).ref;
-          if (typeof refCallback === "function") {
-            refCallback((r: TuiPromptRef | undefined) => {
-              currentPromptRef = r;
-            });
-          }
-          return null;
+          const rightSlot = element("Slot", {
+            name: "session_prompt_right",
+            session_id: props.session_id,
+          });
+          return api.ui.Prompt({
+            sessionID: props.session_id,
+            visible: props.visible,
+            disabled: props.disabled,
+            onSubmit: props.on_submit,
+            ref: makePromptRefWrapper(props.ref),
+            right: rightSlot,
+          });
+        },
+        home_prompt(_ctx, props) {
+          return api.ui.Prompt({
+            ref: makePromptRefWrapper(props.ref),
+          });
         },
         session_prompt_right(_ctx, _props) {
           return renderAddContextButton(api);

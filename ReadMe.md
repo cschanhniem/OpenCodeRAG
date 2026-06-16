@@ -1,4 +1,4 @@
-# OpenCodeRAG
+﻿# OpenCodeRAG
 
 OpenCodeRAG is a **local-first RAG plugin** for semantic code search. It converts your codebase into vector indices and retrieves relevant code chunks on natural language queries. The primary aim is to save tokens by replacing full-file reads with targeted chunk retrieval and to speed-up tool calls for large codebases. Integrates seamlessly with [OpenCode](https://opencode.ai) and works standalone via CLI. 
 
@@ -105,8 +105,8 @@ After every message you send, the plugin searches your vector-indexed codebase:
 ### 3. System Prompt Guidance (Conditional)
 When chunks are indexed, a brief tool list is prepended to the system prompt so agents know the tools exist. This is skipped when no chunks are indexed to save tokens.
 
-### 4. On-Demand RAG Context (Ctrl+Enter)
-Press **Ctrl+Enter** in the terminal prompt (or click the **+RAG** button) to retrieve and append relevant code context to your current prompt. The query is taken from your typed text — if the prompt is empty, a dialog asks for one. Results are appended as formatted code blocks with file paths, line ranges, and relevance scores.
+### 4. On-Demand RAG Context (Ctrl+Enter / Alt+Enter)
+Press **Ctrl+Enter** in the terminal prompt (or click the **+RAG** button) to retrieve and append a relevant file list to your current prompt. Press **Alt+Enter** to append full code chunks instead. The query is taken from your typed text — if the prompt is empty, a toast reminds you to type first. Results are appended directly to the prompt as formatted code blocks with file paths, line ranges, and relevance scores. No dialogs are opened.
 
 ---
 
