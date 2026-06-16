@@ -17,6 +17,7 @@ import {
   createFindUsagesTool,
 } from "./opencode/tools.js";
 import { resolveApiKey } from "./core/resolve-api-key.js";
+import { consumePendingRagInjection } from "./core/rag-injection-flag.js";
 import { createSessionLogger, type SessionLogger } from "./eval/session-logger.js";
 import { existsSync } from "node:fs";
 import path from "node:path";
@@ -662,16 +663,7 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
 
         sessionLastMessage.set(input.sessionID, text);
 
-        // Single-word prompt detection: suppress auto-injection, count spaces instead
-        const wordCount = text.trim().split(/\s+/).length;
-        if (wordCount <= 1) {
-          const spaceCount = (text.match(/ /g) ?? []).length;
-          appendDebugLog(options.logFilePath, {
-            scope: "chat.message",
-            message: `single-word prompt detected, suppressed auto-injection (spaceCount=${spaceCount})`,
-          });
-          return;
-        }
+        const pendingInjection = consumePendingRagInjection(options.storePath);
 
         const count = await store.count();
         if (count === 0) return;
@@ -681,7 +673,7 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
         const retrievalStart = Date.now();
         const results = await dependencies.retrieve(text, embedder, store, {
           topK: effectiveCfg.retrieval.topK,
-          minScore: effectiveCfg.retrieval.minScore,
+          minScore: pendingInjection ? 0 : effectiveCfg.retrieval.minScore,
           keywordIndex,
           keywordWeight: hybridCfg?.keywordWeight,
           queryPrefix: effectiveCfg.embedding.queryPrefix,
@@ -695,6 +687,64 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
             contextTokens: 0,
             topScore: 0,
             retrievalTimeMs,
+          });
+          return;
+        }
+
+        if (pendingInjection === "chunks") {
+          const maxChunks = effectiveCfg.openCode.autoInject?.maxChunks ?? 3;
+          const topChunks = results.slice(0, maxChunks);
+          const chunkContext = formatAutoInjectContext(
+            topChunks,
+            options.worktree,
+            effectiveCfg.openCode.autoInject?.maxTokens ?? 2000,
+            maxChunks
+          );
+          const estimateTokens = (t: string) => Math.ceil(t.length / 4);
+          sessionLogger.onRagContext(input.sessionID, input.messageID, {
+            chunkCount: topChunks.length,
+            uniqueFiles: new Set(topChunks.map((r) => r.chunk.metadata.filePath)).size,
+            contextTokens: chunkContext ? estimateTokens(chunkContext) : 0,
+            topScore: topChunks[0]?.score ?? 0,
+            retrievalTimeMs,
+          });
+          if (!chunkContext) return;
+          const parts = output?.parts ?? (output?.message as Record<string, unknown>)?.parts;
+          if (Array.isArray(parts) && parts.length > 0) {
+            const first = parts[0] as Record<string, unknown>;
+            if (typeof first.text === "string") {
+              first.text = `${first.text}\n\n${chunkContext}`;
+            }
+          }
+          return;
+        }
+
+        if (pendingInjection === "files") {
+          const fileList = formatFileList(results, options.worktree);
+          const estimateTokens = (t: string) => Math.ceil(t.length / 4);
+          sessionLogger.onRagContext(input.sessionID, input.messageID, {
+            chunkCount: 0,
+            uniqueFiles: 0,
+            contextTokens: fileList ? estimateTokens(fileList) : 0,
+            topScore: results[0]?.score ?? 0,
+            retrievalTimeMs,
+          });
+          if (!fileList) return;
+          const parts = output?.parts ?? (output?.message as Record<string, unknown>)?.parts;
+          if (Array.isArray(parts) && parts.length > 0) {
+            const first = parts[0] as Record<string, unknown>;
+            if (typeof first.text === "string") {
+              first.text = `${first.text}\n\n${fileList}`;
+            }
+          }
+          return;
+        }
+
+        if (text.trim().split(/\s+/).length <= 1) {
+          const spaceCount = (text.match(/ /g) ?? []).length;
+          appendDebugLog(options.logFilePath, {
+            scope: "chat.message",
+            message: `single-word prompt detected, suppressed auto-injection (spaceCount=${spaceCount})`,
           });
           return;
         }

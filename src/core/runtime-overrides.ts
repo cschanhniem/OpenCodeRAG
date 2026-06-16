@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { RagConfig } from "./config.js";
+import { DEFAULT_CONFIG } from "./config.js";
 
 export interface RuntimeOverrides {
   retrieval?: {
@@ -32,6 +33,10 @@ export interface RuntimeOverrides {
     provider?: string;
     model?: string;
     baseUrl?: string;
+  };
+  tui?: {
+    fileListKeybinding?: string;
+    chunksKeybinding?: string;
   };
 }
 
@@ -127,6 +132,15 @@ export function applyRuntimeOverrides(
       if (!merged.description) merged.description = { enabled: true, provider: "ollama", baseUrl: "http://127.0.0.1:11434/api", model: "qwen2.5:3b", systemPrompt: "" };
       merged.description.baseUrl = overrides.description.baseUrl;
     }
+  }
+
+  if (overrides.tui) {
+    merged.tui = {
+      ...DEFAULT_CONFIG.tui,
+      ...(merged.tui ?? {}),
+      fileListKeybinding: overrides.tui.fileListKeybinding ?? merged.tui?.fileListKeybinding ?? DEFAULT_CONFIG.tui.fileListKeybinding,
+      chunksKeybinding: overrides.tui.chunksKeybinding ?? merged.tui?.chunksKeybinding ?? DEFAULT_CONFIG.tui.chunksKeybinding,
+    };
   }
 
   return merged;

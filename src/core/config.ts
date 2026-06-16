@@ -50,6 +50,11 @@ export interface UiConfig {
   openBrowser: boolean;
 }
 
+export interface TuiConfig {
+  fileListKeybinding: string;
+  chunksKeybinding: string;
+}
+
 export interface RagConfig {
   embedding: {
     provider: string;
@@ -96,6 +101,7 @@ export interface RagConfig {
   };
   description?: DescriptionConfig;
   ui?: UiConfig;
+  tui: TuiConfig;
   logging: LoggingConfig;
 }
 
@@ -212,6 +218,10 @@ export const DEFAULT_CONFIG: RagConfig = {
     port: 3210,
     openBrowser: true,
   },
+  tui: {
+    fileListKeybinding: "ctrl+enter",
+    chunksKeybinding: "ctrl+alt+enter",
+  },
   logging: {
     level: "info",
     logFilePath: "./.opencode/opencode-rag.log",
@@ -289,6 +299,10 @@ export function loadConfig(filePath: string): RagConfig {
       ...DEFAULT_CONFIG.ui,
       ...((parsed as { ui?: Partial<UiConfig> }).ui ?? {}),
     } as UiConfig,
+    tui: {
+      ...DEFAULT_CONFIG.tui,
+      ...((parsed as { tui?: Partial<TuiConfig> }).tui ?? {}),
+    } as TuiConfig,
     logging: {
       ...DEFAULT_CONFIG.logging,
       ...(parsed.logging ?? {}),

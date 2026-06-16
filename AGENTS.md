@@ -228,7 +228,7 @@ Query vs document differentiation:
 - **System prompt guidance (always):** `experimental.chat.system.transform` prepends a tool list to the system prompt on every message, ensuring agents always know the tools are available.
 - **Auto-injection:** On each user message, the `chat.message` hook runs retrieval. High-confidence results (score ≥ `autoInject.minScore`, default 0.75) are auto-injected as code chunks. No fallback is injected for low-confidence results — agents must use tools explicitly.
 - `formatAutoInjectContext()` respects `maxChunks` (default 3) and `maxTokens` (default 2000) budgets.
-- **TUI keyboard shortcuts:** Ctrl+Enter appends a file list of relevant files to the prompt; Ctrl+Alt+Enter appends matching code chunks directly to the prompt. Both read the current prompt text via `TuiPromptRef.current.input` and never open dialogs — an empty prompt shows a toast instead.
+- **TUI keyboard shortcuts:** Ctrl+Enter (configurable) appends a file list of relevant files to the prompt; Ctrl+Alt+Enter (configurable) appends matching code chunks directly to the prompt. Both read the current prompt text via `TuiPromptRef.current.input` and never open dialogs — an empty prompt shows a toast instead. Keybindings are configurable via the settings menu (Ctrl+Shift+R) or `opencode-rag.json` (`tui.fileListKeybinding` / `tui.chunksKeybinding`).
 - When `openCode.readOverride` is `true`, the plugin registers a `read` tool backed by `createRagReadTool()` that shadows OpenCode's built-in read.
 
 ### Plugins and module structure

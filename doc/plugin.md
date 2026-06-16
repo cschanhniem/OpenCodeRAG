@@ -211,7 +211,7 @@ The TUI plugin (`src/tui.ts`) registers a settings panel in the OpenCode sidebar
 | **Ctrl+Alt+Enter** | Retrieve and append full code chunks to the prompt |
 | **Ctrl+Shift+R** | Open the settings dialog |
 
-Both shortcuts read the current prompt text as the search query. If the prompt is empty, a toast reminds you to type first — no dialogs are opened. The +RAG button in the prompt area triggers the same file-list retrieval as Ctrl+Enter.
+Both shortcuts read the current prompt text as the search query. If the prompt is empty, a toast reminds you to type first — no dialogs are opened. Keybindings are configurable in the settings menu under "Keybindings".
 
 ## Plugin Troubleshooting
 

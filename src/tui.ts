@@ -1,4 +1,4 @@
-import type { TuiPluginModule, TuiPromptRef } from "@opencode-ai/plugin/tui";
+import type { TuiPluginModule } from "@opencode-ai/plugin/tui";
 import type { JSX } from "@opentui/solid";
 import { createElement, insert, setProp } from "@opentui/solid";
 import { readFileSync, existsSync, writeFileSync } from "node:fs";
@@ -7,11 +7,8 @@ import { fileURLToPath } from "node:url";
 import type { Provider } from "@opencode-ai/sdk/v2";
 import { loadRuntimeOverrides, saveRuntimeOverride } from "./core/runtime-overrides.js";
 import { PROVIDER_DEFAULTS } from "./core/provider-defaults.js";
-import { retrieve } from "./retriever/retriever.js";
-import { createEmbedder } from "./embedder/factory.js";
-import { LanceDBStore } from "./vectorstore/lancedb.js";
 import { loadConfig } from "./core/config.js";
-import { KeywordIndex } from "./retriever/keyword-index.js";
+import { setPendingRagInjection } from "./core/rag-injection-flag.js";
 
 let _version: string | undefined;
 function getVersion(): string {
@@ -117,6 +114,13 @@ function formatRelativeTime(timestamp: number | undefined): string {
   return `${days}d ago`;
 }
 
+function formatKeybinding(key: string): string {
+  return key
+    .split("+")
+    .map((k) => k.charAt(0).toUpperCase() + k.slice(1))
+    .join("+");
+}
+
 type Child = JSX.Element | string | number | null | undefined | false;
 
 const PLUGIN_NAME = "opencode-rag-plugin";
@@ -149,6 +153,7 @@ function renderSidebar(
   theme: { accent: unknown; text: unknown; textMuted: unknown },
   version: string,
   status: RagStatus,
+  tuiConfig?: { fileListKeybinding: string; chunksKeybinding: string },
 ): JSX.Element {
   const statusLine = status.indexed
     ? `${status.chunkCount} chunks \u00B7 ${status.provider}/${status.model}`
@@ -159,6 +164,9 @@ function renderSidebar(
   const watcherLine = watcherRunning
     ? "Watcher running\u2026"
     : `Watcher idle \u00B7 last ${formatRelativeTime(status.watcher.lastRunAt)}`;
+
+  const fileListKey = tuiConfig?.fileListKeybinding ?? "ctrl+enter";
+  const chunksKey = tuiConfig?.chunksKeybinding ?? "ctrl+alt+enter";
 
   return box(
     {
@@ -190,286 +198,9 @@ function renderSidebar(
       text({ fg: theme.textMuted }, [timeLine]),
       text({ fg: watcherRunning ? theme.accent : theme.textMuted }, [watcherLine]),
       text({ fg: theme.textMuted }, ["Ctrl+Shift+R → Settings"]),
-      text({ fg: theme.textMuted }, ["Ctrl+Enter → Add Files"]),
-      text({ fg: theme.textMuted }, ["Ctrl+Alt+Enter → Add Chunks"]),
+      text({ fg: theme.textMuted }, [`${formatKeybinding(fileListKey)} → Add Files`]),
+      text({ fg: theme.textMuted }, [`${formatKeybinding(chunksKey)} → Add Chunks`]),
     ],
-  );
-}
-
-// ── Add RAG Context ──────────────────────────────────────────────
-
-let currentPromptRef: TuiPromptRef | undefined;
-
-function formatRagContextForPrompt(
-  results: Awaited<ReturnType<typeof retrieve>>,
-): string {
-  if (results.length === 0) return "";
-
-  const avgScore = results.reduce((sum, r) => sum + r.score, 0) / results.length;
-  const lines: string[] = [];
-  lines.push(`\n---\n**RAG Context** (${results.length} chunks, avg ${avgScore.toFixed(2)})\n`);
-
-  for (const r of results) {
-    const m = r.chunk.metadata;
-    lines.push(`[${m.filePath}:${m.startLine}-${m.endLine}] (${m.language}, score: ${r.score.toFixed(2)})`);
-    if (r.chunk.description) {
-      lines.push(`> ${r.chunk.description}`);
-    }
-    lines.push("```" + m.language);
-    lines.push(r.chunk.content);
-    lines.push("```\n");
-  }
-
-  lines.push("---\n");
-  return lines.join("\n");
-}
-
-type RagContextApi = {
-  ui: {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    DialogPrompt: (props: any) => JSX.Element;
-    dialog: { replace: (fn: () => JSX.Element, onClose?: () => void) => void; clear: () => void };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    toast: (input: any) => void;
-  };
-  state: { path: { worktree: string | undefined } };
-};
-
-async function addChunksToPrompt(api: RagContextApi, query?: string): Promise<void> {
-  const worktree = api.state.path.worktree;
-  if (!worktree) {
-    api.ui.toast({ variant: "error", title: "RAG Context", message: "No workspace open" });
-    return;
-  }
-
-  let searchQuery = query ?? currentPromptRef?.current.input?.trim() ?? "";
-
-  if (!searchQuery) {
-    api.ui.toast({
-      variant: "info",
-      title: "RAG Context",
-      message: "Type a prompt first, then press Alt+Enter",
-    });
-    return;
-  }
-
-  try {
-    const configPath = getConfigPath(worktree);
-    if (!configPath) {
-      api.ui.toast({ variant: "error", title: "RAG Context", message: "No config file found" });
-      return;
-    }
-
-    const cfg = loadConfig(configPath);
-    const embedder = createEmbedder(cfg);
-    const storePath = resolve(worktree, cfg.vectorStore.path);
-    const store = new LanceDBStore(storePath);
-
-    const count = await store.count();
-    if (count === 0) {
-      api.ui.toast({
-        variant: "warning",
-        title: "RAG Context",
-        message: "No indexed chunks available. Run `opencode-rag index` first.",
-      });
-      return;
-    }
-
-    let keywordIndex: KeywordIndex | undefined;
-    try {
-      keywordIndex = await KeywordIndex.load(storePath);
-    } catch {
-      // keyword index unavailable, continue with vector-only search
-    }
-
-    const results = await retrieve(searchQuery, embedder, store, {
-      topK: cfg.retrieval.topK,
-      minScore: cfg.retrieval.minScore,
-      keywordIndex,
-      keywordWeight: cfg.retrieval.hybridSearch?.keywordWeight,
-      queryPrefix: cfg.embedding.queryPrefix,
-    });
-
-    if (results.length === 0) {
-      api.ui.toast({
-        variant: "info",
-        title: "RAG Context",
-        message: `No matching chunks found for "${searchQuery}"`,
-      });
-      return;
-    }
-
-    const formatted = formatRagContextForPrompt(results);
-
-    if (currentPromptRef) {
-      const current = currentPromptRef.current.input;
-      currentPromptRef.set({
-        input: current + "\n" + formatted,
-        mode: currentPromptRef.current.mode ?? "normal",
-        parts: currentPromptRef.current.parts ?? [],
-      });
-      currentPromptRef.submit();
-    }
-
-    api.ui.toast({
-      variant: "success",
-      title: "RAG Context",
-      message: `Appended ${results.length} chunks for "${searchQuery}"`,
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    api.ui.toast({
-      variant: "error",
-      title: "RAG Context",
-      message: `Retrieval failed: ${message}`,
-    });
-  }
-}
-
-function formatFileListForDialog(
-  results: Awaited<ReturnType<typeof retrieve>>,
-  worktree: string,
-): string {
-  if (results.length === 0) return "";
-
-  const fileMap = new Map<string, { lines: number[]; scores: number[]; language: string }>();
-
-  for (const r of results) {
-    const m = r.chunk.metadata;
-    const existing = fileMap.get(m.filePath);
-    if (existing) {
-      existing.lines.push(m.startLine, m.endLine);
-      existing.scores.push(r.score);
-    } else {
-      fileMap.set(m.filePath, {
-        lines: [m.startLine, m.endLine],
-        scores: [r.score],
-        language: m.language,
-      });
-    }
-  }
-
-  const sorted = [...fileMap.entries()]
-    .sort((a, b) => Math.max(...b[1].scores) - Math.max(...a[1].scores))
-    .slice(0, 10);
-
-  const lines: string[] = [];
-  lines.push(`Relevant files (${sorted.length}):\n`);
-  for (const [filePath, info] of sorted) {
-    const relPath = filePath.startsWith(worktree)
-      ? filePath.slice(worktree.length + 1).replace(/\\/g, "/")
-      : filePath.replace(/\\/g, "/");
-    const minLine = Math.min(...info.lines);
-    const maxLine = Math.max(...info.lines);
-    const relevance = Math.max(...info.scores).toFixed(2);
-    lines.push(`  ${relPath} (${info.language}, lines ${minLine}-${maxLine}, relevance ${relevance})`);
-  }
-  lines.push("\nUse `opencode-rag-context` to retrieve full chunks, or `find_usages` before editing.");
-  return lines.join("\n");
-}
-
-async function addFileListToPrompt(api: RagContextApi, query?: string): Promise<void> {
-  const worktree = api.state.path.worktree;
-  if (!worktree) {
-    api.ui.toast({ variant: "error", title: "RAG File List", message: "No workspace open" });
-    return;
-  }
-
-  let searchQuery = query ?? currentPromptRef?.current.input?.trim() ?? "";
-
-  if (!searchQuery) {
-    api.ui.toast({
-      variant: "info",
-      title: "RAG File List",
-      message: "Type a prompt first, then press Ctrl+Enter",
-    });
-    return;
-  }
-
-  try {
-    const configPath = getConfigPath(worktree);
-    if (!configPath) {
-      api.ui.toast({ variant: "error", title: "RAG File List", message: "No config file found" });
-      return;
-    }
-
-    const cfg = loadConfig(configPath);
-    const embedder = createEmbedder(cfg);
-    const storePath = resolve(worktree, cfg.vectorStore.path);
-    const store = new LanceDBStore(storePath);
-
-    const count = await store.count();
-    if (count === 0) {
-      api.ui.toast({
-        variant: "warning",
-        title: "RAG File List",
-        message: "No indexed chunks available. Run `opencode-rag index` first.",
-      });
-      return;
-    }
-
-    let keywordIndex: KeywordIndex | undefined;
-    try {
-      keywordIndex = await KeywordIndex.load(storePath);
-    } catch {
-      // keyword index unavailable, continue with vector-only search
-    }
-
-    const results = await retrieve(searchQuery, embedder, store, {
-      topK: cfg.retrieval.topK,
-      minScore: cfg.retrieval.minScore,
-      keywordIndex,
-      keywordWeight: cfg.retrieval.hybridSearch?.keywordWeight,
-      queryPrefix: cfg.embedding.queryPrefix,
-    });
-
-    if (results.length === 0) {
-      api.ui.toast({
-        variant: "info",
-        title: "RAG File List",
-        message: `No matching chunks found for "${searchQuery}"`,
-      });
-      return;
-    }
-
-    const formatted = formatFileListForDialog(results, worktree);
-
-    if (currentPromptRef) {
-      const current = currentPromptRef.current.input;
-      currentPromptRef.set({
-        input: current + "\n" + formatted,
-        mode: currentPromptRef.current.mode ?? "normal",
-        parts: currentPromptRef.current.parts ?? [],
-      });
-      currentPromptRef.submit();
-    }
-
-    api.ui.toast({
-      variant: "success",
-      title: "RAG File List",
-      message: `Appended ${results.length} files for "${searchQuery}"`,
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    api.ui.toast({
-      variant: "error",
-      title: "RAG File List",
-      message: `Retrieval failed: ${message}`,
-    });
-  }
-}
-
-function renderAddContextButton(api: RagContextApi & {
-  theme: { current: { textMuted: unknown } };
-}): JSX.Element {
-  return box(
-    {
-      onClick: () => addFileListToPrompt(api),
-      paddingLeft: 1,
-      paddingRight: 1,
-      cursor: "pointer",
-    },
-    [text({ fg: api.theme.current.textMuted }, ["+RAG"])],
   );
 }
 
@@ -624,6 +355,9 @@ function buildSettingCategories(
   const embeddingCfg = (cfg.embedding ?? {}) as Record<string, unknown>;
   const embeddingRo = (ro.embedding ?? {}) as Record<string, unknown>;
 
+  const tuiCfg = (cfg.tui ?? {}) as Record<string, unknown>;
+  const tuiRo = (ro.tui ?? {}) as Record<string, unknown>;
+
   const modelOptions = providers ? buildModelOptions(providers) : undefined;
 
   function displayModel(roProvider: unknown, roModel: unknown, cfgProvider: unknown, cfgModel: unknown, defaultProvider: string, defaultModel: string): string {
@@ -739,6 +473,25 @@ function buildSettingCategories(
           type: "string",
           currentValue: displayModel(descRo.provider, descRo.model, descCfg.provider, descCfg.model, "ollama", "qwen2.5:3b"),
           options: modelOptions,
+        },
+      ],
+    },
+    {
+      id: "keybindings",
+      label: "Keybindings",
+      description: "Configure keyboard shortcuts",
+      entries: [
+        {
+          path: ["tui", "fileListKeybinding"],
+          label: "Add file list",
+          type: "string",
+          currentValue: (tuiRo.fileListKeybinding as string) ?? (tuiCfg.fileListKeybinding as string) ?? "ctrl+enter",
+        },
+        {
+          path: ["tui", "chunksKeybinding"],
+          label: "Add chunks",
+          type: "string",
+          currentValue: (tuiRo.chunksKeybinding as string) ?? (tuiCfg.chunksKeybinding as string) ?? "ctrl+alt+enter",
         },
       ],
     },
@@ -971,10 +724,25 @@ const plugin: TuiPluginModule & { id: string } = {
     let lastRefresh = 0;
     const REFRESH_INTERVAL_MS = 30_000;
 
+    // Load tui config for keybinding display
+    let tuiConfig: { fileListKeybinding: string; chunksKeybinding: string } | undefined;
+    const worktree = api.state.path.worktree;
+    if (worktree) {
+      const configPath = getConfigPath(worktree);
+      if (configPath) {
+        try {
+          const cfg = loadConfig(configPath);
+          tuiConfig = cfg.tui;
+        } catch {
+          // use defaults
+        }
+      }
+    }
+
     function refreshStatus() {
-      const worktree = api.state.path.worktree;
-      if (worktree) {
-        cachedStatus = loadRagStatus(worktree);
+      const wt = api.state.path.worktree;
+      if (wt) {
+        cachedStatus = loadRagStatus(wt);
         lastRefresh = Date.now();
       }
     }
@@ -989,54 +757,43 @@ const plugin: TuiPluginModule & { id: string } = {
           if (Date.now() - lastRefresh > REFRESH_INTERVAL_MS) {
             refreshStatus();
           }
-          return renderSidebar(api.theme.current, version, cachedStatus);
+          return renderSidebar(api.theme.current, version, cachedStatus, tuiConfig);
         },
       },
     });
 
-    // Register prompt slots for "Add RAG Context" feature.
-    // The session_prompt slot has mode="replace" — returning null suppresses
-    // the child Prompt entirely. Instead we render the Prompt ourselves so we
-    // can intercept the ref callback and capture the PromptRef.
-    function makePromptRefWrapper(
-      originalRef: ((r: TuiPromptRef | undefined) => void) | undefined,
-    ): (r: TuiPromptRef | undefined) => void {
-      return (r: TuiPromptRef | undefined) => {
-        currentPromptRef = r;
-        originalRef?.(r);
-      };
-    }
-
+    // Register prompt slots — return null to let host render its default prompt.
+    // The host's api.ui.Prompt() wrapper drops ref/right/sessionID props, so
+    // replacing the prompt doesn't work. Instead, keybinding handlers set a
+    // global flag consumed by the chat.message hook in the server plugin.
     api.slots.register({
       order: 901,
       slots: {
-        session_prompt(_ctx, props) {
-          const rightSlot = element("Slot", {
-            name: "session_prompt_right",
-            session_id: props.session_id,
-          });
-          return api.ui.Prompt({
-            sessionID: props.session_id,
-            visible: props.visible,
-            disabled: props.disabled,
-            onSubmit: props.on_submit,
-            ref: makePromptRefWrapper(props.ref),
-            right: rightSlot,
-          });
+        session_prompt() {
+          return null;
         },
-        home_prompt(_ctx, props) {
-          return api.ui.Prompt({
-            ref: makePromptRefWrapper(props.ref),
-          });
-        },
-        session_prompt_right(_ctx, _props) {
-          return renderAddContextButton(api);
-        },
-        home_prompt_right(_ctx, _props) {
-          return renderAddContextButton(api);
+        home_prompt() {
+          return null;
         },
       },
     });
+
+    // Compute storePath for flag-based IPC with server plugin
+    let flagStorePath: string | undefined;
+    const worktreeForFlag = api.state.path.worktree;
+    if (worktreeForFlag) {
+      try {
+        const flagConfigPath = getConfigPath(worktreeForFlag);
+        if (flagConfigPath) {
+          const flagCfg = loadConfig(flagConfigPath);
+          const vs = flagCfg.vectorStore as Record<string, unknown> | undefined;
+          const storeRelPath = (vs?.path as string) ?? ".opencode/rag_db";
+          flagStorePath = resolve(worktreeForFlag, storeRelPath);
+        }
+      } catch {
+        // ignore
+      }
+    }
 
     // Register keybinding for settings dialog
     try {
@@ -1059,15 +816,17 @@ const plugin: TuiPluginModule & { id: string } = {
       // Keymap registration may fail in older OpenCode versions; silently skip
     }
 
-    // Register keybinding for "Show Relevant Files" (Ctrl+Enter)
+    // Register keybinding for "Add File List" (configurable)
     try {
+      const fileListKey = tuiConfig?.fileListKeybinding ?? "ctrl+enter";
       api.keymap.registerLayer({
-        bindings: [{ key: "ctrl+enter", cmd: "opencode-rag:show-file-list" }],
+        bindings: [{ key: fileListKey, cmd: "opencode-rag:show-file-list" }],
         commands: [
           {
             name: "opencode-rag:show-file-list",
             run: () => {
-              addFileListToPrompt(api);
+              if (flagStorePath) setPendingRagInjection(flagStorePath, "files");
+              api.keymap.dispatchCommand("prompt.submit");
               return undefined;
             },
           },
@@ -1077,15 +836,17 @@ const plugin: TuiPluginModule & { id: string } = {
       // Keymap registration may fail in older OpenCode versions; silently skip
     }
 
-    // Register keybinding for "Add RAG Chunks" (Ctrl+Alt+Enter)
+    // Register keybinding for "Add RAG Chunks" (configurable)
     try {
+      const chunksKey = tuiConfig?.chunksKeybinding ?? "ctrl+alt+enter";
       api.keymap.registerLayer({
-        bindings: [{ key: "ctrl+alt+enter", cmd: "opencode-rag:add-chunks" }],
+        bindings: [{ key: chunksKey, cmd: "opencode-rag:add-chunks" }],
         commands: [
           {
             name: "opencode-rag:add-chunks",
             run: () => {
-              addChunksToPrompt(api);
+              if (flagStorePath) setPendingRagInjection(flagStorePath, "chunks");
+              api.keymap.dispatchCommand("prompt.submit");
               return undefined;
             },
           },

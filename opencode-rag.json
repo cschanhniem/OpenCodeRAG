@@ -100,5 +100,9 @@
   "logging": {
     "level": "debug",
     "logFilePath": "./.opencode/opencode-rag.log"
+  },
+  "tui": {
+    "fileListKeybinding": "ctrl+enter",
+    "chunksKeybinding": "ctrl+alt+enter"
   }
 }
