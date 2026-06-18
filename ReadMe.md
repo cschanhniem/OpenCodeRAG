@@ -35,13 +35,15 @@ opencode-rag query "authentication middleware"
 
 | Feature | Description |
 |---|---|
+| **MCP server** | `opencode-rag mcp` — stdio-based MCP server exposing `search_semantic`, `get_file_skeleton`, `find_usages` tools for any MCP-compatible client |
 | **AST chunking** | 25 languages via tree-sitter (TS, JS, Python, Java, Go, Rust, C/C++, C#, Ruby, Kotlin, Swift, Bash, PHP, PowerShell, SQL, JSON, HTML, CSS, XML, YAML, TOML, INI, Dockerfile, Markdown) |
 | **Document support** | Markdown, LaTeX, PDF, DOCX, DOC, Excel |
 | **Hybrid search** | Vector similarity + TF×IDF keyword fusion |
-| **OpenCode plugin** | Auto-inject context, read-tool override, TUI settings, Ctrl+Enter to add RAG context |
+| **OpenCode plugin** | Auto-inject context, read-tool override, TUI settings, Ctrl+Enter to add RAG context, MCP registration on `init` |
 | **Incremental indexing** | File-hash manifest, background watcher, auto-rebuild on corruption |
 | **Privacy-first** | All processing stays local with Ollama |
-| **CLI** | `index`, `query`, `status`, `list`, `show`, `dump`, `clear`, `init`, `ui` |
+| **CLI** | `index`, `query`, `status`, `list`, `show`, `dump`, `clear`, `init`, `ui`, `mcp` |
+| **Programmatic API** | TypeScript `search()`, `indexWorkspace()`, `getContext()`, `validateConfig()`, `scanWorkspace()` |
 | **Proxy-aware** | Corporate proxy support with raw-socket localhost bypass |
 | **OpenAI / Cohere** | Alternate embedding providers with API key auto-resolution |
 
@@ -69,6 +71,24 @@ Launch with `opencode-rag ui`. See [Web UI documentation](doc/webui.md) for deta
 | [Development](doc/development.md) | Setup, testing, conventions, adding providers |
 | [Troubleshooting](doc/troubleshooting.md) | Common issues, logging, debugging |
 | [Roadmap](doc/roadmap.md) | Completed items, short/mid/long-term plans |
+
+## MCP Server
+
+OpenCodeRAG ships a stdio-based [MCP (Model Context Protocol)](https://spec.modelcontextprotocol.io/) server that exposes semantic code tools to any MCP-compatible client (Claude Desktop, OpenCode, Cursor, etc.).
+
+```bash
+opencode-rag mcp
+```
+
+### MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `search_semantic` | Vector + keyword hybrid search across the indexed codebase |
+| `get_file_skeleton` | AST-based file outline (functions, classes, methods) |
+| `find_usages` | Find all references to a symbol by name |
+
+Clients can configure the MCP server manually, or `opencode-rag init` auto-registers it.
 
 ## Agent Discovery
 
