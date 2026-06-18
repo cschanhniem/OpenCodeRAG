@@ -16,7 +16,7 @@ git clone https://github.com/your-org/OpenCodeRAG.git
 cd OpenCodeRAG
 npm install --legacy-peer-deps
 npm run build
-./install.sh                          # global install (optional)
+./install.sh
 
 # 2. Initialize in your project
 cd /path/to/your/project
