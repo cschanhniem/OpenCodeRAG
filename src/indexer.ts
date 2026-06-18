@@ -42,7 +42,7 @@ export interface IndexStatusSummary {
   rebuildRequired: boolean;
 }
 
-interface WorkspaceFile {
+export interface WorkspaceFile {
   filePath: string;
   normalizedPath: string;
   content: string;
@@ -108,7 +108,7 @@ export async function walkFiles(
   return results;
 }
 
-async function scanWorkspace(cwd: string, config: RagConfig): Promise<WorkspaceFile[]> {
+export async function scanWorkspace(cwd: string, config: RagConfig): Promise<WorkspaceFile[]> {
   const files = await walkFiles(
     cwd,
     new Set(config.indexing.includeExtensions),

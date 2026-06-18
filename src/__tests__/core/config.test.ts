@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { writeFileSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadConfig, DEFAULT_CONFIG, resolveLogConfig } from "../../core/config.js";
+import { loadConfig, DEFAULT_CONFIG, resolveLogConfig, validateConfig } from "../../core/config.js";
 import { getRegisteredExtensions } from "../../chunker/factory.js";
 
 describe("loadConfig", () => {
@@ -207,5 +207,76 @@ describe("resolveLogConfig", () => {
     const config = { ...DEFAULT_CONFIG, logging: { level: "info" as const, logFilePath: "/config/path.log" } };
     const { logFilePath } = resolveLogConfig(config);
     assert.equal(logFilePath, "/config/path.log");
+  });
+});
+
+describe("validateConfig", () => {
+  it("returns valid for default config", () => {
+    const result = validateConfig(DEFAULT_CONFIG);
+    assert.equal(result.valid, true);
+    assert.deepEqual(result.warnings, []);
+  });
+
+  it("warns about unknown top-level keys", () => {
+    const cfg = { ...DEFAULT_CONFIG, unknownKey: "test" } as typeof DEFAULT_CONFIG;
+    const result = validateConfig(cfg);
+    assert.equal(result.valid, false);
+    assert.ok(result.warnings.some(w => w.includes("unknownKey")));
+  });
+
+  it("warns about invalid embedding provider", () => {
+    const cfg = { ...DEFAULT_CONFIG, embedding: { ...DEFAULT_CONFIG.embedding, provider: "invalid" } };
+    const result = validateConfig(cfg);
+    assert.equal(result.valid, false);
+    assert.ok(result.warnings.some(w => w.includes("embedding.provider")));
+  });
+
+  it("warns about invalid embedding.baseUrl", () => {
+    const cfg = { ...DEFAULT_CONFIG, embedding: { ...DEFAULT_CONFIG.embedding, baseUrl: "not-a-url" } };
+    const result = validateConfig(cfg);
+    assert.equal(result.valid, false);
+    assert.ok(result.warnings.some(w => w.includes("embedding.baseUrl")));
+  });
+
+  it("warns about negative chunkOverlap", () => {
+    const cfg = { ...DEFAULT_CONFIG, indexing: { ...DEFAULT_CONFIG.indexing, chunkOverlap: -1 } };
+    const result = validateConfig(cfg);
+    assert.equal(result.valid, false);
+    assert.ok(result.warnings.some(w => w.includes("chunkOverlap")));
+  });
+
+  it("warns about topK <= 0", () => {
+    const cfg = { ...DEFAULT_CONFIG, retrieval: { ...DEFAULT_CONFIG.retrieval, topK: 0 } };
+    const result = validateConfig(cfg);
+    assert.equal(result.valid, false);
+    assert.ok(result.warnings.some(w => w.includes("topK")));
+  });
+
+  it("warns about minScore out of range", () => {
+    const cfg = { ...DEFAULT_CONFIG, retrieval: { ...DEFAULT_CONFIG.retrieval, minScore: 1.5 } };
+    const result = validateConfig(cfg);
+    assert.equal(result.valid, false);
+    assert.ok(result.warnings.some(w => w.includes("minScore")));
+  });
+
+  it("warns about invalid logging level", () => {
+    const cfg = { ...DEFAULT_CONFIG, logging: { level: "trace" as "debug", logFilePath: "./log" } };
+    const result = validateConfig(cfg);
+    assert.equal(result.valid, false);
+    assert.ok(result.warnings.some(w => w.includes("logging.level")));
+  });
+
+  it("warns about invalid ui.port", () => {
+    const cfg = { ...DEFAULT_CONFIG, ui: { port: 99999, openBrowser: false } };
+    const result = validateConfig(cfg);
+    assert.equal(result.valid, false);
+    assert.ok(result.warnings.some(w => w.includes("ui.port")));
+  });
+
+  it("warns about invalid description provider", () => {
+    const cfg = { ...DEFAULT_CONFIG, description: { ...DEFAULT_CONFIG.description!, provider: "invalid" } };
+    const result = validateConfig(cfg);
+    assert.equal(result.valid, false);
+    assert.ok(result.warnings.some(w => w.includes("description.provider")));
   });
 });

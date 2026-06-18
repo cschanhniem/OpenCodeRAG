@@ -257,11 +257,93 @@ export interface RagContext {
   vectorStore: VectorStore;
 }
 
-export function loadConfig(filePath: string): RagConfig {
+export interface ConfigValidationResult {
+  valid: boolean;
+  warnings: string[];
+}
+
+export function validateConfig(config: RagConfig): ConfigValidationResult {
+  const warnings: string[] = [];
+
+  const KNOWN_TOP_KEYS = new Set([
+    "embedding", "indexing", "vectorStore", "retrieval",
+    "openCode", "chunkers", "chunking", "description",
+    "ui", "tui", "logging",
+  ]);
+  const topKeys = new Set(Object.keys(config as unknown as Record<string, unknown>));
+  for (const key of topKeys) {
+    if (!KNOWN_TOP_KEYS.has(key)) {
+      warnings.push(`Unknown top-level config key "${key}" — possible typo`);
+    }
+  }
+
+  if (!["ollama", "openai"].includes(config.embedding.provider)) {
+    warnings.push(`embedding.provider "${config.embedding.provider}" — expected "ollama" or "openai"`);
+  }
+  if (config.embedding.timeoutMs != null && config.embedding.timeoutMs <= 0) {
+    warnings.push("embedding.timeoutMs must be > 0");
+  }
+  try { new URL(config.embedding.baseUrl); } catch {
+    warnings.push(`embedding.baseUrl "${config.embedding.baseUrl}" is not a valid URL`);
+  }
+
+  if (config.indexing.chunkOverlap < 0) {
+    warnings.push("indexing.chunkOverlap must be >= 0");
+  }
+  if (config.indexing.concurrency <= 0) {
+    warnings.push("indexing.concurrency must be > 0");
+  }
+  if (config.indexing.embedBatchSize <= 0) {
+    warnings.push("indexing.embedBatchSize must be > 0");
+  }
+  if (config.indexing.minFileSizeBytes != null && config.indexing.minFileSizeBytes < 0) {
+    warnings.push("indexing.minFileSizeBytes must be >= 0");
+  }
+
+  if (config.retrieval.topK <= 0) {
+    warnings.push("retrieval.topK must be > 0");
+  }
+  if (config.retrieval.minScore < 0 || config.retrieval.minScore > 1) {
+    warnings.push("retrieval.minScore must be between 0 and 1");
+  }
+  if (config.retrieval.hybridSearch?.enabled) {
+    const kw = config.retrieval.hybridSearch.keywordWeight;
+    if (kw < 0 || kw > 1) {
+      warnings.push("retrieval.hybridSearch.keywordWeight must be between 0 and 1");
+    }
+  }
+
+  if (config.openCode.maxContextChunks <= 0) {
+    warnings.push("openCode.maxContextChunks must be > 0");
+  }
+
+  if (!["debug", "info", "error"].includes(config.logging.level)) {
+    warnings.push(`logging.level "${config.logging.level}" — expected "debug", "info", or "error"`);
+  }
+
+  if (config.ui) {
+    if (config.ui.port < 1 || config.ui.port > 65535) {
+      warnings.push("ui.port must be between 1 and 65535");
+    }
+  }
+
+  if (config.description) {
+    if (!["ollama", "openai"].includes(config.description.provider)) {
+      warnings.push(`description.provider "${config.description.provider}" — expected "ollama" or "openai"`);
+    }
+    if (config.description.timeoutMs != null && config.description.timeoutMs <= 0) {
+      warnings.push("description.timeoutMs must be > 0");
+    }
+  }
+
+  return { valid: warnings.length === 0, warnings };
+}
+
+export function loadConfig(filePath: string, validate: boolean = true): RagConfig {
   const raw = readFileSync(filePath, "utf-8");
   const parsed = JSON.parse(raw) as Partial<RagConfig>;
 
-  return {
+  const cfg: RagConfig = {
     embedding: {
       ...DEFAULT_CONFIG.embedding,
       ...parsed.embedding,
@@ -323,4 +405,13 @@ export function loadConfig(filePath: string): RagConfig {
       ...(parsed.logging ?? {}),
     } as LoggingConfig,
   };
+
+  if (validate) {
+    const result = validateConfig(cfg);
+    for (const w of result.warnings) {
+      console.warn(`[opencode-rag] Config warning: ${w}`);
+    }
+  }
+
+  return cfg;
 }
