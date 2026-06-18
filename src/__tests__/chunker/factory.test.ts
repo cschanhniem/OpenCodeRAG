@@ -33,8 +33,68 @@ describe("getChunker", () => {
     assert.equal(chunker.language, "go");
   });
 
-  it("returns fallback chunker for unknown extensions", () => {
+  it("returns bash chunker for .sh files", () => {
     const chunker = getChunker("script.sh");
+    assert.equal(chunker.language, "bash");
+  });
+
+  it("returns PHP chunker for .php files", () => {
+    const chunker = getChunker("index.php");
+    assert.equal(chunker.language, "php");
+  });
+
+  it("returns PowerShell chunker for .ps1 files", () => {
+    const chunker = getChunker("script.ps1");
+    assert.equal(chunker.language, "powershell");
+  });
+
+  it("returns PowerShell chunker for .psm1 files", () => {
+    const chunker = getChunker("module.psm1");
+    assert.equal(chunker.language, "powershell");
+  });
+
+  it("returns INI chunker for .ini files", () => {
+    const chunker = getChunker("config.ini");
+    assert.equal(chunker.language, "ini");
+  });
+
+  it("returns INI chunker for .cfg files", () => {
+    const chunker = getChunker("config.cfg");
+    assert.equal(chunker.language, "ini");
+  });
+
+  it("returns YAML chunker for .yaml files", () => {
+    const chunker = getChunker("config.yaml");
+    assert.equal(chunker.language, "yaml");
+  });
+
+  it("returns YAML chunker for .yml files", () => {
+    const chunker = getChunker("config.yml");
+    assert.equal(chunker.language, "yaml");
+  });
+
+  it("returns TOML chunker for .toml files", () => {
+    const chunker = getChunker("config.toml");
+    assert.equal(chunker.language, "toml");
+  });
+
+  it("returns SQL chunker for .sql files", () => {
+    const chunker = getChunker("query.sql");
+    assert.equal(chunker.language, "sql");
+  });
+
+  it("returns Dockerfile chunker for Dockerfile", () => {
+    const chunker = getChunker("Dockerfile");
+    assert.equal(chunker.language, "dockerfile");
+  });
+
+  it("returns Dockerfile chunker for Containerfile", () => {
+    const chunker = getChunker("Containerfile");
+    assert.equal(chunker.language, "dockerfile");
+  });
+
+  it("returns fallback chunker for unknown extensions", () => {
+    const chunker = getChunker("script.xyz");
     assert.equal(chunker.language, "text");
   });
 

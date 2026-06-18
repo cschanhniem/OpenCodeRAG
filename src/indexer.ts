@@ -98,7 +98,8 @@ export async function walkFiles(
       results.push(...(await walkFiles(fullPath, extensions, excludeDirs)));
     } else if (entry.isFile()) {
       const ext = path.extname(entry.name).toLowerCase();
-      if (extensions.has(ext)) {
+      const basename = entry.name.toLowerCase();
+      if (extensions.has(ext) || extensions.has(basename)) {
         results.push(fullPath);
       }
     }

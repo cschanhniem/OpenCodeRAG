@@ -19,6 +19,14 @@ import { rustChunker } from "./rust.js";
 import { rubyChunker } from "./ruby.js";
 import { kotlinChunker } from "./kotlin.js";
 import { swiftChunker } from "./swift.js";
+import { bashChunker } from "./bash.js";
+import { phpChunker } from "./php.js";
+import { powershellChunker } from "./powershell.js";
+import { iniChunker } from "./ini.js";
+import { yamlChunker } from "./yaml.js";
+import { tomlChunker } from "./toml.js";
+import { dockerfileChunker } from "./dockerfile.js";
+import { sqlChunker } from "./sql.js";
 import { texChunker } from "./tex.js";
 import { fallbackChunker } from "./fallback.js";
 import { pdfChunker } from "./pdf.js";
@@ -47,6 +55,14 @@ const chunkers: Chunker[] = [
   rubyChunker,
   kotlinChunker,
   swiftChunker,
+  bashChunker,
+  phpChunker,
+  powershellChunker,
+  iniChunker,
+  yamlChunker,
+  tomlChunker,
+  dockerfileChunker,
+  sqlChunker,
   texChunker,
   pdfChunker,
   docxChunker,
@@ -86,8 +102,13 @@ export function registerChunker(
 }
 
 export function getChunker(filePath: string): Chunker {
-  const ext = filePath.slice(filePath.lastIndexOf(".")).toLowerCase();
-  return extensionMap.get(ext) ?? fallbackChunker;
+  const dotIdx = filePath.lastIndexOf(".");
+  const ext = dotIdx >= 0 ? filePath.slice(dotIdx).toLowerCase() : "";
+  if (ext && extensionMap.has(ext)) {
+    return extensionMap.get(ext)!;
+  }
+  const basename = filePath.toLowerCase();
+  return extensionMap.get(basename) ?? fallbackChunker;
 }
 
 export function getRegisteredExtensions(): string[] {
@@ -185,4 +206,4 @@ export async function chunkFile(
   return splitOversized(chunks, filePath);
 }
 
-export { typescriptChunker, pythonChunker, javaChunker, goChunker, markdownChunker, cChunker, cppChunker, csharpChunker, javascriptChunker, razorChunker, jsonChunker, htmlChunker, cssChunker, xmlChunker, slnChunker, rustChunker, rubyChunker, kotlinChunker, swiftChunker, texChunker, pdfChunker, fallbackChunker };
+export { typescriptChunker, pythonChunker, javaChunker, goChunker, markdownChunker, cChunker, cppChunker, csharpChunker, javascriptChunker, razorChunker, jsonChunker, htmlChunker, cssChunker, xmlChunker, slnChunker, rustChunker, rubyChunker, kotlinChunker, swiftChunker, bashChunker, phpChunker, powershellChunker, iniChunker, yamlChunker, tomlChunker, dockerfileChunker, sqlChunker, texChunker, pdfChunker, fallbackChunker };
