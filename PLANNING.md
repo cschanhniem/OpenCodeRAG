@@ -1,76 +1,5 @@
 # 🛣️ Roadmap
 
-## ✅ Completed / Shipped
-
-### Chunking & Indexing
-
-- [x] AST-based code chunking for 16 languages
-- [x] Regex/document chunking for Markdown, Razor, .sln, LaTeX
-- [x] Document text extraction for PDF, DOCX, DOC, Excel
-- [x] Line-based fallback chunking
-- [x] Pluggable chunkers via `Chunker` interface + config-loaded custom chunkers
-- [x] Incremental indexing (file-hash-based, manifest-backed, diff-aware)
-- [x] File watching / background re-indexing (debounced, serialized, watcher status file)
-- [x] Enhanced chunk descriptions with path + line numbers in LLM and non-LLM modes
-
-### Embedding & Storage
-
-- [x] Embedding providers (Ollama + OpenAI, factory dispatch)
-- [x] Proxy-aware transport (config/env, auth headers, raw socket localhost bypass)
-- [x] Dimension probing at startup (auto-detect, fallback 384)
-- [x] Vector storage (LanceDB, `memory://` test mode)
-- [x] Pluggable storage via `VectorStore` interface
-- [x] Batch embedding (configurable batch size)
-- [x] Auto-detection of LanceDB schema for seamless upgrades
-- [x] Robust `clear()` via `dropDatabase()`
-
-### Retrieval
-
-- [x] Retrieval pipeline (embed → search → score → return)
-- [x] Hybrid search (TF×IDF keyword + vector fusion)
-- [x] Session-level retrieval cache
-- [x] Auto-context injection on `chat.message` (high-confidence chunks injected directly)
-- [x] Configurable auto-inject settings (`minScore`, `maxChunks`, `maxTokens`, `enabled`)
-
-### OpenCode Plugin
-
-- [x] `opencode-rag-context`, `search_semantic`, `get_file_skeleton`, `find_usages` tools
-- [x] `chat.message` hook with file suggestions + auto-injection
-- [x] RAG-backed read override tool (shadows built-in read)
-- [x] TUI plugin module (sidebar panel, model picker dropdowns)
-- [x] `PluginModule` export pattern for v1.17.0 compatibility
-- [x] Background auto-indexing with watcher status file
-- [x] API key auto-resolution from OpenCode provider config
-- [x] Skill-based agent discovery (SKILL.md)
-- [x] Conditional system prompt injection (skipped when no chunks)
-
-### CLI & Distribution
-
-- [x] CLI (`init`, `index`, `query`, `clear`, `status`, `list`, `show`, `dump`, `ui`)
-- [x] Full `init` lifecycle (plugins, SKILL.md, .gitignore, npm install, stale cleanup)
-- [x] Install scripts (`install.ps1`/`install.sh`) with uninstall mode
-- [x] Release automation (`scripts/release-patch.js`)
-- [x] Multi-entry package exports (plugin, server, library, TUI)
-- [x] Published npm package
-- [x] CLI query deduplication, `clear` uses `dropDatabase()`
-
-### Web UI
-
-- [x] Browser dashboard (`opencode-rag ui`): Dashboard, Chunks, Files, Compare views
-- [x] Syntax-highlighted code viewer with description panel + copy button
-- [x] Collapsible file tree sidebar with filter + language color-coding
-- [x] Global keyword search with dropdown results
-- [x] REST API (stats, files, chunks, search, compare)
-- [x] Zero-dependency HTTP server (Node.js built-in `http`)
-
-### Config & Quality
-
-- [x] JSON config with deep-merged partial overrides
-- [x] Runtime overrides system (`runtime-overrides.json`, 5s TTL)
-- [x] Configurable file logging
-- [x] Manifest schema versioning with corruption detection + auto-rebuild
-- [x] 680+ automated tests
-
 ## Short Term
 
 - [ ] LLM-based re-ranking layer (cross-encoder or lightweight model after vector search)
@@ -97,6 +26,12 @@
 - [ ] Agent-based code navigation
 - [ ] Richer non-code / multimodal support (diagrams, API specs, JSON schemas, YAML configs)
 - [ ] Access control (per-folder permissions, sensitive file exclusion)
+- [ ] MCP server — expose RAG tools via Model Context Protocol for any MCP client (VS Code, Cursor, etc.) without the OpenCode plugin
+- [ ] Git-aware incremental indexing — index only files changed since last commit instead of full-file hash scan
+- [ ] Index export/import — serialize the index for CI/CD, team sharing, or backup/restore
+- [ ] Programmatic TypeScript API — export `search()`, `index()`, `getContext()` for embedding in scripts/tools
+- [ ] Performance benchmark suite — measure index time, query latency, memory usage across repo sizes
+- [ ] Config validation at startup — validate `opencode-rag.json` schema with clear error messages
 
 ---
 
@@ -130,9 +65,9 @@ Measure retrieval quality with benchmark queries, precision@K, and recall. Neede
 
 Per-folder permissions and sensitive file exclusion for enterprise or multi-user environments.
 
-## Caching Layer
+## Persistent Query Cache
 
-Cache embeddings and query results to avoid recomputation. Batch embedding already reduces API calls but does not persist results across sessions.
+Persist query→results on disk (not just in-memory session cache) so repeated queries across restarts are instant.
 
 ## Non-Code / Multimodal Retrieval
 
@@ -158,6 +93,46 @@ Retain coding patterns, project conventions, and past decisions across sessions.
 
 Support indexing and searching across multiple repositories. Enable cross-project queries for monorepo setups or microservice architectures. Could use per-workspace vector shards with a unified query layer.
 
+## MCP Server
+
+Expose OpenCodeRAG tools (`search_semantic`, `opencode-rag-context`, `get_file_skeleton`, `find_usages`) via the Model Context Protocol. Enables any MCP-compatible client (VS Code, Cursor, Claude Desktop, etc.) to use semantic code retrieval without the OpenCode plugin.
+
+## Git-Aware Incremental Indexing
+
+Instead of hashing every file on each index pass, detect changed files via `git diff --name-only` since the last indexed commit. Skips unchanged tracked files entirely — dramatically faster for large repos.
+
+## Index Export / Import
+
+Serialize the full index (vectors + metadata + keyword index) to a portable format. Enables: CI/CD pipelines that pre-index and ship the index, team sharing of a common index, and backup/restore across machines.
+
+## Programmatic TypeScript API
+
+Expose first-class library exports: `search(query, options)`, `indexWorkspace(path)`, `getContext(query, filePath)`. Lets users embed RAG into custom scripts, build tools, or CI pipelines without the CLI or plugin.
+
+## Performance Benchmark Suite
+
+Automated suite measuring: index time by repo size, query latency p50/p95/p99, memory/disk usage. Track regressions across releases. Essential before optimizing chunking or storage.
+
+## Config Validation at Startup
+
+Validate `opencode-rag.json` against a JSON schema on load. Surface clear, actionable error messages for invalid or missing fields instead of silent fallback to defaults.
+
+## Per-Language Chunking Config
+
+Allow per-extension overrides for `nodeTypes`, `chunkSize`, `overlap` in config. E.g., Python gets smaller AST nodes than Java; Go gets different function boundaries.
+
+## Concurrent Chunking
+
+Parallel file scanning and chunking for large repos. LanceDB already handles concurrent writes via promise guard; the bottleneck is sequential chunking in `runIndexPass`.
+
+## Auto-Generated Codebase Summaries
+
+LLM produces directory-level summaries from indexed chunks. Useful for onboarding, project overview retrieval ("what does the auth module do?"), and context injection.
+
+## Chunk Quality Heuristics
+
+Score chunks during indexing for size, coherence, and boundary quality. Flag poorly-chunked files for improvement. Could guide chunker selection or parameter tuning.
+
 ---
 
 # 🎯 Summary
@@ -166,4 +141,4 @@ Local-first semantic code search with AST/document chunking, incremental/backgro
 
 **Key strengths:** privacy-first, modular architecture, workspace-native bootstrap, broad coverage, hybrid search, runtime overrides, auto API key resolution, manifest versioning, install/uninstall scripts.
 
-**Next steps:** re-ranking, query rewriting, context optimization, code graph awareness, session memory, multi-workspace.
+**Next steps:** re-ranking, query rewriting, context optimization, code graph awareness, session memory, multi-workspace, MCP server, programmatic API, index export/import.
