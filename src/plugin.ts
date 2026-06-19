@@ -787,21 +787,21 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
   };
 }
 
-async function loadKeywordIndex(storePath: string, logFilePath: string): Promise<KeywordIndex> {
+async function loadKeywordIndex(storePath: string, logFilePath: string, logLevel?: string): Promise<KeywordIndex> {
   const { KeywordIndex } = await import("./retriever/keyword-index.js");
   try {
     const index = await KeywordIndex.load(storePath);
     appendDebugLog(logFilePath, {
       scope: "plugin",
       message: `Keyword index loaded (${index.count()} chunks)`,
-    });
+    }, logLevel);
     return index;
   } catch (err) {
     appendDebugLog(logFilePath, {
       scope: "plugin",
       message: "Failed to load keyword index, creating empty",
       error: err,
-    });
+    }, logLevel);
     return new KeywordIndex(storePath);
   }
 }
@@ -959,7 +959,7 @@ export const ragPlugin: Plugin = async (
   appendDebugLog(logFilePath, {
     scope: "plugin",
     message: `OpenCode plugin enabled for ${input.directory}`,
-  });
+  }, logLevel);
 
   // Probe vector dimension and create store with correct dimension
   const embedder = createEmbedder(effectiveCfg);
@@ -972,19 +972,19 @@ export const ragPlugin: Plugin = async (
     appendDebugLog(logFilePath, {
       scope: "plugin",
       message: `Vector dimension: ${vectorDimension}`,
-    });
+    }, logLevel);
   } catch (err) {
     appendDebugLog(logFilePath, {
       scope: "plugin",
       message: `Dimension probe failed, falling back to ${vectorDimension}`,
       error: err,
-    });
+    }, logLevel);
   }
 
   const store = new LanceDBStore(storePath, vectorDimension);
 
   // Load or create keyword index for hybrid search
-  const keywordIndex = await loadKeywordIndex(storePath, logFilePath);
+  const keywordIndex = await loadKeywordIndex(storePath, logFilePath, logLevel);
 
   // Create description provider (enabled by default)
   const descriptionConfig = effectiveCfg.description ?? { enabled: true, provider: "ollama" as const, baseUrl: "http://127.0.0.1:11434/api", model: "qwen2.5:3b", systemPrompt: "" };
@@ -996,6 +996,7 @@ export const ragPlugin: Plugin = async (
     cfg: effectiveCfg,
     storePath,
     logFilePath,
+    logLevel,
     worktree: input.directory,
     embedder,
     store,
