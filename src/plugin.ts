@@ -22,6 +22,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
+import { tmpdir } from "node:os";
 
 const configCache = new Map<string, RagConfig>();
 const backgroundIndexers = new Map<string, { close: () => Promise<void> }>();
@@ -805,6 +806,89 @@ async function loadKeywordIndex(storePath: string, logFilePath: string): Promise
 
 
 
+function resolveMcpCliEntry(): string | null {
+  const selfDir = path.dirname(fileURLToPath(import.meta.url));
+  const packageRoot = path.resolve(selfDir, "..");
+
+  const distCli = path.join(packageRoot, "dist", "cli.js");
+  if (existsSync(distCli)) return distCli;
+
+  const srcCli = path.join(packageRoot, "src", "cli.ts");
+  if (existsSync(srcCli)) return srcCli;
+
+  return null;
+}
+
+function startMcpServerProcess(
+  cwd: string,
+  logFilePath: string
+): { close: () => Promise<void> } {
+  const cliEntry = resolveMcpCliEntry();
+  if (!cliEntry) {
+    appendDebugLog(logFilePath, {
+      scope: "mcp",
+      message: "Could not resolve MCP CLI entry point; skipping autostart",
+    });
+    return { close: async () => {} };
+  }
+
+  const args = cliEntry.endsWith(".ts")
+    ? ["--import", "tsx", cliEntry, "mcp"]
+    : [cliEntry, "mcp"];
+
+  appendDebugLog(logFilePath, {
+    scope: "mcp",
+    message: `Starting MCP server: ${process.execPath} ${args.join(" ")}`,
+  });
+
+  const child = spawn(process.execPath, args, {
+    cwd,
+    stdio: "pipe",
+    detached: false,
+  });
+
+  child.stdout?.on("data", (chunk: Buffer) => {
+    appendDebugLog(logFilePath, {
+      scope: "mcp",
+      message: `stdout: ${chunk.toString().trim()}`,
+    });
+  });
+
+  child.stderr?.on("data", (chunk: Buffer) => {
+    appendDebugLog(logFilePath, {
+      scope: "mcp",
+      message: `stderr: ${chunk.toString().trim()}`,
+    });
+  });
+
+  child.on("error", (err) => {
+    appendDebugLog(logFilePath, {
+      scope: "mcp",
+      message: "MCP server process error",
+      error: err,
+    });
+  });
+
+  child.on("exit", (code, signal) => {
+    appendDebugLog(logFilePath, {
+      scope: "mcp",
+      message: `MCP server exited (code=${code}, signal=${signal})`,
+    });
+    mcpServers.delete(cwd);
+  });
+
+  return {
+    close: async () => {
+      if (child.exitCode !== null || child.killed) return;
+      appendDebugLog(logFilePath, {
+        scope: "mcp",
+        message: "Shutting down MCP server",
+      });
+      child.kill("SIGTERM");
+    },
+  };
+}
+
 export const ragPlugin: Plugin = async (
   input: PluginInput,
   _options?: Record<string, unknown>
@@ -852,6 +936,21 @@ export const ragPlugin: Plugin = async (
       });
     }
     backgroundIndexers.delete(input.directory);
+  }
+
+  // Close existing MCP server for this directory if one exists (e.g. on plugin reload)
+  const existingMcp = mcpServers.get(input.directory);
+  if (existingMcp) {
+    try {
+      await existingMcp.close();
+    } catch (err) {
+      appendDebugLog(logFilePath, {
+        scope: "plugin",
+        message: "Failed to close existing MCP server",
+        error: err,
+      });
+    }
+    mcpServers.delete(input.directory);
   }
 
   appendDebugLog(logFilePath, {
@@ -916,6 +1015,14 @@ export const ragPlugin: Plugin = async (
     });
 
     backgroundIndexers.set(input.directory, indexer);
+  }
+
+  // Auto-start MCP server if enabled (skip in temp dirs / test environments)
+  const mcpCfg = effectiveCfg.mcp ?? { enabled: true };
+  const isTempDir = path.resolve(input.directory).startsWith(tmpdir());
+  if (mcpCfg.enabled && !isTempDir) {
+    const mcpInstance = startMcpServerProcess(input.directory, logFilePath);
+    mcpServers.set(input.directory, mcpInstance);
   }
 
   return hooks;

@@ -231,17 +231,6 @@ function buildOpencodeConfig(existing: Record<string, unknown> | undefined): Rec
   // dependencies like canvas) and produce "Plugin export is not a function".
   delete next.plugin;
 
-  // Register MCP server for semantic code retrieval
-  next.mcp = {
-    ...(next.mcp as Record<string, unknown> | undefined ?? {}),
-    "opencode-rag": {
-      type: "local",
-      command: ["npx", "-y", "opencode-rag-plugin", "mcp"],
-      cwd: ".",
-      enabled: true,
-    },
-  };
-
   return next;
 }
 
