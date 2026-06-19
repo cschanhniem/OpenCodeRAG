@@ -186,6 +186,10 @@ if ($args[0] -eq "uninstall") {
     info "Removing .tgz package files..."
     cleanup_tgz
     
+    # Remove stale OpenCode cache (npm-published version)
+    info "Removing OpenCode cache..."
+    Remove-Item -Path "$env:USERPROFILE\.cache\opencode\packages\$PLUGIN_NAME-*" -Recurse -Force -ErrorAction SilentlyContinue
+    
     # Remove from OpenCode config
     info "Updating OpenCode configuration..."
     remove_from_config

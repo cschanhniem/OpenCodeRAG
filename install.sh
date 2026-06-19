@@ -121,6 +121,10 @@ if [[ "${1:-}" = "uninstall" ]]; then
   info "Removing .tgz package files..."
   cleanup_tgz
   
+  # Remove stale OpenCode cache (npm-published version)
+  info "Removing OpenCode cache..."
+  rm -rf "$HOME/.cache/opencode/packages/$PLUGIN_NAME-"* 2>/dev/null || true
+  
   # Remove from OpenCode config
   info "Updating OpenCode configuration..."
   remove_from_config
