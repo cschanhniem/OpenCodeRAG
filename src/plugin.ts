@@ -823,14 +823,15 @@ function resolveMcpCliEntry(): string | null {
 
 function startMcpServerProcess(
   cwd: string,
-  logFilePath: string
+  logFilePath: string,
+  logLevel?: string
 ): { close: () => Promise<void> } {
   const cliEntry = resolveMcpCliEntry();
   if (!cliEntry) {
     appendDebugLog(logFilePath, {
       scope: "mcp",
       message: "Could not resolve MCP CLI entry point; skipping autostart",
-    });
+    }, logLevel);
     return { close: async () => {} };
   }
 
@@ -841,7 +842,7 @@ function startMcpServerProcess(
   appendDebugLog(logFilePath, {
     scope: "mcp",
     message: `Starting MCP server: ${process.execPath} ${args.join(" ")}`,
-  });
+  }, logLevel);
 
   const child = spawn(process.execPath, args, {
     cwd,
@@ -853,14 +854,14 @@ function startMcpServerProcess(
     appendDebugLog(logFilePath, {
       scope: "mcp",
       message: `stdout: ${chunk.toString().trim()}`,
-    });
+    }, logLevel);
   });
 
   child.stderr?.on("data", (chunk: Buffer) => {
     appendDebugLog(logFilePath, {
       scope: "mcp",
       message: `stderr: ${chunk.toString().trim()}`,
-    });
+    }, logLevel);
   });
 
   child.on("error", (err) => {
@@ -868,7 +869,7 @@ function startMcpServerProcess(
       scope: "mcp",
       message: "MCP server process error",
       error: err,
-    });
+    }, logLevel);
   });
 
   child.on("exit", (code, signal) => {
@@ -1014,6 +1015,7 @@ export const ragPlugin: Plugin = async (
       store,
       embedder,
       logFilePath,
+      logLevel,
       keywordIndex,
       descriptionProvider,
     });
@@ -1025,7 +1027,7 @@ export const ragPlugin: Plugin = async (
   const mcpCfg = effectiveCfg.mcp ?? { enabled: true };
   const isTempDir = path.resolve(input.directory).startsWith(tmpdir());
   if (mcpCfg.enabled && !isTempDir) {
-    const mcpInstance = startMcpServerProcess(input.directory, logFilePath);
+    const mcpInstance = startMcpServerProcess(input.directory, logFilePath, logLevel);
     mcpServers.set(input.directory, mcpInstance);
   }
 
