@@ -22,6 +22,7 @@ export interface CreateBackgroundIndexerOptions {
   store: VectorStore;
   embedder: EmbeddingProvider;
   logFilePath: string;
+  logLevel?: string;
   keywordIndex?: KeywordIndex;
   descriptionProvider?: DescriptionProvider;
 }
@@ -44,7 +45,7 @@ function writeWatcherStatus(storePath: string, status: WatcherStatus): void {
 }
 
 export function createBackgroundIndexer(options: CreateBackgroundIndexerOptions): BackgroundIndexer {
-  const { cwd, storePath, config, store, embedder, logFilePath, keywordIndex, descriptionProvider } = options;
+  const { cwd, storePath, config, store, embedder, logFilePath, logLevel, keywordIndex, descriptionProvider } = options;
 
   writeWatcherStatus(storePath, { running: false, lastRunAt: undefined });
 
@@ -64,8 +65,8 @@ export function createBackgroundIndexer(options: CreateBackgroundIndexerOptions)
         keywordIndex,
         descriptionProvider,
         logger: {
-          info: (message) => appendDebugLog(logFilePath, { scope: "autoIndex", message }),
-          warn: (message) => appendDebugLog(logFilePath, { scope: "autoIndex", message }),
+          info: (message) => appendDebugLog(logFilePath, { scope: "autoIndex", message }, logLevel),
+          warn: (message) => appendDebugLog(logFilePath, { scope: "autoIndex", message }, logLevel),
         },
       });
       updateStatus({ running: false, lastRunAt: Date.now() });
@@ -75,7 +76,7 @@ export function createBackgroundIndexer(options: CreateBackgroundIndexerOptions)
           scope: "autoIndex",
           message: "Corruption detected; clearing store and rebuilding",
           error: err,
-        });
+        }, logLevel);
         try {
           await store.clear();
           keywordIndex?.clear();
@@ -88,8 +89,8 @@ export function createBackgroundIndexer(options: CreateBackgroundIndexerOptions)
             keywordIndex,
             descriptionProvider,
             logger: {
-              info: (message) => appendDebugLog(logFilePath, { scope: "autoIndex", message }),
-              warn: (message) => appendDebugLog(logFilePath, { scope: "autoIndex", message }),
+              info: (message) => appendDebugLog(logFilePath, { scope: "autoIndex", message }, logLevel),
+              warn: (message) => appendDebugLog(logFilePath, { scope: "autoIndex", message }, logLevel),
             },
           });
         } catch (retryErr) {
@@ -97,14 +98,14 @@ export function createBackgroundIndexer(options: CreateBackgroundIndexerOptions)
             scope: "autoIndex",
             message: "Rebuild after corruption also failed",
             error: retryErr,
-          });
+          }, logLevel);
         }
       } else {
         appendDebugLog(logFilePath, {
           scope: "autoIndex",
           message: "Watch reindex pass failed",
           error: err,
-        });
+        }, logLevel);
       }
       updateStatus({ running: false, lastRunAt: Date.now() });
     }
@@ -116,7 +117,7 @@ export function createBackgroundIndexer(options: CreateBackgroundIndexerOptions)
       scope: "autoIndex",
       message: "Initial index pass failed",
       error: err,
-    });
+    }, logLevel);
   });
 
   const autoIndexCfg = config.openCode.autoIndex ?? { enabled: true, debounceMs: 5000, intervalMs: 300000 };
@@ -128,7 +129,7 @@ export function createBackgroundIndexer(options: CreateBackgroundIndexerOptions)
         scope: "autoIndex",
         message: `Watch reindex failed: ${message}`,
         error,
-      });
+      }, logLevel);
     },
     autoIndexCfg.debounceMs
   );
@@ -150,7 +151,7 @@ export function createBackgroundIndexer(options: CreateBackgroundIndexerOptions)
       scope: "autoIndex",
       message: `Watcher error: ${(error as Error).message}`,
       error,
-    });
+    }, logLevel);
   });
 
   const periodicTimer = setInterval(() => {
