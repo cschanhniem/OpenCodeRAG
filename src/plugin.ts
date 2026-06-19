@@ -917,13 +917,13 @@ export const ragPlugin: Plugin = async (
     appendDebugLog(logFilePath, {
       scope: "plugin",
       message: `Resolved OpenAI API key for embedding from ${process.env.OPENAI_API_KEY ? "OPENAI_API_KEY env var" : "OpenCode provider config"}`,
-    });
+    }, logLevel);
   }
   if (!hadDescriptionKey && effectiveCfg.description?.apiKey) {
     appendDebugLog(logFilePath, {
       scope: "plugin",
       message: `Resolved OpenAI API key for description from ${process.env.OPENAI_API_KEY ? "OPENAI_API_KEY env var" : "OpenCode provider config"}`,
-    });
+    }, logLevel);
   }
 
   // Close existing indexer for this directory if one exists (e.g. on plugin reload)
@@ -936,7 +936,7 @@ export const ragPlugin: Plugin = async (
         scope: "plugin",
         message: "Failed to close existing background indexer",
         error: err,
-      });
+      }, logLevel);
     }
     backgroundIndexers.delete(input.directory);
   }
@@ -951,7 +951,7 @@ export const ragPlugin: Plugin = async (
         scope: "plugin",
         message: "Failed to close existing MCP server",
         error: err,
-      });
+      }, logLevel);
     }
     mcpServers.delete(input.directory);
   }
