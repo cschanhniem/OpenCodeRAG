@@ -51,6 +51,7 @@ interface CliOptions {
   topK?: string;
   offset?: string;
   limit?: string;
+  explain?: boolean;
 }
 
 interface InitOptions {
@@ -565,6 +566,7 @@ program
   .argument("<query>", "natural language query")
   .option("-c, --config <path>", "path to config file")
   .option("-n, --top-k <number>", "number of results", "10")
+  .option("--explain", "show hybrid score breakdown")
   .action(async (query: string, options: CliOptions) => {
     const started = Date.now();
 
@@ -592,7 +594,14 @@ program
       const minScore = config.retrieval.minScore;
       const keywordIndex = await loadCliKeywordIndex(path.resolve(cwd, config.vectorStore.path), logFilePath);
       const hybridCfg = config.retrieval.hybridSearch;
-      const rawResults = await retrieve(query, embedder, store, { topK, minScore, keywordIndex, keywordWeight: hybridCfg?.keywordWeight, queryPrefix: config.embedding.queryPrefix });
+      const rawResults = await retrieve(query, embedder, store, {
+        topK,
+        minScore,
+        keywordIndex,
+        keywordWeight: hybridCfg?.keywordWeight,
+        queryPrefix: config.embedding.queryPrefix,
+        explain: options.explain ?? false,
+      });
       const results = dedupeResults(rawResults);
 
       if (results.length === 0) {
@@ -606,6 +615,13 @@ program
       for (const r of results) {
         logCliInfo(logFilePath, "query", `  ${c.file(r.chunk.metadata.filePath)}:${c.value(String(r.chunk.metadata.startLine))}-${c.value(String(r.chunk.metadata.endLine))}`);
         logCliInfo(logFilePath, "query", `  ${c.label("Score:")} ${c.score(r.score.toFixed(4))}`);
+        if (r.explanation) {
+          const sb = r.explanation.scoreBreakdown;
+          logCliInfo(logFilePath, "query", `  ${c.label("  Vector:")} ${c.score(sb.rawVectorScore.toFixed(4))}  ${c.label("Keyword:")} ${c.score(sb.rawKeywordScore.toFixed(4))}  ${c.label("KW weight:")} ${sb.keywordWeight.toFixed(2)}`);
+          if (r.explanation.matchedTerms && r.explanation.matchedTerms.length > 0) {
+            logCliInfo(logFilePath, "query", `  ${c.label("  Matched:")} ${c.lang(r.explanation.matchedTerms.join(", "))}`);
+          }
+        }
         logCliInfo(logFilePath, "query", `  ${pc.dim(r.chunk.content.slice(0, 200).replace(/\n/g, "\n  "))}`);
       }
     } catch (err) {

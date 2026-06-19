@@ -243,6 +243,7 @@ export function createSearchSemanticTool(
       pathHints: tool.schema.array(tool.schema.string().min(1)).max(10).optional(),
       languageHints: tool.schema.array(tool.schema.string().min(1)).max(10).optional(),
       topK: tool.schema.number().int().min(1).max(25).optional(),
+      explain: tool.schema.boolean().optional(),
     },
 
     async execute(args) {
@@ -269,6 +270,7 @@ export function createSearchSemanticTool(
           keywordIndex,
           keywordWeight: cfg.retrieval.hybridSearch?.keywordWeight,
           queryPrefix: cfg.embedding.queryPrefix,
+          explain: args.explain ?? false,
         };
 
         const results = await retrieveFn(query, embedder, store, retrieveOpts);
@@ -285,8 +287,12 @@ export function createSearchSemanticTool(
         const formatted = results.map((r) => {
           const m = r.chunk.metadata;
           const desc = r.chunk.description ? `> ${r.chunk.description}\n` : "";
+          const explain = r.explanation && args.explain
+            ? `> _Vector: ${r.explanation.scoreBreakdown.rawVectorScore.toFixed(4)} | Keyword: ${r.explanation.scoreBreakdown.rawKeywordScore.toFixed(4)} | KW weight: ${r.explanation.scoreBreakdown.keywordWeight.toFixed(2)}${r.explanation.matchedTerms?.length ? ` | Matched: ${r.explanation.matchedTerms.join(", ")}` : ""}_\n`
+            : "";
           return [
             `**${m.filePath}:${m.startLine}-${m.endLine}** (${m.language}, relevance: ${r.score.toFixed(2)})`,
+            explain,
             desc,
             "```" + m.language,
             r.chunk.content,

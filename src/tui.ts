@@ -722,7 +722,7 @@ const plugin: TuiPluginModule & { id: string } = {
     const version = meta.version ?? getVersion();
     let cachedStatus: RagStatus = DEFAULT_STATUS;
     let lastRefresh = 0;
-    const REFRESH_INTERVAL_MS = 30_000;
+    const REFRESH_INTERVAL_MS = Number(process.env.OPENCODE_RAG_TUI_REFRESH_MS) || 3600000;
 
     // Load tui config for keybinding display
     let tuiConfig: { fileListKeybinding: string; chunksKeybinding: string } | undefined;

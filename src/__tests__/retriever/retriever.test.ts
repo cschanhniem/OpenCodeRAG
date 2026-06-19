@@ -206,4 +206,130 @@ describe("retrieve", () => {
       assert.equal(results.length, 0);
     });
   });
+
+  describe("explain", () => {
+    function makeKI(chunks: SearchResult[]): KeywordIndexInterface {
+      const ki = new KeywordIndex();
+      ki.addChunks(chunks.map((r) => r.chunk));
+      return ki;
+    }
+
+    it("omits explanation when explain is not set", async () => {
+      const embedder = makeEmbedder([[0.1, 0.2, 0.3]]);
+      const store = makeStore([
+        { score: 0.9, chunk: { id: "a", content: "apple banana", metadata: { filePath: "a.ts", startLine: 1, endLine: 2, language: "ts" } } },
+      ]);
+      const results = await retrieve("apple", embedder, store);
+      assert.equal(results.length, 1);
+      assert.equal(results[0]!.explanation, undefined);
+    });
+
+    it("omits explanation when explain is false", async () => {
+      const embedder = makeEmbedder([[0.1, 0.2, 0.3]]);
+      const store = makeStore([
+        { score: 0.9, chunk: { id: "a", content: "apple banana", metadata: { filePath: "a.ts", startLine: 1, endLine: 2, language: "ts" } } },
+      ]);
+      const results = await retrieve("apple", embedder, store, { explain: false });
+      assert.equal(results.length, 1);
+      assert.equal(results[0]!.explanation, undefined);
+    });
+
+    it("populates explanation when explain is true (vector-only)", async () => {
+      const embedder = makeEmbedder([[0.1, 0.2, 0.3]]);
+      const store = makeStore([
+        { score: 0.8, chunk: { id: "a", content: "test content", metadata: { filePath: "a.ts", startLine: 1, endLine: 2, language: "ts" } } },
+      ]);
+      const results = await retrieve("test", embedder, store, { explain: true, minScore: 0 });
+      assert.equal(results.length, 1);
+      const exp = results[0]!.explanation;
+      assert.notEqual(exp, undefined);
+      assert.equal(exp!.scoreBreakdown.vectorScore, 0.8);
+      assert.equal(exp!.scoreBreakdown.rawVectorScore, 0.8);
+      assert.equal(exp!.scoreBreakdown.keywordScore, 0);
+      assert.equal(exp!.scoreBreakdown.rawKeywordScore, 0);
+      assert.equal(exp!.scoreBreakdown.keywordWeight, 0.4);
+      assert.equal(exp!.matchedTerms, undefined);
+    });
+
+    it("populates explanation with keyword scores when keywordIndex provided", async () => {
+      const embedder = makeEmbedder([[0.1, 0.2, 0.3]]);
+      const store = makeStore([
+        { score: 0.8, chunk: { id: "a", content: "apple banana", metadata: { filePath: "a.ts", startLine: 1, endLine: 2, language: "ts" } } },
+      ]);
+      const ki = makeKI([
+        { score: 0, chunk: { id: "b", content: "apple banana cherry", metadata: { filePath: "b.ts", startLine: 1, endLine: 2, language: "ts" } } },
+      ]);
+      const results = await retrieve("apple banana", embedder, store, { keywordIndex: ki, keywordWeight: 0.4, explain: true, minScore: 0 });
+      assert.ok(results.length >= 1);
+      const chunkA = results.find((r) => r.chunk.id === "a");
+      assert.notEqual(chunkA, undefined);
+      const exp = chunkA!.explanation;
+      assert.notEqual(exp, undefined);
+      assert.equal(exp!.scoreBreakdown.vectorScore, 0.8);
+      assert.equal(exp!.scoreBreakdown.keywordWeight, 0.4);
+      assert.ok(typeof exp!.scoreBreakdown.keywordScore === "number");
+      assert.ok(typeof exp!.scoreBreakdown.rawKeywordScore === "number");
+    });
+
+    it("includes matchedTerms when keywordIndex matches the chunk", async () => {
+      const embedder = makeEmbedder([[0.1, 0.2, 0.3]]);
+      const store = makeStore([
+        { score: 0.8, chunk: { id: "a", content: "apple banana", metadata: { filePath: "a.ts", startLine: 1, endLine: 2, language: "ts" } } },
+      ]);
+      const ki = makeKI([
+        { score: 0, chunk: { id: "a", content: "apple banana", metadata: { filePath: "a.ts", startLine: 1, endLine: 2, language: "ts" } } },
+      ]);
+      const results = await retrieve("apple banana", embedder, store, { keywordIndex: ki, keywordWeight: 0.4, explain: true, minScore: 0 });
+      const chunkA = results.find((r) => r.chunk.id === "a");
+      assert.notEqual(chunkA, undefined);
+      const exp = chunkA!.explanation;
+      assert.notEqual(exp, undefined);
+      assert.ok(Array.isArray(exp!.matchedTerms));
+      assert.ok(exp!.matchedTerms!.length > 0);
+      assert.ok(exp!.matchedTerms!.includes("apple"));
+      assert.ok(exp!.matchedTerms!.includes("banana"));
+    });
+
+    it("omits matchedTerms when keywordIndex has no matches for chunk", async () => {
+      const embedder = makeEmbedder([[0.1, 0.2, 0.3]]);
+      const store = makeStore([
+        { score: 0.8, chunk: { id: "a", content: "unrelated content", metadata: { filePath: "a.ts", startLine: 1, endLine: 2, language: "ts" } } },
+      ]);
+      const ki = makeKI([
+        { score: 0, chunk: { id: "b", content: "apple banana", metadata: { filePath: "b.ts", startLine: 1, endLine: 2, language: "ts" } } },
+      ]);
+      const results = await retrieve("apple banana", embedder, store, { keywordIndex: ki, keywordWeight: 0.4, explain: true, minScore: 0 });
+      const chunkA = results.find((r) => r.chunk.id === "a");
+      assert.notEqual(chunkA, undefined);
+      const exp = chunkA!.explanation;
+      assert.notEqual(exp, undefined);
+      assert.equal(exp!.matchedTerms, undefined);
+    });
+
+    it("omits matchedTerms when no keywordIndex provided", async () => {
+      const embedder = makeEmbedder([[0.1, 0.2, 0.3]]);
+      const store = makeStore([
+        { score: 0.8, chunk: { id: "a", content: "apple banana", metadata: { filePath: "a.ts", startLine: 1, endLine: 2, language: "ts" } } },
+      ]);
+      const results = await retrieve("apple banana", embedder, store, { explain: true, minScore: 0 });
+      const exp = results[0]!.explanation;
+      assert.notEqual(exp, undefined);
+      assert.equal(exp!.matchedTerms, undefined);
+    });
+
+    it("computes correct combined score in explanation", async () => {
+      const embedder = makeEmbedder([[0.1, 0.2, 0.3]]);
+      const store = makeStore([
+        { score: 0.6, chunk: { id: "a", content: "apple banana", metadata: { filePath: "a.ts", startLine: 1, endLine: 2, language: "ts" } } },
+      ]);
+      const ki = makeKI([
+        { score: 0, chunk: { id: "a", content: "apple banana", metadata: { filePath: "a.ts", startLine: 1, endLine: 2, language: "ts" } } },
+      ]);
+      const results = await retrieve("apple banana", embedder, store, { keywordIndex: ki, keywordWeight: 0.4, explain: true, minScore: 0 });
+      const r = results[0]!;
+      const exp = r.explanation!;
+      const expectedCombined = (1 - 0.4) * exp.scoreBreakdown.vectorScore + 0.4 * exp.scoreBreakdown.keywordScore;
+      assert.ok(Math.abs(r.score - expectedCombined) < 1e-10, `expected ${expectedCombined}, got ${r.score}`);
+    });
+  });
 });

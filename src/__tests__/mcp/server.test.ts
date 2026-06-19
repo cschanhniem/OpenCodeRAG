@@ -106,6 +106,7 @@ function makeKeywordIndex(results: SearchResult[]): KeywordIndex {
     clear: () => {},
     count: () => results.length,
     save: async () => {},
+    getMatchedTerms: (_query: string, _chunkId: string) => [],
   };
 }
 

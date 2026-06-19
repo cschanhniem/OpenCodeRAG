@@ -72,6 +72,18 @@ export class KeywordIndex {
     }
   }
 
+  getMatchedTerms(query: string, chunkId: string): string[] {
+    const queryTokens = tokenize(query);
+    const matched: string[] = [];
+    for (const token of queryTokens) {
+      const docs = this.invertedIndex.get(token);
+      if (docs && docs.has(chunkId)) {
+        matched.push(token);
+      }
+    }
+    return matched;
+  }
+
   removeByFilePath(filePath: string): void {
     const idsToRemove: string[] = [];
 

@@ -283,10 +283,11 @@ async function retrieveContext(
   minScore = 0,
   keywordIndex?: KeywordIndex,
   keywordWeight?: number,
-  queryPrefix?: string
+  queryPrefix?: string,
+  explain = false
 ): Promise<SearchResult[]> {
   if (query.trim().length === 0) return [];
-  return retrieveFn(query, embedder, store, { topK, minScore, keywordIndex, keywordWeight, queryPrefix });
+  return retrieveFn(query, embedder, store, { topK, minScore, keywordIndex, keywordWeight, queryPrefix, explain });
 }
 
 async function loadRetrievedResults(
@@ -298,13 +299,14 @@ async function loadRetrievedResults(
   topK = cfg.retrieval.topK,
   extraQuery?: string,
   keywordIndex?: KeywordIndex,
-  queryPrefix?: string
+  queryPrefix?: string,
+  explain = false
 ): Promise<SearchResult[]> {
   const minScore = cfg.retrieval.minScore;
   const kw = cfg.retrieval.hybridSearch?.keywordWeight;
-  const primaryResults = await retrieveContext(query, embedder, store, topK, retrieveFn, minScore, keywordIndex, kw, queryPrefix);
+  const primaryResults = await retrieveContext(query, embedder, store, topK, retrieveFn, minScore, keywordIndex, kw, queryPrefix, explain);
   const extraResults = extraQuery
-    ? await retrieveContext(extraQuery, embedder, store, topK, retrieveFn, minScore, keywordIndex, kw, queryPrefix)
+    ? await retrieveContext(extraQuery, embedder, store, topK, retrieveFn, minScore, keywordIndex, kw, queryPrefix, explain)
     : [];
 
   return dedupeResults([...primaryResults, ...extraResults])
@@ -419,7 +421,7 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
   // Runtime overrides for live config editing from TUI
   let cachedOverrides = loadRuntimeOverrides(options.storePath);
   let overridesLastCheck = 0;
-  const OVERRIDES_TTL_MS = 5000;
+  const OVERRIDES_TTL_MS = Number(process.env.OPENCODE_RAG_OVERRIDES_TTL_MS) || 3600000;
 
   function getEffectiveCfg(): RagConfig {
     if (Date.now() - overridesLastCheck > OVERRIDES_TTL_MS) {
@@ -453,6 +455,7 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
       pathHints: tool.schema.array(tool.schema.string().min(1)).max(10).optional(),
       languageHints: tool.schema.array(tool.schema.string().min(1)).max(10).optional(),
       topK: tool.schema.number().int().min(1).max(25).optional(),
+      explain: tool.schema.boolean().optional(),
     },
     async execute(args) {
       try {
@@ -484,7 +487,8 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
           languageHints: args.languageHints,
         });
         const topK = args.topK ?? effectiveCfg.retrieval.topK;
-        const results = await loadRetrievedResults(query, embedder, store, effectiveCfg, dependencies.retrieve, topK, undefined, keywordIndex, effectiveCfg.embedding.queryPrefix);
+        const explain = args.explain ?? false;
+        const results = await loadRetrievedResults(query, embedder, store, effectiveCfg, dependencies.retrieve, topK, undefined, keywordIndex, effectiveCfg.embedding.queryPrefix, explain);
 
         if (results.length === 0) {
           appendVerboseLog(options.logFilePath, CONTEXT_TOOL_NAME, "retrieval completed with no matching chunks", {

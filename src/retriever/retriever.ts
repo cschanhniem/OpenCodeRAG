@@ -1,4 +1,4 @@
-import type { EmbeddingProvider, KeywordIndex, VectorStore, SearchResult } from "../core/interfaces.js";
+import type { EmbeddingProvider, KeywordIndex, VectorStore, SearchResult, SearchExplanation } from "../core/interfaces.js";
 
 export interface RetrieveOptions {
   topK?: number;
@@ -6,6 +6,7 @@ export interface RetrieveOptions {
   keywordIndex?: KeywordIndex;
   keywordWeight?: number;
   queryPrefix?: string;
+  explain?: boolean;
 }
 
 export async function retrieve(
@@ -38,40 +39,92 @@ export async function retrieve(
     }
 
     if (keywordResults.length === 0) {
-      return vectorResults.filter((r) => r.score >= minScore);
+      const filtered = vectorResults.filter((r) => r.score >= minScore);
+      if (options.explain) {
+        const kw = options.keywordWeight ?? 0.4;
+        for (const r of filtered) {
+          r.explanation = {
+            scoreBreakdown: {
+              vectorScore: r.score,
+              keywordScore: 0,
+              rawVectorScore: r.score,
+              rawKeywordScore: 0,
+              keywordWeight: kw,
+            },
+          };
+        }
+      }
+      return filtered;
     }
 
     const kwTopScore = keywordResults.length > 0 ? keywordResults[0]!.score : 1;
 
-    const combined = new Map<string, { chunk: SearchResult["chunk"]; vScore: number; kScore: number }>();
+    const combined = new Map<string, {
+      chunk: SearchResult["chunk"];
+      vScore: number;
+      kScore: number;
+      rawVScore: number;
+      rawKScore: number;
+    }>();
 
     for (const r of vectorResults) {
       combined.set(r.chunk.id, {
         chunk: r.chunk,
         vScore: r.score,
         kScore: 0,
+        rawVScore: r.score,
+        rawKScore: 0,
       });
     }
 
     for (const r of keywordResults) {
       const existing = combined.get(r.chunk.id);
+      const normalizedK = kwTopScore > 0 ? r.score / kwTopScore : 0;
       if (existing) {
-        existing.kScore = kwTopScore > 0 ? r.score / kwTopScore : 0;
+        existing.kScore = normalizedK;
+        existing.rawKScore = r.score;
       } else {
         combined.set(r.chunk.id, {
           chunk: r.chunk,
           vScore: 0,
-          kScore: kwTopScore > 0 ? r.score / kwTopScore : 0,
+          kScore: normalizedK,
+          rawVScore: 0,
+          rawKScore: r.score,
         });
       }
     }
 
     const kw = options.keywordWeight ?? 0.4;
     const combinedResults: SearchResult[] = [...combined.values()]
-      .map((entry) => ({
-        chunk: entry.chunk,
-        score: (1 - kw) * entry.vScore + kw * entry.kScore,
-      }))
+      .map((entry) => {
+        const result: SearchResult = {
+          chunk: entry.chunk,
+          score: (1 - kw) * entry.vScore + kw * entry.kScore,
+        };
+
+        if (options.explain) {
+          const explanation: SearchExplanation = {
+            scoreBreakdown: {
+              vectorScore: entry.vScore,
+              keywordScore: entry.kScore,
+              rawVectorScore: entry.rawVScore,
+              rawKeywordScore: entry.rawKScore,
+              keywordWeight: kw,
+            },
+          };
+
+          if (options.keywordIndex && entry.rawKScore > 0) {
+            const terms = options.keywordIndex.getMatchedTerms(query, entry.chunk.id);
+            if (terms.length > 0) {
+              explanation.matchedTerms = terms;
+            }
+          }
+
+          result.explanation = explanation;
+        }
+
+        return result;
+      })
       .filter((r) => r.score >= minScore)
       .sort((a, b) => b.score - a.score)
       .slice(0, topK);

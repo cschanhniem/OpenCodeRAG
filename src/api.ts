@@ -20,6 +20,7 @@ export interface SearchOptions {
   keywordWeight?: number;
   pathHints?: string[];
   languageHints?: string[];
+  explain?: boolean;
 }
 
 export interface IndexOptions {
@@ -119,6 +120,7 @@ export async function search(
     keywordIndex,
     keywordWeight: options.keywordWeight ?? cfg.retrieval.hybridSearch?.keywordWeight ?? 0.4,
     queryPrefix: cfg.embedding.queryPrefix,
+    explain: options.explain,
   } satisfies RetrieveOptions);
 }
 

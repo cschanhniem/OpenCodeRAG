@@ -26,7 +26,7 @@
 - [ ] Query rewriting / multi-variant expansion
 - [ ] Context window optimization (dedup, merge adjacent chunks)
 - [ ] Better ranking/diversity for `chat.message` file suggestions
-- [ ] Retrieval debug surfaces (explain why files/chunks were returned)
+- [x] Retrieval debug surfaces (explain why files/chunks were returned) — `SearchExplanation` type, `getMatchedTerms()`, `--explain` CLI flag, `explain` param on API/MCP/plugin tools
 - [ ] Persistent query cache (disk-based, not just in-memory)
 
 ## Mid Term
@@ -171,8 +171,7 @@ install/release automation.
 1. LLM-based re-ranking for retrieval precision
 2. Query rewriting and multi-variant expansion
 3. Context window optimization (dedup, merge, diversity ranking)
-4. Retrieval debug/explainability tools
-5. Persistent query cache across restarts
-6. Cross-file code graph integration (imports, call graph)
-7. Index export/import for CI/CD and team sharing
-8. Git-aware incremental indexing
+4. Persistent query cache across restarts
+5. Cross-file code graph integration (imports, call graph)
+6. Index export/import for CI/CD and team sharing
+7. Git-aware incremental indexing

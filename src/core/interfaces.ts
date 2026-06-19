@@ -16,9 +16,21 @@ export interface DescriptionProvider {
   generateBatchDescriptions(chunks: Chunk[]): Promise<Map<string, string>>;
 }
 
+export interface SearchExplanation {
+  scoreBreakdown: {
+    vectorScore: number;
+    keywordScore: number;
+    rawVectorScore: number;
+    rawKeywordScore: number;
+    keywordWeight: number;
+  };
+  matchedTerms?: string[];
+}
+
 export interface SearchResult {
   chunk: Chunk;
   score: number;
+  explanation?: SearchExplanation;
 }
 
 export interface Chunker {
@@ -36,6 +48,7 @@ export interface KeywordIndex {
   addChunks(chunks: Chunk[]): void;
   removeByFilePath(filePath: string): void;
   search(query: string, topK: number): SearchResult[];
+  getMatchedTerms(query: string, chunkId: string): string[];
   clear(): void;
   count(): number;
   save(filePath?: string): Promise<void>;
