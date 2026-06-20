@@ -103,7 +103,7 @@ export function applyRuntimeOverrides(
       if (overrides.openCode.autoIndex.debounceMs !== undefined) merged.openCode.autoIndex.debounceMs = overrides.openCode.autoIndex.debounceMs;
     }
     if (overrides.openCode.autoInject) {
-      if (!merged.openCode.autoInject) merged.openCode.autoInject = { enabled: true, minScore: 0.85, maxChunks: 5, maxTokens: 3000, contentType: "file_paths" };
+      if (!merged.openCode.autoInject) merged.openCode.autoInject = { enabled: true, minScore: 0.75, maxChunks: 10, maxTokens: 3000, contentType: "file_paths" };
       if (overrides.openCode.autoInject.enabled !== undefined) merged.openCode.autoInject.enabled = overrides.openCode.autoInject.enabled;
       if (overrides.openCode.autoInject.minScore !== undefined) merged.openCode.autoInject.minScore = overrides.openCode.autoInject.minScore;
       if (overrides.openCode.autoInject.maxChunks !== undefined) merged.openCode.autoInject.maxChunks = overrides.openCode.autoInject.maxChunks;

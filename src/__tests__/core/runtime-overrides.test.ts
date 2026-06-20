@@ -229,7 +229,7 @@ describe("applyRuntimeOverrides", () => {
     assert.equal(result.retrieval.topK, 15);
     assert.equal(result.retrieval.minScore, 0.6);
     assert.equal(result.openCode.autoInject?.enabled, false);
-    assert.equal(result.openCode.autoInject?.maxChunks, 5);
+    assert.equal(result.openCode.autoInject?.maxChunks, 10);
   });
 
   it("does not mutate the original config", () => {

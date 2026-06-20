@@ -27,6 +27,18 @@ Before ANY code task, you MUST call these tools — not optionally:
 
 **Workflow:** skeleton → find_usages → search → read specific lines → edit
 
+**Decision tree — ALWAYS follow this order:**
+1. User mentions code behavior/architecture → `search_semantic(query)`
+2. User mentions a file path → `get_file_skeleton(filePath)` THEN `read` on specific lines
+3. User mentions a function/class/variable to edit → `find_usages(symbolName)` THEN `search_semantic` THEN `edit`
+4. User asks a code question → `search_semantic` to gather context before answering
+
+**Anti-patterns — NEVER do these:**
+- Reading full files without calling `get_file_skeleton` first (wastes tokens)
+- Editing a function without calling `find_usages` first (breaks call sites)
+- Answering code questions without calling `search_semantic` first (you guess at behavior)
+- Using `grep`/`glob` when `search_semantic` would find the answer faster
+
 ## Module Structure
 
 ```
@@ -88,7 +100,7 @@ npm run cli           # tsx src/cli.ts
 
 ### Plugin
 - Registers: `search_semantic`, `get_file_skeleton`, `find_usages`
-- Auto-injection: minScore ≥ 0.85, maxChunks 5, maxTokens 3000, contentType "file_paths"
+- Auto-injection: minScore ≥ 0.75, maxChunks 10, maxTokens 3000, contentType "file_paths"
 - TUI hotkeys: Ctrl+Enter (file list), Ctrl+Alt+Enter (chunks); use `tui.prompt.append` event, never dialogs
 - Prompt ref: render `api.ui.Prompt()` in slot, wrap ref callback — Solid.js slot props are read-only proxies
 - Read-override: `openCode.readOverride` shadows built-in read tool
