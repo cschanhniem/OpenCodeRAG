@@ -25,7 +25,7 @@ opencode-rag init
 # 3. Index your workspace
 opencode-rag index
 
-# 4. Search
+# 4. CLI search test
 opencode-rag query "authentication middleware"
 ```
 
