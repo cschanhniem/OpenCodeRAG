@@ -79,21 +79,7 @@ Launch with `opencode-rag ui`. See [Web UI documentation](doc/webui.md) for deta
 
 OpenCodeRAG can index image files (PNG, JPEG, WebP, etc.) by sending them to a vision-capable LLM and storing the generated text descriptions as searchable vector chunks. This makes visual assets discoverable via natural language queries (e.g., "login screen screenshot", "architecture diagram").
 
-**Supported providers:** Ollama (`llama3.2-vision`, `minicpm-v`, etc.), OpenAI (`gpt-4o-mini`), Anthropic (`claude-3-haiku`), Google Gemini.
-
-```json
-{
-  "imageDescription": {
-    "enabled": true,
-    "provider": "ollama",
-    "model": "llama3.2-vision",
-    "baseUrl": "http://localhost:11434/api",
-    "timeoutMs": 60000,
-    "prompt": "Describe this image in detail. Include what it shows, any text content, layout, colors, objects, and the overall purpose or context."
-  }
-}
-```
-
+**Supported providers:** Ollama, OpenAI, Anthropic, Google Gemini compatible providers.
 **Disabled by default** — enable in `opencode-rag.json` to opt in.
 
 ## MCP Server
