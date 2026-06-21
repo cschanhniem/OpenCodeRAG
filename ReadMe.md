@@ -25,7 +25,7 @@ opencode-rag init
 # 3. Index your workspace
 opencode-rag index
 
-# 4. Search
+# 4. CLI search test
 opencode-rag query "authentication middleware"
 ```
 
@@ -155,7 +155,7 @@ Token counting uses tiktoken BPE (cl100k_base) for accurate code tokenization. S
 
 ## Privacy & Security
 
-**100% local by default.** Embeddings are generated locally via Ollama. The vector database stays in your project directory. **No source code or embeddings leave your machine** unless you explicitly configure a third-party API.
+**100% local by default.** By default, embeddings are generated locally via Ollama. The vector database stays in your project directory. **No source code or embeddings leave your machine** unless you explicitly configure to use a third-party API.
 
 ## License
 
