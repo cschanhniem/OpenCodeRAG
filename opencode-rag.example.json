@@ -106,6 +106,7 @@
     "timeoutMs": 60000,
     "think": true,
     "numCtx": 4096,
+    "resizeMaxDimension": 1024,
     "prompt": "Describe image precise and concise: what it shows, any text content, layout, colors, objects, and purpose. Maximum 40 words. Start with \"Image of ...\"."
   },
   "description": {

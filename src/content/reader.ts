@@ -125,86 +125,90 @@ export async function scanWorkspaceFiles(
 
   const minSize = config.indexing.minFileSizeBytes ?? 0;
   const scanConcurrency = Math.min(config.indexing.concurrency * 2, 16);
-  const limit = pLimit(scanConcurrency);
+  const textLimit = pLimit(scanConcurrency);
+  const imageLimit = pLimit(1);
 
   let completed = 0;
 
-  const tasks = files.map((filePath) =>
-    limit(async () => {
-      const normalizedPath = normalizeFilePath(filePath);
+  async function processFile(filePath: string): Promise<WorkspaceFile> {
+    const normalizedPath = normalizeFilePath(filePath);
 
-      if (manifest?.files[normalizedPath]) {
-        try {
-          const stat = await fs.stat(filePath);
-          const entry = manifest.files[normalizedPath]!;
-          if (entry.mtime === stat.mtimeMs && entry.size === stat.size) {
-            completed++;
-            return {
-              filePath,
-              normalizedPath,
-              content: "",
-              hash: entry.hash,
-              isEmpty: false,
-              isTooSmall: false,
-              extractionStatus: "ok" as const,
-              mtime: stat.mtimeMs,
-              size: stat.size,
-            } satisfies WorkspaceFile;
-          }
-        } catch {
-          /* stat failed, fall through to full read */
+    if (manifest?.files[normalizedPath]) {
+      try {
+        const stat = await fs.stat(filePath);
+        const entry = manifest.files[normalizedPath]!;
+        if (entry.mtime === stat.mtimeMs && entry.size === stat.size) {
+          completed++;
+          return {
+            filePath,
+            normalizedPath,
+            content: "",
+            hash: entry.hash,
+            isEmpty: false,
+            isTooSmall: false,
+            extractionStatus: "ok" as const,
+            mtime: stat.mtimeMs,
+            size: stat.size,
+          } satisfies WorkspaceFile;
         }
+      } catch {
+        /* stat failed, fall through to full read */
       }
+    }
 
-      const isBinary =
-        pdfExtractor.PDF_EXTENSIONS.has(filePath.toLowerCase()) ||
-        docxExtractor.DOCX_EXTENSIONS.has(filePath.toLowerCase()) ||
-        docExtractor.DOC_EXTENSIONS.has(filePath.toLowerCase()) ||
-        excelExtractor.EXCEL_EXTENSIONS.has(filePath.toLowerCase()) ||
-        (imageVisionProvider !== null && imageExtractor.isImageFile(filePath));
+    const isBinary =
+      pdfExtractor.PDF_EXTENSIONS.has(filePath.toLowerCase()) ||
+      docxExtractor.DOCX_EXTENSIONS.has(filePath.toLowerCase()) ||
+      docExtractor.DOC_EXTENSIONS.has(filePath.toLowerCase()) ||
+      excelExtractor.EXCEL_EXTENSIONS.has(filePath.toLowerCase()) ||
+      (imageVisionProvider !== null && imageExtractor.isImageFile(filePath));
 
-      const buffer = isBinary ? await fs.readFile(filePath) : Buffer.alloc(0);
-      const result = await dispatchExtraction(filePath, buffer, imageVisionProvider, imagePrompt, imageResizeMaxDimension);
+    const buffer = isBinary ? await fs.readFile(filePath) : Buffer.alloc(0);
+    const result = await dispatchExtraction(filePath, buffer, imageVisionProvider, imagePrompt, imageResizeMaxDimension);
 
-      if (!result.ok) {
-        logger?.warn(`  ${filePath} (extraction failed: ${result.error})`);
+    if (!result.ok) {
+      logger?.warn(`  ${filePath} (extraction failed: ${result.error})`);
+    }
+
+    const content = result.content;
+    const byteLength = Buffer.byteLength(content, "utf-8");
+
+    let fileMtime: number | undefined;
+    let fileSize: number | undefined;
+    if (result.ok) {
+      try {
+        const stat = await fs.stat(filePath);
+        fileMtime = stat.mtimeMs;
+        fileSize = stat.size;
+      } catch {
+        /* best-effort stat */
       }
+    }
 
-      const content = result.content;
-      const byteLength = Buffer.byteLength(content, "utf-8");
+    completed++;
+    if (totalFiles > 20 && completed % 50 === 0) {
+      logger?.info(`  Scanning files... ${completed}/${totalFiles}`);
+    }
+    logger?.debug(`  scanWorkspaceFiles: ${filePath}`);
 
-      let fileMtime: number | undefined;
-      let fileSize: number | undefined;
-      if (result.ok) {
-        try {
-          const stat = await fs.stat(filePath);
-          fileMtime = stat.mtimeMs;
-          fileSize = stat.size;
-        } catch {
-          /* best-effort stat */
-        }
-      }
+    return {
+      filePath,
+      normalizedPath,
+      content,
+      hash: computeFileHash(content),
+      isEmpty: content.trim().length === 0,
+      isTooSmall: content.trim().length === 0 ? false : byteLength < minSize,
+      extractionStatus: result.ok ? "ok" : "failed",
+      extractionError: result.ok ? undefined : result.error,
+      mtime: fileMtime,
+      size: fileSize,
+    } satisfies WorkspaceFile;
+  }
 
-      completed++;
-      if (totalFiles > 20 && completed % 50 === 0) {
-        logger?.info(`  Scanning files... ${completed}/${totalFiles}`);
-      }
-      logger?.debug(`  scanWorkspaceFiles: ${filePath}`);
-
-      return {
-        filePath,
-        normalizedPath,
-        content,
-        hash: computeFileHash(content),
-        isEmpty: content.trim().length === 0,
-        isTooSmall: content.trim().length === 0 ? false : byteLength < minSize,
-        extractionStatus: result.ok ? "ok" : "failed",
-        extractionError: result.ok ? undefined : result.error,
-        mtime: fileMtime,
-        size: fileSize,
-      } satisfies WorkspaceFile;
-    }),
-  );
+  const tasks = files.map((filePath) => {
+    const isImage = imageVisionProvider !== null && imageExtractor.isImageFile(filePath);
+    return isImage ? imageLimit(() => processFile(filePath)) : textLimit(() => processFile(filePath));
+  });
 
   const workspaceFiles = await Promise.all(tasks);
   return workspaceFiles;
