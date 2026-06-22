@@ -1,9 +1,6 @@
 import type { RagConfig } from "../core/config.js";
+import type { ProxyConfig } from "../core/config.js";
 import { postJson } from "./http.js";
-import { exec } from "node:child_process";
-import { promisify } from "node:util";
-
-const execAsync = promisify(exec);
 
 export interface HealthCheckResult {
   provider: string;
@@ -377,26 +374,98 @@ async function checkGoogleChat(
 
 // ── Ollama model pull ──────────────────────────────────────────
 
+interface PullModelEntry {
+  model: string;
+  baseUrl: string;
+  proxy?: ProxyConfig;
+}
+
 /**
- * Pull missing Ollama models sequentially (embedding first, then description).
- * Streams progress to stdout.
+ * Pull missing Ollama models sequentially via the /api/pull HTTP endpoint.
+ * Streams NDJSON progress and renders a progress bar via onProgress.
  */
 export async function pullOllamaModels(
-  models: string[],
+  models: PullModelEntry[],
   onProgress?: (model: string, line: string) => void
 ): Promise<void> {
-  for (const model of models) {
+  const PULL_TIMEOUT_MS = 600_000; // 10 minutes per model
+
+  for (const entry of models) {
+    const pullUrl = `${entry.baseUrl.replace(/\/+$/, "")}/pull`;
+
     try {
-      const { stdout } = await execAsync(`ollama pull ${model}`, {
-        timeout: 600_000, // 10 minute timeout per model
-        maxBuffer: 10 * 1024 * 1024,
-      });
-      if (onProgress) {
-        onProgress(model, stdout.trim());
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), PULL_TIMEOUT_MS);
+
+      let response: Response;
+      try {
+        response = await fetch(pullUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: entry.model }),
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
+
+      if (!response.ok) {
+        const body = await response.text();
+        throw new Error(`HTTP ${response.status}: ${body.slice(0, 200)}`);
+      }
+
+      if (!response.body) {
+        throw new Error("Empty response body");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() ?? "";
+
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const status = JSON.parse(line) as {
+                status?: string;
+                completed?: number;
+                total?: number;
+              };
+              if (onProgress) {
+                if (status.completed != null && status.total != null && status.total > 0) {
+                  const pct = Math.round((status.completed / status.total) * 100);
+                  const mb = (status.completed / 1048576).toFixed(1);
+                  const totalMb = (status.total / 1048576).toFixed(1);
+                  onProgress(entry.model, `${status.status ?? "downloading"} ${pct}% (${mb}/${totalMb} MB)`);
+                } else if (status.status) {
+                  onProgress(entry.model, status.status);
+                }
+              }
+            } catch {
+              // Not JSON — pass raw line
+              if (onProgress) {
+                onProgress(entry.model, line.trim());
+              }
+            }
+          }
+        }
+      } finally {
+        reader.releaseLock();
       }
     } catch (err) {
+      if ((err as Error).name === "AbortError") {
+        throw new Error(`Pull timed out after ${PULL_TIMEOUT_MS / 1000}s: ${entry.model}`);
+      }
       const msg = (err as Error).message || String(err);
-      throw new Error(`Failed to pull ${model}: ${msg}`);
+      throw new Error(`Failed to pull ${entry.model}: ${msg}`);
     }
   }
 }

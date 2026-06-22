@@ -106,7 +106,7 @@
     "timeoutMs": 60000,
     "think": true,
     "numCtx": 4096,
-    "prompt": "Describe this image precisely and concisely: what it shows, any text content, layout, colors, objects, and purpose. Maximum 40 words. Start with \"Image of ...\" and always mention that this is an image file."
+    "prompt": "Describe this image precisely and concisely: what it shows, any text content, layout, colors, objects, and purpose. Maximum 40 words. Start with \"Image of ...\"."
   },
   "description": {
     "enabled": true,

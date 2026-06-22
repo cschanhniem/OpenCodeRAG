@@ -1284,20 +1284,31 @@ program
 
       const missingOllama = results.filter((r) => r.status === "missing" && r.provider === "ollama");
       if (missingOllama.length > 0) {
-        const modelNames = missingOllama.map((r) => r.model);
-        console.log(`\n  ${c.warn("Models not found:")} ${modelNames.join(", ")}`);
+        const pullEntries = missingOllama.map((r) => {
+          if (r.type === "embedding") {
+            return { model: r.model, baseUrl: ragConfig.embedding.baseUrl, proxy: ragConfig.embedding.proxy };
+          }
+          if (r.type === "description" && ragConfig.description) {
+            return { model: r.model, baseUrl: ragConfig.description.baseUrl, proxy: ragConfig.description.proxy };
+          }
+          if (r.type === "image_description" && ragConfig.imageDescription) {
+            return { model: r.model, baseUrl: ragConfig.imageDescription.baseUrl, proxy: ragConfig.imageDescription.proxy };
+          }
+          return { model: r.model, baseUrl: ragConfig.embedding.baseUrl, proxy: ragConfig.embedding.proxy };
+        });
+        console.log(`\n  ${c.warn("Models not found:")} ${pullEntries.map((e) => e.model).join(", ")}`);
 
         const readline = await import("node:readline");
         const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
         const answer = await new Promise<string>((resolve) => {
-          rl.question(`  Pull ${modelNames.length === 1 ? "this model" : "these models"} now? (y/n) `, resolve);
+          rl.question(`  Pull ${pullEntries.length === 1 ? "this model" : "these models"} now? (y/n) `, resolve);
         });
         rl.close();
 
         if (answer.toLowerCase() === "y" || answer.toLowerCase() === "yes") {
           console.log();
           try {
-            await pullOllamaModels(modelNames, (model, line) => {
+            await pullOllamaModels(pullEntries, (model, line) => {
               console.log(`  ${c.value(model)}: ${line}`);
             });
             console.log(`\n  ${c.success("Models pulled successfully.")}`);

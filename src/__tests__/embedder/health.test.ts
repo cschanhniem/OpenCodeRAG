@@ -30,7 +30,7 @@ function baseConfig(overrides: Partial<RagConfig["embedding"]> = {}): RagConfig 
 }
 
 function startMockServer(
-  handler: (req: { url?: string; method?: string; body: string }, res: { writeHead: (s: number, h?: Record<string, string>) => void; end: (b: string) => void }) => void
+  handler: (req: { url?: string; method?: string; body: string }, res: { writeHead: (s: number, h?: Record<string, string>) => void; write: (d: string | Buffer) => boolean; end: (b?: string) => void }) => void
 ): Promise<{ server: Server; port: number }> {
   return new Promise((resolve) => {
     const server = createServer((req, res) => {
@@ -39,10 +39,7 @@ function startMockServer(
       req.on("end", () => {
         handler(
           { url: req.url, method: req.method, body },
-          {
-            writeHead: (status, headers) => res.writeHead(status, headers),
-            end: (b) => res.end(b),
-          }
+          res as unknown as { writeHead: (s: number, h?: Record<string, string>) => void; write: (d: string | Buffer) => boolean; end: (b?: string) => void }
         );
       });
     });
@@ -460,10 +457,52 @@ describe("checkProviderHealth", () => {
 });
 
 describe("pullOllamaModels", () => {
-  it("throws when ollama pull fails", async () => {
+  it("throws when pull endpoint returns error", async () => {
+    const { server, port } = await startMockServer((_req, res) => {
+      res.writeHead(404, { "Content-Type": "text/plain" });
+      res.end("model not found");
+    });
+
+    try {
+      await assert.rejects(
+        () => pullOllamaModels([{ model: "nonexistent-model-xyz", baseUrl: `http://127.0.0.1:${port}/api` }]),
+        /Failed to pull nonexistent-model-xyz/
+      );
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it("streams progress and completes successfully", async () => {
+    const { server, port } = await startMockServer((_req, res) => {
+      res.writeHead(200, { "Content-Type": "application/x-ndjson" });
+      res.write(JSON.stringify({ status: "pulling manifest" }) + "\n");
+      res.write(JSON.stringify({ status: "downloading", completed: 524288, total: 1048576 }) + "\n");
+      res.write(JSON.stringify({ status: "downloading", completed: 1048576, total: 1048576 }) + "\n");
+      res.write(JSON.stringify({ status: "success" }) + "\n");
+      res.end();
+    });
+
+    try {
+      const lines: Array<{ model: string; line: string }> = [];
+      await pullOllamaModels(
+        [{ model: "test-model", baseUrl: `http://127.0.0.1:${port}/api` }],
+        (model, line) => lines.push({ model, line })
+      );
+      assert.ok(lines.length >= 3, `expected at least 3 progress lines, got ${lines.length}`);
+      assert.equal(lines[0]!.model, "test-model");
+      assert.equal(lines[0]!.line, "pulling manifest");
+      assert.ok(lines[1]!.line.includes("50%"), `expected 50% in progress line: ${lines[1]!.line}`);
+      assert.equal(lines[lines.length - 1]!.line, "success");
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it("throws on connection refused", async () => {
     await assert.rejects(
-      () => pullOllamaModels(["nonexistent-model-xyz"]),
-      /Failed to pull/
+      () => pullOllamaModels([{ model: "model", baseUrl: "http://127.0.0.1:19999/api" }]),
+      /Failed to pull model/
     );
   });
 });
