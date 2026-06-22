@@ -77,6 +77,11 @@ export interface McpConfig {
   enabled: boolean;
 }
 
+export interface AutoUpdateConfig {
+  enabled: boolean;
+  checkIntervalMs: number;
+}
+
 export interface RagConfig {
   embedding: {
     provider: string;
@@ -125,6 +130,7 @@ export interface RagConfig {
   description?: DescriptionConfig;
   imageDescription?: ImageDescriptionConfig;
   mcp?: McpConfig;
+  autoUpdate?: AutoUpdateConfig;
   ui?: UiConfig;
   tui: TuiConfig;
   logging: LoggingConfig;
@@ -288,6 +294,10 @@ export const DEFAULT_CONFIG: RagConfig = {
   mcp: {
     enabled: true,
   },
+  autoUpdate: {
+    enabled: false,
+    checkIntervalMs: 86_400_000,
+  },
   ui: {
     port: 3210,
     openBrowser: true,
@@ -327,7 +337,7 @@ export function validateConfig(config: RagConfig): ConfigValidationResult {
   const KNOWN_TOP_KEYS = new Set([
     "embedding", "indexing", "vectorStore", "retrieval",
     "openCode", "chunkers", "chunking", "description",
-    "imageDescription", "mcp", "ui", "tui", "logging",
+    "imageDescription", "mcp", "autoUpdate", "ui", "tui", "logging",
   ]);
   const topKeys = new Set(Object.keys(config as unknown as Record<string, unknown>));
   for (const key of topKeys) {
@@ -378,6 +388,12 @@ export function validateConfig(config: RagConfig): ConfigValidationResult {
 
   if (!["debug", "info", "error", "none"].includes(config.logging.level)) {
     warnings.push(`logging.level "${config.logging.level}" — expected "debug", "info", "error", or "none"`);
+  }
+
+  if (config.autoUpdate) {
+    if (config.autoUpdate.checkIntervalMs != null && config.autoUpdate.checkIntervalMs < 3_600_000) {
+      warnings.push("autoUpdate.checkIntervalMs must be >= 3600000 (1 hour)");
+    }
   }
 
   if (config.ui) {
@@ -485,6 +501,10 @@ export function loadConfig(filePath: string, validate: boolean = true): RagConfi
       ...DEFAULT_CONFIG.mcp,
       ...(safeObj<McpConfig>((parsed as { mcp?: unknown }).mcp) ?? {}),
     } as McpConfig,
+    autoUpdate: {
+      ...DEFAULT_CONFIG.autoUpdate,
+      ...(safeObj<AutoUpdateConfig>((parsed as { autoUpdate?: unknown }).autoUpdate) ?? {}),
+    } as AutoUpdateConfig,
     ui: {
       ...DEFAULT_CONFIG.ui,
       ...(safeObj<UiConfig>((parsed as { ui?: unknown }).ui) ?? {}),

@@ -118,6 +118,10 @@
     "timeoutMs": 60000,
     "systemPrompt": "Describe code precise and concise in 2 sentences. Maximum 20 words. Focus on functionality and purpose."
   },
+  "autoUpdate": {
+    "enabled": true,
+    "checkIntervalMs": 86400000
+  },
   "logging": {
     "level": "debug",
     "logFilePath": "./.opencode/opencode-rag.log"

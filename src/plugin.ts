@@ -19,7 +19,8 @@ import { resolveApiKey } from "./core/resolve-api-key.js";
 import { consumePendingRagInjection } from "./core/rag-injection-flag.js";
 import { createSessionLogger, type SessionLogger } from "./eval/session-logger.js";
 import { countTokens, estimateContextTokensFormatted } from "./eval/token-counter.js";
-import { existsSync } from "node:fs";
+import { checkForUpdateWithCaching, type UpdateInfo } from "./updater.js";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn, execSync } from "node:child_process";
@@ -28,6 +29,7 @@ import { tmpdir } from "node:os";
 const configCache = new Map<string, RagConfig>();
 const backgroundIndexers = new Map<string, { close: () => Promise<void> }>();
 const mcpServers = new Map<string, { close: () => Promise<void> }>();
+const pendingUpdateInfo = new Map<string, UpdateInfo>();
 
 const CONTEXT_TOOL_NAME = "search_semantic";
 const CONTEXT_MARKER = "search_semantic retrieved context";
@@ -683,6 +685,15 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
       ];
 
       output.system.unshift(guidance.join("\n"));
+
+      // Inject update notification if available
+      const updateInfo = pendingUpdateInfo.get(options.worktree);
+      if (updateInfo) {
+        output.system.unshift(
+          `OpenCodeRAG update available: ${updateInfo.currentVersion} → ${updateInfo.latestVersion}. ` +
+          `Run \`opencode-rag update\` to install.`,
+        );
+      }
     },
     async "chat.message"(input, output) {
       try {
@@ -1107,6 +1118,30 @@ export const ragPlugin: Plugin = async (
   if (mcpCfg.enabled && !isTempDir) {
     const mcpInstance = startMcpServerProcess(input.directory, logFilePath, logLevel);
     mcpServers.set(input.directory, mcpInstance);
+  }
+
+  // Auto-update check (non-blocking, best-effort)
+  const autoUpdateCfg = effectiveCfg.autoUpdate;
+  if (autoUpdateCfg?.enabled) {
+    const currentVersion = (() => {
+      try {
+        const pkgPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "package.json");
+        return JSON.parse(readFileSync(pkgPath, "utf-8") as string).version as string;
+      } catch {
+        return "0.0.0";
+      }
+    })();
+    checkForUpdateWithCaching(storePath, currentVersion, autoUpdateCfg.checkIntervalMs)
+      .then((info) => {
+        if (info.updateAvailable) {
+          pendingUpdateInfo.set(input.directory, info);
+          appendDebugLog(logFilePath, {
+            scope: "updater",
+            message: `Update available: ${info.currentVersion} → ${info.latestVersion}`,
+          }, logLevel);
+        }
+      })
+      .catch(() => { /* best-effort */ });
   }
 
   return hooks;

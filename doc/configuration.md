@@ -212,6 +212,26 @@ Controls the OpenCode plugin integration.
 | `autoInject.maxTokens` | `3000` | Token budget for auto-injected context |
 | `autoInject.contentType` | `"file_paths"` | What to inject: `"file_paths"` (lightweight paths + scores) or `"chunks"` (full code) |
 
+### `autoUpdate`
+
+Controls automatic update checking for OpenCodeRAG.
+
+```json
+{
+  "autoUpdate": {
+    "enabled": false,
+    "checkIntervalMs": 86400000
+  }
+}
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `enabled` | `false` | Enable automatic update checks on plugin startup |
+| `checkIntervalMs` | `86400000` | Minimum interval between checks (ms). Minimum: 3600000 (1 hour) |
+
+When enabled, the plugin checks GitHub Releases API for new versions on startup. If an update is available, a notification is added to the system prompt. You can then run `opencode-rag update` to install the update.
+
 ### `logging`
 
 ```json

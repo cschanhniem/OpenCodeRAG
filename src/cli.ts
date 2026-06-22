@@ -9,6 +9,11 @@ import chokidar from "chokidar";
 import pc from "picocolors";
 import { loadConfig, DEFAULT_CONFIG, resolveLogConfig, type RagConfig } from "./core/config.js";
 import { resolveRagContext, type RagContext } from "./core/bootstrap.js";
+import {
+  getCurrentVersion,
+  checkForUpdateWithCaching,
+  applyUpdate,
+} from "./updater.js";
 
 import { appendDebugLog } from "./core/fileLogger.js";
 import { createEmbedder } from "./embedder/factory.js";
@@ -852,6 +857,71 @@ program
     }
   });
 
+program
+  .command("update")
+  .description("Check for and install OpenCodeRAG updates from GitHub")
+  .option("--check", "only check for updates, don't install")
+  .option("-y, --yes", "skip confirmation prompt")
+  .option("-v, --verbose", "show build/install output")
+  .action(async (options: { check?: boolean; yes?: boolean; verbose?: boolean }) => {
+    try {
+      const currentVersion = getCurrentVersion();
+      const storePath = path.resolve(process.cwd(), ".opencode", "rag_db");
+
+      console.log(`\n${c.heading("OpenCodeRAG Updater")}\n`);
+      console.log(`  ${c.label("Current version:")} ${c.value(currentVersion)}`);
+      console.log(`  ${c.label("Checking for updates...")}`);
+
+      const info = await checkForUpdateWithCaching(storePath, currentVersion);
+
+      if (!info.updateAvailable) {
+        console.log(`  ${c.success("Already up to date.")}\n`);
+        return;
+      }
+
+      console.log(`  ${c.label("Latest version:")}  ${c.value(info.latestVersion)}`);
+      if (info.releaseUrl) {
+        console.log(`  ${c.label("Release:")}         ${c.file(info.releaseUrl)}`);
+      }
+      console.log();
+
+      if (options.check) {
+        console.log(`  ${c.warn("Update available. Run `opencode-rag update` to install.")}\n`);
+        return;
+      }
+
+      if (!options.yes) {
+        const readline = await import("node:readline");
+        const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+        const answer = await new Promise<string>((resolve) => {
+          rl.question(`  Install update to ${info.latestVersion}? [y/N] `, resolve);
+        });
+        rl.close();
+        if (answer.toLowerCase() !== "y" && answer.toLowerCase() !== "yes") {
+          console.log(`  ${c.dim("Cancelled.")}\n`);
+          return;
+        }
+      }
+
+      console.log(`  ${c.label("Applying update...")}\n`);
+      const result = applyUpdate({
+        repoRoot: path.resolve(getPackageRoot()),
+        verbose: options.verbose ?? false,
+      });
+
+      if (result.success) {
+        console.log(`  ${c.success(result.message)}\n`);
+      } else {
+        console.error(`  ${c.error(result.message)}\n`);
+        process.exit(1);
+      }
+    } catch (err) {
+      const message = (err as Error).message || String(err);
+      console.error(c.error(`\nUpdate failed: ${message}\n`));
+      process.exit(1);
+    }
+  });
+
 // ── Eval commands ──────────────────────────────────────────────
 
 program
@@ -1319,7 +1389,7 @@ if (shouldAutoRunCli(import.meta.url, process.argv[1])) {
 } else {
   // Fallback: if the module appears to be running as a CLI (has argv with commands like 'init', 'index', etc.)
   // and not being imported as a library, parse the arguments anyway
-  const commands = ['init', 'index', 'query', 'clear', 'status', 'list', 'show', 'dump', 'ui', 'mcp', 'eval:sessions', 'eval:analyze', 'eval:compare'];
+  const commands = ['init', 'index', 'query', 'clear', 'status', 'list', 'show', 'dump', 'ui', 'mcp', 'update', 'eval:sessions', 'eval:analyze', 'eval:compare'];
   const cmd = process.argv[2];
   if (process.argv.length > 2 && cmd && commands.includes(cmd.toLowerCase())) {
     void program.parseAsync(process.argv);

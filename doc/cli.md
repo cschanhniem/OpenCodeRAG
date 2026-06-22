@@ -179,6 +179,40 @@ opencode-rag clear [options]
 
 Uses `store.dropDatabase()` for a clean slate, also clears the keyword index and manifest.
 
+### `update`
+
+Check for and install OpenCodeRAG updates from GitHub.
+
+```bash
+opencode-rag update [options]
+```
+
+**Options:**
+| Flag | Default | Description |
+|---|---|---|
+| `--check` | `false` | Only check for updates, don't install |
+| `-y, --yes` | `false` | Skip confirmation prompt |
+| `-v, --verbose` | `false` | Show build/install output |
+
+**How it works:**
+1. Checks GitHub Releases API for the latest version
+2. Compares against the current `package.json` version
+3. If an update is available, prompts for confirmation (unless `--yes`)
+4. Runs `git pull`, `npm run build`, `npm pack`, and `npm install` to apply the update
+5. Preserves the vector index (`rag_db/`) across updates
+
+**Examples:**
+```bash
+# Check for updates only
+opencode-rag update --check
+
+# Install update with confirmation
+opencode-rag update
+
+# Install update without confirmation
+opencode-rag update --yes
+```
+
 ## Examples
 
 ```bash
