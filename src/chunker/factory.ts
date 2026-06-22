@@ -33,6 +33,7 @@ import { pdfChunker } from "./pdf.js";
 import { docxChunker } from "./docx.js";
 import { docChunker } from "./doc.js";
 import { excelChunker } from "./excel.js";
+import { sslChunker } from "./ssl.js";
 import { uuid } from "./uuid.js";
 
 const chunkers: Chunker[] = [
@@ -68,6 +69,7 @@ const chunkers: Chunker[] = [
   docxChunker,
   docChunker,
   excelChunker,
+  sslChunker,
 ];
 
 const extensionMap = new Map<string, Chunker>();

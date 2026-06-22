@@ -227,6 +227,11 @@ describe("getChunker", () => {
     const chunker = getChunker("main.swift");
     assert.equal(chunker.language, "swift");
   });
+
+  it("returns SSL chunker for .ssl files", () => {
+    const chunker = getChunker("script.ssl");
+    assert.equal(chunker.language, "ssl");
+  });
 });
 
 describe("chunkFile fallback", () => {

@@ -205,6 +205,7 @@ export const DEFAULT_CONFIG: RagConfig = {
       ".yml",
       ".toml",
       ".sql",
+      ".ssl",
       ".jpg",
       ".jpeg",
       ".gif",
