@@ -96,6 +96,7 @@
     "p-limit": "^7.3.0",
     "pdfjs-dist": "^5.7.284",
     "picocolors": "^1.1.1",
+    "sharp": "^0.35.2",
     "tree-sitter-c": "^0.24.1",
     "tree-sitter-html": "^0.23.2",
     "tree-sitter-json": "^0.24.8",

@@ -61,6 +61,7 @@ export interface ImageDescriptionConfig {
   think?: boolean;
   numCtx?: number;
   proxy?: ProxyConfig;
+  resizeMaxDimension?: number;
 }
 
 export interface UiConfig {
@@ -275,6 +276,7 @@ export const DEFAULT_CONFIG: RagConfig = {
     prompt: "Describe this image precisely and concisely: what it shows, any text content, layout, colors, objects, and purpose. Maximum 40 words. Start with \"Image of ...\" and always mention that this is an image file.",
     think: true,
     numCtx: 4096,
+    resizeMaxDimension: 1024,
   },
   description: {
     enabled: true,

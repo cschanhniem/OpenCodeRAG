@@ -1,4 +1,5 @@
 import path from "node:path";
+import sharp from "sharp";
 import type { ExtractResult } from "./types.js";
 import {
   getMimeType,
@@ -16,16 +17,109 @@ export function isImageFile(fp: string): boolean {
   return false;
 }
 
+function isBmpFile(fp: string): boolean {
+  return fp.toLowerCase().endsWith(".bmp");
+}
+
+function decodeBmp(buffer: Buffer): { pixels: Buffer; width: number; height: number; channels: number } {
+  const signature = buffer.toString("ascii", 0, 2);
+  if (signature !== "BM") throw new Error("Not a BMP file");
+
+  const dibSize = buffer.readUInt32LE(14);
+  const width = buffer.readInt32LE(18);
+  const rawHeight = buffer.readInt32LE(22);
+  const bitsPerPixel = buffer.readUInt16LE(28);
+
+  if (bitsPerPixel !== 24 && bitsPerPixel !== 32)
+    throw new Error(`Unsupported BMP bit depth: ${bitsPerPixel}. Only 24 and 32 bit are supported.`);
+  if (dibSize < 40)
+    throw new Error(`Unsupported BMP DIB header size: ${dibSize}`);
+
+  const compression = buffer.readUInt32LE(30);
+  if (compression !== 0 && compression !== 3)
+    throw new Error(`Compressed BMP not supported (compression=${compression})`);
+
+  const channels = bitsPerPixel === 32 ? 4 : 3;
+  const rowSize = Math.floor((bitsPerPixel * width + 31) / 32) * 4;
+  const topDown = rawHeight < 0;
+  const absHeight = Math.abs(rawHeight);
+
+  const pixelOffset = buffer.readUInt32LE(10);
+  const pixels = Buffer.alloc(width * absHeight * channels);
+
+  for (let y = 0; y < absHeight; y++) {
+    const srcY = topDown ? y : absHeight - 1 - y;
+    const srcRow = pixelOffset + srcY * rowSize;
+    const dstRow = y * width * channels;
+
+    for (let x = 0; x < width; x++) {
+      const srcPx = srcRow + x * (bitsPerPixel / 8);
+      const dstPx = dstRow + x * channels;
+      if (channels === 4) {
+        pixels[dstPx] = buffer[srcPx + 2]!;
+        pixels[dstPx + 1] = buffer[srcPx + 1]!;
+        pixels[dstPx + 2] = buffer[srcPx]!;
+        pixels[dstPx + 3] = buffer[srcPx + 3]!;
+      } else {
+        pixels[dstPx] = buffer[srcPx + 2]!;
+        pixels[dstPx + 1] = buffer[srcPx + 1]!;
+        pixels[dstPx + 2] = buffer[srcPx]!;
+      }
+    }
+  }
+
+  return { pixels, width, height: absHeight, channels };
+}
+
+export async function resizeImage(
+  buffer: Buffer,
+  filePath: string,
+  maxDimension: number,
+): Promise<Buffer> {
+  if (maxDimension <= 0) return buffer;
+
+  try {
+    if (isBmpFile(filePath)) {
+      const { pixels, width, height, channels } = decodeBmp(buffer);
+      const ch = channels as 3 | 4;
+      if (width <= maxDimension && height <= maxDimension) {
+        return sharp(pixels, { raw: { width, height, channels: ch } })
+          .jpeg({ quality: 80 })
+          .toBuffer();
+      }
+      return sharp(pixels, { raw: { width, height, channels: ch } })
+        .resize({ width: maxDimension, fit: "inside", withoutEnlargement: true })
+        .jpeg({ quality: 80 })
+        .toBuffer();
+    }
+
+    const meta = await sharp(buffer).metadata();
+    const w = meta.width ?? 0;
+    const h = meta.height ?? 0;
+    if (w <= maxDimension && h <= maxDimension) {
+      return sharp(buffer).jpeg({ quality: 80 }).toBuffer();
+    }
+    return sharp(buffer)
+      .resize({ width: maxDimension, fit: "inside", withoutEnlargement: true })
+      .jpeg({ quality: 80 })
+      .toBuffer();
+  } catch {
+    return buffer;
+  }
+}
+
 export async function extract(
   filePath: string,
   buffer: Buffer,
   visionProvider: ImageVisionProvider,
   prompt: string,
+  maxDimension?: number,
 ): Promise<ExtractResult> {
   try {
     const ext = path.extname(filePath).toLowerCase();
     const mimeType = getMimeType(ext);
-    const b64 = buffer.toString("base64");
+    const sized = maxDimension ? await resizeImage(buffer, filePath, maxDimension) : buffer;
+    const b64 = sized.toString("base64");
     const content = await visionProvider.describeImage(b64, mimeType, prompt);
     return { content, ok: true };
   } catch (err) {

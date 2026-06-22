@@ -65,6 +65,7 @@ async function dispatchExtraction(
   buffer: Buffer,
   imageVisionProvider: ImageVisionProvider | null,
   imagePrompt: string | undefined,
+  resizeMaxDimension?: number,
 ): Promise<ExtractResult> {
   const lower = filePath.toLowerCase();
 
@@ -81,7 +82,7 @@ async function dispatchExtraction(
     return excelExtractor.extract(filePath, buffer);
   }
   if (imageVisionProvider && imageExtractor.isImageFile(filePath)) {
-    return imageExtractor.extract(filePath, buffer, imageVisionProvider, imagePrompt ?? "");
+    return imageExtractor.extract(filePath, buffer, imageVisionProvider, imagePrompt ?? "", resizeMaxDimension);
   }
 
   try {
@@ -102,6 +103,7 @@ export async function scanWorkspaceFiles(
 
   let imageVisionProvider: ImageVisionProvider | null = null;
   let imagePrompt: string | undefined;
+  let imageResizeMaxDimension: number | undefined;
   const imageCfg = config.imageDescription;
   if (imageCfg?.enabled) {
     for (const ext of imageExtractor.SUPPORTED_IMAGE_EXTENSIONS) {
@@ -109,6 +111,7 @@ export async function scanWorkspaceFiles(
     }
     imageVisionProvider = createImageVisionProvider(imageCfg);
     imagePrompt = imageCfg.prompt;
+    imageResizeMaxDimension = imageCfg.resizeMaxDimension;
   }
 
   const files = await walkFiles(
@@ -161,7 +164,7 @@ export async function scanWorkspaceFiles(
         (imageVisionProvider !== null && imageExtractor.isImageFile(filePath));
 
       const buffer = isBinary ? await fs.readFile(filePath) : Buffer.alloc(0);
-      const result = await dispatchExtraction(filePath, buffer, imageVisionProvider, imagePrompt);
+      const result = await dispatchExtraction(filePath, buffer, imageVisionProvider, imagePrompt, imageResizeMaxDimension);
 
       if (!result.ok) {
         logger?.warn(`  ${filePath} (extraction failed: ${result.error})`);
