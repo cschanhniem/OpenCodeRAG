@@ -29,12 +29,14 @@ export interface RunIndexPassOptions {
 interface Logger {
   info(message: string): void;
   warn(message: string): void;
+  debug(message: string): void;
 }
 
 function createLogger(logger?: Partial<Logger>): Logger {
   return {
     info: logger?.info ?? (() => {}),
     warn: logger?.warn ?? (() => {}),
+    debug: logger?.debug ?? (() => {}),
   };
 }
 

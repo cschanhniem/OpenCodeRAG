@@ -67,6 +67,7 @@ export function createBackgroundIndexer(options: CreateBackgroundIndexerOptions)
         logger: {
           info: (message) => appendDebugLog(logFilePath, { scope: "autoIndex", message }, logLevel),
           warn: (message) => appendDebugLog(logFilePath, { scope: "autoIndex", message }, logLevel),
+              debug: (message) => appendDebugLog(logFilePath, { scope: "autoIndex", message: `DEBUG: ${message}`, severity: "debug" }, logLevel),
         },
       });
       updateStatus({ running: false, lastRunAt: Date.now() });
@@ -91,6 +92,7 @@ export function createBackgroundIndexer(options: CreateBackgroundIndexerOptions)
             logger: {
               info: (message) => appendDebugLog(logFilePath, { scope: "autoIndex", message }, logLevel),
               warn: (message) => appendDebugLog(logFilePath, { scope: "autoIndex", message }, logLevel),
+          debug: (message) => appendDebugLog(logFilePath, { scope: "autoIndex", message: `DEBUG: ${message}`, severity: "debug" }, logLevel),
             },
           });
         } catch (retryErr) {

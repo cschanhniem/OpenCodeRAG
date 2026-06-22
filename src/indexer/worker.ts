@@ -29,6 +29,7 @@ export interface WorkerResult {
 interface Logger {
   info(message: string): void;
   warn(message: string): void;
+  debug(message: string): void;
 }
 
 interface ManifestFile {
@@ -53,6 +54,7 @@ export async function processFile(
   logger: Logger,
 ): Promise<WorkerResult> {
   const fileLabel = path.relative(cwd, file.filePath);
+  logger.debug(`  processFile: ${fileLabel}`);
 
   if (file.isEmpty) {
     if (previous) {

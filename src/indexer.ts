@@ -17,6 +17,7 @@ import type { WorkspaceFile } from "./content/reader.js";
 interface Logger {
   info(message: string): void;
   warn(message: string): void;
+  debug(message: string): void;
 }
 
 export async function scanWorkspace(

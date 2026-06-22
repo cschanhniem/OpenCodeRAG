@@ -27,6 +27,7 @@ export interface WorkspaceFile {
 interface Logger {
   info(message: string): void;
   warn(message: string): void;
+  debug(message: string): void;
 }
 
 export async function walkFiles(
@@ -151,6 +152,7 @@ export async function scanWorkspaceFiles(
     if (totalFiles > 20 && (i + 1) % 50 === 0) {
       logger?.info(`  Scanning files... ${i + 1}/${totalFiles}`);
     }
+    logger?.debug(`  scanWorkspaceFiles: ${filePath}`);
   }
 
   return workspaceFiles;

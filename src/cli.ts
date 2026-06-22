@@ -451,6 +451,9 @@ program
               console.warn(message);
               appendDebugLog(logFilePath, { scope: "index", message: `WARN: ${message}` });
             },
+            debug: (message) => {
+              appendDebugLog(logFilePath, { scope: "index", message: `DEBUG: ${message}`, severity: "debug" });
+            },
           },
         });
 
