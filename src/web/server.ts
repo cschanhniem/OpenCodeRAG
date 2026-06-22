@@ -17,6 +17,11 @@ const MIME_TYPES: Record<string, string> = {
   ".png": "image/png",
   ".svg": "image/svg+xml",
   ".ico": "image/x-icon",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".bmp": "image/bmp",
 };
 
 function serveStatic(res: ServerResponse, html: string): void {
@@ -45,13 +50,14 @@ export interface WebUiServer {
 export async function startWebUi(
   storePath: string,
   port: number,
+  cwd?: string,
   vectorDimension: number = 384
 ): Promise<WebUiServer> {
   const store = new LanceDBStore(storePath, vectorDimension);
   const keywordIndex = await KeywordIndex.load(storePath);
 
   const html = getStaticHtml();
-  const apiHandler = createApiHandler(store, keywordIndex, storePath);
+  const apiHandler = createApiHandler(store, keywordIndex, storePath, cwd);
 
   const server: Server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     const url = req.url ?? "/";

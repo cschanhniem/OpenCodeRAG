@@ -1,8 +1,20 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { readFileSync } from "node:fs";
+import { extname, resolve as resolvePathModule } from "node:path";
 import { LanceDBStore } from "../vectorstore/lancedb.js";
 import { KeywordIndex } from "../retriever/keyword-index.js";
 import { listSessions, getSession, deleteSession, compareSessions, validateSessionID } from "../eval/storage.js";
 import { analyzeTokenUsage, compareTokenAnalyses, projectTokenSavings } from "../eval/token-analysis.js";
+
+const FILE_MIME_TYPES: Record<string, string> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".bmp": "image/bmp",
+  ".svg": "image/svg+xml",
+};
 
 interface ApiResponse {
   status: number;
@@ -27,7 +39,7 @@ function sendJson(res: ServerResponse, response: ApiResponse): void {
   res.end(JSON.stringify(response.body));
 }
 
-export function createApiHandler(store: LanceDBStore, keywordIndex: KeywordIndex, storePath: string) {
+export function createApiHandler(store: LanceDBStore, keywordIndex: KeywordIndex, storePath: string, cwd?: string) {
   return async (req: IncomingMessage, res: ServerResponse): Promise<boolean> => {
     const url = req.url ?? "/";
     const method = req.method ?? "GET";
@@ -61,6 +73,14 @@ export function createApiHandler(store: LanceDBStore, keywordIndex: KeywordIndex
         response = await handleSearch(keywordIndex, params);
       } else if (path === "/api/compare") {
         response = await handleCompare(store, params);
+      }
+      // File content endpoint (for serving images)
+      else if (path === "/api/file" && method === "GET") {
+        if (cwd) {
+          response = handleFileContent(cwd, params);
+        } else {
+          response = { status: 400, body: { error: "Workspace path not configured" } };
+        }
       }
       // Eval endpoints
       else if (path === "/api/eval/sessions" && method === "GET") {
@@ -218,6 +238,38 @@ async function handleCompare(
   );
 
   return { status: 200, body: { chunks } };
+}
+
+// ── File Content API ──────────────────────────────────────────────────
+
+function handleFileContent(cwd: string, params: URLSearchParams): ApiResponse {
+  const filePath = params.get("path");
+  if (!filePath) {
+    return { status: 400, body: { error: "Missing 'path' query parameter" } };
+  }
+
+  const resolved = resolvePath(cwd, filePath);
+  if (!resolved) {
+    return { status: 403, body: { error: "Invalid file path" } };
+  }
+
+  try {
+    const data = readFileSync(resolved);
+    const ext = extname(resolved).toLowerCase();
+    const mime = FILE_MIME_TYPES[ext] ?? "application/octet-stream";
+    const b64 = data.toString("base64");
+    return { status: 200, body: { data: b64, mime } };
+  } catch {
+    return { status: 404, body: { error: "File not found" } };
+  }
+}
+
+function resolvePath(cwd: string, filePath: string): string | null {
+  const resolved = resolvePathModule(cwd, filePath);
+  const normalizedCwd = cwd.replace(/\\/g, "/");
+  const normalizedResolved = resolved.replace(/\\/g, "/");
+  if (!normalizedResolved.startsWith(normalizedCwd)) return null;
+  return resolved;
 }
 
 // ── Eval API ──────────────────────────────────────────────────────────

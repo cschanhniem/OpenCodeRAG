@@ -101,6 +101,26 @@ export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexR
   logger.debug(`Workspace scan complete: ${workspaceFiles.length} files`);
 
   const existingCount = await options.store.count();
+
+  // Detect data loss: if the store has far fewer chunks than the manifest expects,
+  // treat it as a corrupt store (e.g. schema migration dropped the old table).
+  if (!options.force && manifestStatus === "ok" && existingCount > 0) {
+    const manifestTotalChunks = Object.values(manifest.files).reduce(
+      (sum, entry) => sum + entry.chunkCount, 0
+    );
+    if (manifestTotalChunks > 0 && existingCount < manifestTotalChunks * 0.5) {
+      logger.warn(
+        `Store has ${existingCount} chunks but manifest expects ~${manifestTotalChunks}. ` +
+        `Data appears to have been lost — re-indexing all files.`
+      );
+      for (const key of Object.keys(manifest.files)) {
+        delete manifest.files[key];
+      }
+      manifest.lastIndexedAt = undefined;
+      manifestStatus = "missing";
+    }
+  }
+
   if (options.force || (manifestStatus !== "ok" && existingCount > 0)) {
     await options.store.clear();
     options.keywordIndex?.clear();
@@ -404,6 +424,8 @@ export async function getIndexStatusSummary(
       upToDateFiles: 0,
       pendingFiles: workspaceFiles.length,
       rebuildRequired: storeCount > 0,
+      storeChunkCount: storeCount,
+      manifestExpectedChunks: 0,
     };
   }
 
@@ -431,6 +453,10 @@ export async function getIndexStatusSummary(
     }
   }
 
+  const manifestExpectedChunks = Object.values(manifest.files).reduce(
+    (sum, entry) => sum + entry.chunkCount, 0
+  );
+
   return {
     manifestStatus: loadResult.status,
     manifestEntries: Object.keys(manifest.files).length,
@@ -438,5 +464,7 @@ export async function getIndexStatusSummary(
     pendingFiles,
     lastIndexedAt: manifest.lastIndexedAt,
     rebuildRequired: false,
+    storeChunkCount: storeCount,
+    manifestExpectedChunks,
   };
 }

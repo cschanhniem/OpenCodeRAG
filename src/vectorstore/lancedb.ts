@@ -2,7 +2,7 @@ import * as lancedb from "@lancedb/lancedb";
 import type { Connection, Table, Version } from "@lancedb/lancedb";
 import fs from "node:fs/promises";
 import type { VectorStore, Chunk, SearchResult } from "../core/interfaces.js";
-import { normalizeFilePath } from "../core/manifest.js";
+import { normalizeFilePath, manifestPathFor } from "../core/manifest.js";
 
 const TABLE_NAME = "chunks";
 const VECTOR_COLUMN = "embedding";
@@ -71,6 +71,20 @@ export class LanceDBStore implements VectorStore {
       this.table = await db.openTable(TABLE_NAME);
       if (await this.tableHasDescriptionColumn()) {
         return this.table;
+      }
+      try {
+        const oldCount = await this.table.countRows();
+        if (oldCount > 0) {
+          console.error(`[lancedb] WARNING: Dropping table with ${oldCount} rows — schema missing 'description' column (data will be lost). Clearing manifest so index will rebuild.`);
+          try {
+            const manifestPath = manifestPathFor(this.dbPath);
+            await fs.unlink(manifestPath).catch(() => {});
+          } catch {
+            // manifest not found or permission error — pipeline will detect the mismatch
+          }
+        }
+      } catch {
+        // best-effort row count
       }
       await db.dropTable(TABLE_NAME).catch(() => {});
       this.table = null;

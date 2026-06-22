@@ -498,6 +498,23 @@
       const detail = $('#chunks-detail');
       if (!detail) return;
 
+      const isImage = c.language === 'image';
+
+      let imageHtml = '';
+      if (isImage) {
+        const imgUrl = `/api/file?path=${encodeURIComponent(c.filePath)}`;
+        imageHtml = `
+          <div class="bg-slate-900 rounded-lg border border-slate-700 overflow-hidden mb-3">
+            <div class="px-3 py-1.5 bg-slate-800 border-b border-slate-700 flex items-center justify-between">
+              <span class="text-xs text-slate-400">Image Preview</span>
+            </div>
+            <div class="p-3 flex items-center justify-center bg-slate-950" id="image-container-${c.id}">
+              <img src="${imgUrl}" alt="${escapeHtml(c.filePath)}" class="max-w-full max-h-[60vh] object-contain rounded"
+                   onerror="this.closest('.bg-slate-950').innerHTML='<span class=\\'text-slate-500 text-sm\\'>Image not available</span>'">
+            </div>
+          </div>`;
+      }
+
       detail.innerHTML = `
         <div class="mb-3">
           <div class="flex items-center gap-3 mb-1">
@@ -514,12 +531,13 @@
           <h3 class="text-xs font-semibold text-slate-400 mb-1">Description</h3>
           <p class="text-sm text-slate-300">${c.description}</p>
         </div>` : ''}
+        ${imageHtml}
         <div class="bg-slate-900 rounded-lg border border-slate-700 overflow-hidden">
           <div class="px-3 py-1.5 bg-slate-800 border-b border-slate-700 flex items-center justify-between">
-            <span class="text-xs text-slate-400">Source Code</span>
+            <span class="text-xs text-slate-400">${isImage ? 'Vision Analysis' : 'Source Code'}</span>
             <button class="copy-btn text-xs text-slate-500 hover:text-white">Copy</button>
           </div>
-          <pre class="p-3 overflow-x-auto text-sm max-h-[calc(100vh-220px)]"><code class="language-${c.language}">${escapeHtml(c.content || '')}</code></pre>
+          <pre class="p-3 overflow-x-auto text-sm max-h-[calc(100vh-220px)]"><code class="language-${isImage ? 'text' : c.language}">${escapeHtml(c.content || '')}</code></pre>
         </div>
       `;
 

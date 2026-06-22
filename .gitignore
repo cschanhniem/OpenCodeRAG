@@ -29,3 +29,5 @@ Thumbs.db
 memory:/
 opencode-rag.json
 src/__tests__/_images
+*.png
+*.jpg

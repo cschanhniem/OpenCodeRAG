@@ -658,6 +658,8 @@ program
       logCliInfo(logFilePath, "status", `${c.label("Last indexed:")}      ${c.value(formatTimestamp(summary.lastIndexedAt))}`);
       logCliInfo(logFilePath, "status", `${c.label("Up-to-date files:")}  ${c.num(summary.upToDateFiles)}`);
       logCliInfo(logFilePath, "status", `${c.label("Pending files:")}     ${c.num(summary.pendingFiles)}`);
+      logCliInfo(logFilePath, "status", `${c.label("Indexed chunks:")}    ${c.num(summary.storeChunkCount)}`);
+      logCliInfo(logFilePath, "status", `${c.label("Expected chunks:")}   ${c.num(summary.manifestExpectedChunks)}`);
       logCliInfo(logFilePath, "status", `${c.label("Watch mode:")}        ${c.dim("off")}`);
       const kiCount = config.retrieval.hybridSearch?.enabled
         ? keywordIndex?.count() ?? 0
@@ -665,6 +667,9 @@ program
       logCliInfo(logFilePath, "status", `${c.label("Keyword index:")}     ${config.retrieval.hybridSearch?.enabled ? c.enabled("enabled") : c.disabled("disabled")} (${c.num(kiCount)} chunks)`);
       if (summary.rebuildRequired) {
         logCliInfo(logFilePath, "status", `${c.label("Rebuild required:")}  ${c.warn("yes")} (manifest missing/corrupt)`);
+      }
+      if (summary.storeChunkCount > 0 && summary.manifestExpectedChunks > 0 && summary.storeChunkCount < summary.manifestExpectedChunks * 0.5) {
+        logCliInfo(logFilePath, "status", `${c.label("Data loss detected:")} ${c.warn("yes")} — store has fewer chunks than expected. Run 'opencode-rag index' to rebuild.`);
       }
     } catch (err) {
       const message = (err as Error).message || String(err);
@@ -802,7 +807,8 @@ program
       const { startWebUi } = await import("./web/server.js");
       const server = await startWebUi(
         storePath,
-        port
+        port,
+        cwd,
       );
 
       const url = `http://127.0.0.1:${server.port}`;

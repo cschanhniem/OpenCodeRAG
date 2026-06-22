@@ -23,6 +23,8 @@ export interface IndexStatusSummary {
   pendingFiles: number;
   lastIndexedAt?: number;
   rebuildRequired: boolean;
+  storeChunkCount: number;
+  manifestExpectedChunks: number;
 }
 
 export function createIndexStats(

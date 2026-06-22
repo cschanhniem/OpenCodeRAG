@@ -70,7 +70,8 @@ Click a row to view its details. Use **Previous** / **Next** to paginate.
 
 - File path, line range, language badge, chunk ID
 - **Description** card (LLM-generated or path-based)
-- **Source Code** panel with syntax highlighting and a **Copy** button
+- **Image Preview** panel (for image chunks) — displays the actual image file with automatic loading from the workspace
+- **Source Code** / **Vision Analysis** panel with syntax highlighting and a **Copy** button (shows the vision provider's text description for image chunks)
 
 Active filters (language, file) appear as dismissible badges above the table.
 
@@ -181,5 +182,6 @@ The web server exposes a REST API under `/api/`:
 | `/api/eval/sessions/:id/analysis` | GET | Token analysis with RAG savings projection and per-query breakdown |
 | `/api/eval/token-compare?a=&b=` | GET | Token analysis comparison with verdict, deltas, and percent changes |
 | `/api/eval/project-savings` | POST | Project token savings for given chunk/reads parameters (body: JSON) |
+| `/api/file?path=` | GET | Serve workspace file content (base64-encoded); used for displaying image files in the chunk detail view |
 
 All endpoints return JSON with `Access-Control-Allow-Origin: *`.
