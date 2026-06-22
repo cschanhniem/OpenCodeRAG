@@ -248,7 +248,7 @@ export const DEFAULT_CONFIG: RagConfig = {
     provider: "lancedb",
   },
   retrieval: {
-    topK: 10,
+    topK: 20,
     minScore: 0.5,
     hybridSearch: {
       enabled: true,

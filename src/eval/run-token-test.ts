@@ -72,7 +72,7 @@ function formatAutoInjectContext(results: SearchResult[], worktree: string, maxT
   return formatted;
 }
 
-function formatFileList(results: SearchResult[], worktree: string): string {
+function formatFileList(results: SearchResult[], worktree: string, maxFiles = 10): string {
   const fileMap = new Map<string, { lines: number[]; scores: number[] }>();
   for (const r of results) {
     const m = r.chunk.metadata;
@@ -80,7 +80,7 @@ function formatFileList(results: SearchResult[], worktree: string): string {
     if (existing) { existing.lines.push(m.startLine, m.endLine); existing.scores.push(r.score); }
     else { fileMap.set(m.filePath, { lines: [m.startLine, m.endLine], scores: [r.score] }); }
   }
-  const sorted = [...fileMap.entries()].sort((a, b) => Math.max(...b[1].scores) - Math.max(...a[1].scores)).slice(0, 10);
+  const sorted = [...fileMap.entries()].sort((a, b) => Math.max(...b[1].scores) - Math.max(...a[1].scores)).slice(0, maxFiles);
   if (sorted.length === 0) return "";
   const lines = ["Relevant files:"];
   for (const [fp, info] of sorted) {
@@ -138,7 +138,7 @@ async function main() {
     if (highConfidence.length > 0) {
       ragOnText = formatAutoInjectContext(highConfidence, WORKTREE, maxTokens, maxChunks);
       contentType = "chunks";
-      if (ragOnText.length === 0) { ragOnText = formatFileList(highConfidence, WORKTREE); contentType = "file_paths"; }
+      if (ragOnText.length === 0) { ragOnText = formatFileList(highConfidence, WORKTREE, cfg.retrieval.topK); contentType = "file_paths"; }
     }
 
     const contextTokens = countTokens(ragOnText);

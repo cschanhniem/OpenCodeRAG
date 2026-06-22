@@ -21,7 +21,7 @@ function baseConfig(overrides: Partial<RagConfig["embedding"]> = {}): RagConfig 
       embedBatchSize: 10,
     },
     vectorStore: { path: "./.opencode/rag_db" },
-    retrieval: { topK: 10, minScore: 0.1 },
+    retrieval: { topK: 20, minScore: 0.1 },
     openCode: { enabled: false, maxContextChunks: 10 },
     description: undefined,
     tui: { fileListKeybinding: "", chunksKeybinding: "" },

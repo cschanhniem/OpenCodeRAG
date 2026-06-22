@@ -340,7 +340,7 @@ type CreateRagHooksOptions = {
   descriptionProvider?: DescriptionProvider;
 };
 
-function formatFileList(results: SearchResult[], worktree: string): string {
+function formatFileList(results: SearchResult[], worktree: string, maxFiles = 10): string {
   const fileMap = new Map<string, { lines: number[]; scores: number[] }>();
 
   for (const r of results) {
@@ -359,7 +359,7 @@ function formatFileList(results: SearchResult[], worktree: string): string {
 
   const sorted = [...fileMap.entries()]
     .sort((a, b) => Math.max(...b[1].scores) - Math.max(...a[1].scores))
-    .slice(0, 10);
+    .slice(0, maxFiles);
 
   if (sorted.length === 0) return "";
 
@@ -762,7 +762,7 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
         }
 
         if (pendingInjection === "files") {
-          const fileList = formatFileList(results, options.worktree);
+          const fileList = formatFileList(results, options.worktree, effectiveCfg.retrieval.topK);
           sessionLogger.onRagContext(input.sessionID, input.messageID, {
             chunkCount: 0,
             uniqueFiles: 0,
@@ -805,7 +805,7 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
             injectedChunks = highConfidence.slice(0, maxChunks);
             suggestionList = contentType === "chunks"
               ? formatAutoInjectContext(highConfidence, options.worktree, maxTokens, maxChunks)
-              : formatFileList(highConfidence, options.worktree);
+              : formatFileList(highConfidence, options.worktree, effectiveCfg.retrieval.topK);
           }
         }
 

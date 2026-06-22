@@ -160,8 +160,8 @@ describe("DEFAULT_CONFIG", () => {
     assert.equal(DEFAULT_CONFIG.openCode.enabled, true);
   });
 
-  it("has topK of 10", () => {
-    assert.equal(DEFAULT_CONFIG.retrieval.topK, 10);
+  it("has topK of 20", () => {
+    assert.equal(DEFAULT_CONFIG.retrieval.topK, 20);
   });
 
   it("has minScore of 0.5", () => {
