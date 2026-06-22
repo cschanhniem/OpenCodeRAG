@@ -61,6 +61,7 @@ function releaseConnection(socket: net.Socket | tls.TLSSocket, host: string, por
     socket.destroy();
   }, IDLE_TIMEOUT_MS);
 
+  socket.removeAllListeners();
   pool.push({ socket, idleTimer });
 }
 
