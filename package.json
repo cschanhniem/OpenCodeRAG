@@ -81,7 +81,6 @@
   },
   "dependencies": {
     "@e965/xlsx": "^0.20.3",
-    "@esbuild/win32-x64": "^0.28.1",
     "@lancedb/lancedb": "^0.29.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@thednp/dommatrix": "^3.0.4",
