@@ -15,7 +15,7 @@ function visionSleep(ms: number): Promise<void> {
 }
 
 export const SUPPORTED_IMAGE_EXTENSIONS = new Set([
-  ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg",
+  ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp",
 ]);
 
 const MIME_TYPES: Record<string, string> = {

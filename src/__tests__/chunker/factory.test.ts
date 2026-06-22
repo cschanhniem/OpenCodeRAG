@@ -193,6 +193,11 @@ describe("getChunker", () => {
     assert.equal(chunker.language, "xml");
   });
 
+  it("returns XML chunker for .svg files", () => {
+    const chunker = getChunker("icon.svg");
+    assert.equal(chunker.language, "xml");
+  });
+
   it("returns SLN chunker for .sln files", () => {
     const chunker = getChunker("MySolution.sln");
     assert.equal(chunker.language, "sln");
