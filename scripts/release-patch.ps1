@@ -23,10 +23,11 @@ try {
     throw "No new commits since $prevTag"
   }
 
-  $date = Get-Date -Format "yyyy-MM-dd"
-  $notesFile = [System.IO.Path]::GetTempFileName()
-  try {
-    Set-Content -Path $notesFile -Value "$date`n`n$notes"
+    $date = Get-Date -Format "yyyy-MM-dd"
+    $notesFile = [System.IO.Path]::GetTempFileName()
+    try {
+      $bulleted = ($notes | ForEach-Object { "- $_" }) -join "`n"
+      Set-Content -Path $notesFile -Value "$date`n`n$bulleted"
 
     if (-not $dryRun) {
       Run 'git push origin main'

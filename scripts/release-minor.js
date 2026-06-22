@@ -20,7 +20,8 @@ function getChangelog(prevTag) {
     const log = execSync(`git log --oneline ${prevTag}..HEAD`).toString().trim();
     if (!log) return null;
     const date = new Date().toISOString().slice(0, 10);
-    return `${date}\n\n${log}`;
+    const bullets = log.split('\n').map(line => `- ${line}`).join('\n');
+    return `${date}\n\n${bullets}`;
   } catch {
     return null;
   }

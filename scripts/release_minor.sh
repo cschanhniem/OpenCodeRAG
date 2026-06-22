@@ -34,7 +34,11 @@ fi
 DATE=$(date +%Y-%m-%d)
 NOTES_FILE=$(mktemp)
 trap 'rm -f "$NOTES_FILE"' EXIT
-printf '%s\n\n%s' "$DATE" "$NOTES" > "$NOTES_FILE"
+{
+  echo "$DATE"
+  echo ""
+  echo "$NOTES" | sed 's/^/- /'
+} > "$NOTES_FILE"
 
 if [[ "$DRY_RUN" != "1" ]]; then
   run git push origin main
