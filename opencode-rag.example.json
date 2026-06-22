@@ -68,7 +68,11 @@
       ".github"
     ],
     "chunkOverlap": 0,
-    "minFileSizeBytes": 0
+    "minFileSizeBytes": 0,
+    "concurrency": 8,
+    "embedBatchSize": 100,
+    "embedConcurrency": 3,
+    "descriptionConcurrency": 4
   },
   "vectorStore": {
     "path": "./.opencode/rag_db"
@@ -117,7 +121,10 @@
     "think": false,
     "numCtx": 4096,
     "timeoutMs": 60000,
-    "systemPrompt": "Describe code precise and concise in 2 sentences. Maximum 20 words. Focus on functionality and purpose."
+    "systemPrompt": "Describe code precise and concise in 2 sentences. Maximum 20 words. Focus on functionality and purpose.",
+    "batchMaxChunks": 25,
+    "batchTimeoutMs": 120000,
+    "batchConcurrency": 3
   },
   "autoUpdate": {
     "enabled": true

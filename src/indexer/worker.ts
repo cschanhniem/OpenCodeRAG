@@ -241,7 +241,7 @@ export async function processFile(
   previous: ManifestFile | undefined,
   config: {
     embedding: { documentPrefix?: string };
-    indexing: { embedBatchSize: number };
+    indexing: { embedBatchSize: number; embedConcurrency?: number };
     chunking?: { nodeTypes?: Record<string, string[]> };
   },
   store: VectorStore,
@@ -274,7 +274,7 @@ export async function processFile(
 
   try {
     const { embedBatch } = await import("../embedder/factory.js");
-    const embeddings = await embedBatch(embedder, prep.textToEmbed, config.indexing.embedBatchSize, "document");
+    const embeddings = await embedBatch(embedder, prep.textToEmbed, config.indexing.embedBatchSize, "document", config.indexing.embedConcurrency ?? 1);
     const result = await storeFileChunks(prep, embeddings, store);
     return result;
   } catch (err) {

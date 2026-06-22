@@ -44,6 +44,7 @@ export interface DescriptionConfig {
   systemPrompt: string;
   batchMaxChunks?: number;
   batchTimeoutMs?: number;
+  batchConcurrency?: number;
   retryMax?: number;
   retryBaseDelayMs?: number;
   think?: boolean;
@@ -100,6 +101,8 @@ export interface RagConfig {
     minFileSizeBytes?: number;
     concurrency: number;
     embedBatchSize: number;
+    embedConcurrency?: number;
+    descriptionConcurrency?: number;
   };
   vectorStore: {
     path: string;
@@ -237,6 +240,8 @@ export const DEFAULT_CONFIG: RagConfig = {
     minFileSizeBytes: 0,
     concurrency: 8,
     embedBatchSize: 100,
+    embedConcurrency: 3,
+    descriptionConcurrency: 4,
   },
   vectorStore: {
     path: "./.opencode/rag_db",
@@ -290,6 +295,7 @@ export const DEFAULT_CONFIG: RagConfig = {
       "Describe code precise and concise in 2 sentences. Maximum 20 words. Focus on functionality and purpose.",
     batchMaxChunks: 25,
     batchTimeoutMs: 120000,
+    batchConcurrency: 3,
     retryMax: 3,
     retryBaseDelayMs: 1000,
   },
@@ -365,6 +371,12 @@ export function validateConfig(config: RagConfig): ConfigValidationResult {
   }
   if (config.indexing.embedBatchSize <= 0) {
     warnings.push("indexing.embedBatchSize must be > 0");
+  }
+  if (config.indexing.embedConcurrency != null && config.indexing.embedConcurrency <= 0) {
+    warnings.push("indexing.embedConcurrency must be > 0");
+  }
+  if (config.indexing.descriptionConcurrency != null && config.indexing.descriptionConcurrency <= 0) {
+    warnings.push("indexing.descriptionConcurrency must be > 0");
   }
   if (config.indexing.minFileSizeBytes != null && config.indexing.minFileSizeBytes < 0) {
     warnings.push("indexing.minFileSizeBytes must be >= 0");

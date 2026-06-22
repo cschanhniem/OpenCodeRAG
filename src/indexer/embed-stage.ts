@@ -41,7 +41,7 @@ export async function embedChunks({
   }
 
   if (textsToEmbed.length > 0) {
-    const embeddings = await embedBatch(embedder, textsToEmbed, batchSize, "document");
+    const embeddings = await embedBatch(embedder, textsToEmbed, batchSize, "document", concurrency);
 
     for (let i = 0; i < chunkIndices.length; i++) {
       const chunkIdx = chunkIndices[i]!;

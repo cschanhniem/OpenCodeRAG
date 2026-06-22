@@ -1,8 +1,10 @@
+import path from "node:path";
 import pLimit from "p-limit";
 import { scanWorkspaceFiles } from "../content/reader.js";
 import type { RagConfig } from "../core/config.js";
-import { loadManifest, saveManifest } from "../core/manifest.js";
+import { loadManifest, saveManifest, normalizeFilePath } from "../core/manifest.js";
 import type {
+  Chunk,
   DescriptionProvider,
   EmbeddingProvider,
   KeywordIndex,
@@ -10,7 +12,7 @@ import type {
 } from "../core/interfaces.js";
 import { embedBatch } from "../embedder/factory.js";
 import { createIndexStats, type IndexRunStats, type IndexStatusSummary } from "./stats.js";
-import { prepareFile, storeFileChunks, type WorkerResult, type PreparedFile } from "./worker.js";
+import { prepareFile, type WorkerResult, type PreparedFile } from "./worker.js";
 import { getCurrentCommit, getChangedFilesSince, getUntrackedFiles, getRepoRoot } from "./git-diff.js";
 
 export type { WatchPassScheduler } from "./watch.js";
@@ -69,11 +71,31 @@ export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexR
     logger.debug("Force mode: ignoring manifest");
   }
 
+  let filterPaths: string[] | undefined;
+  let gitDeletedPaths: string[] = [];
+
+  if (!options.force && manifestStatus === "ok" && manifest.lastGitCommit) {
+    const repoRoot = getRepoRoot(options.cwd);
+    if (repoRoot) {
+      const diffResult = getChangedFilesSince(options.cwd, manifest.lastGitCommit);
+      if (diffResult) {
+        const untracked = getUntrackedFiles(options.cwd);
+        const changedSet = new Set<string>();
+        for (const f of diffResult.changedFiles) changedSet.add(f);
+        for (const f of untracked) changedSet.add(f);
+        filterPaths = Array.from(changedSet);
+        gitDeletedPaths = diffResult.deletedFiles;
+        logger.debug(`Git incremental: ${filterPaths.length} changed/untracked, ${gitDeletedPaths.length} deleted since ${manifest.lastGitCommit.slice(0, 8)}`);
+      }
+    }
+  }
+
   const workspaceFiles = await scanWorkspaceFiles(
     options.cwd,
     options.config,
     logger,
     options.force ? undefined : manifest,
+    filterPaths,
   );
 
   logger.debug(`Workspace scan complete: ${workspaceFiles.length} files`);
@@ -107,7 +129,12 @@ export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexR
   }
 
   const currentPaths = new Set(workspaceFiles.map((file) => file.normalizedPath));
-  const stalePaths = Object.keys(manifest.files).filter((p) => !currentPaths.has(p));
+  let stalePaths: string[];
+  if (filterPaths) {
+    stalePaths = gitDeletedPaths.map((p) => normalizeFilePath(path.resolve(options.cwd, p)));
+  } else {
+    stalePaths = Object.keys(manifest.files).filter((p) => !currentPaths.has(p));
+  }
   if (stalePaths.length > 0) {
     logger.debug(`Removing ${stalePaths.length} stale files from index...`);
     const deleteLimit = pLimit(options.config.indexing.concurrency);
@@ -145,11 +172,15 @@ export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexR
   // ── Phase 1: prepare all files (chunk + description + keyword + textToEmbed) ──
   const limit = pLimit(options.config.indexing.concurrency);
   let completed = 0;
+  let started = 0;
   const total = workspaceFiles.length;
 
   const prepared = await Promise.all(
     workspaceFiles.map((file) =>
       limit(async () => {
+        const fileLabel = file.normalizedPath;
+        started++;
+        logger.info(`  Preparing file: ${started} - ${fileLabel}`);
         const prep = await prepareFile(
           file,
           options.cwd,
@@ -202,12 +233,14 @@ export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexR
 
   let allEmbeddings: number[][] = [];
   if (allTextToEmbed.length > 0) {
-    logger.info(`  Embedding ${allTextToEmbed.length} chunks in global batch...`);
+    const embedConcurrency = options.config.indexing.embedConcurrency ?? 1;
+    logger.info(`  Embedding ${allTextToEmbed.length} chunks in global batch (concurrency: ${embedConcurrency})...`);
     allEmbeddings = await embedBatch(
       options.embedder,
       allTextToEmbed,
       options.config.indexing.embedBatchSize,
       "document",
+      embedConcurrency,
     );
     logger.debug(`  Embedding batch complete: ${allEmbeddings.length} vectors`);
   }
@@ -225,17 +258,59 @@ export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexR
     }
   }
 
-  // ── Phase 3: store all files with their embeddings ──
+  // ── Phase 3: store all files with their embeddings (batched) ──
   logger.debug(`Phase 3: storing chunks for ${prepared.length} files...`);
-  const storeLimit = pLimit(options.config.indexing.concurrency);
-  const workerResults = await Promise.all(
-    prepared.map((prep, idx) =>
-      storeLimit(async () => {
-        const embeddings = embedByPrep.get(idx) ?? [];
-        return storeFileChunks(prep, embeddings, options.store, logger);
-      }),
-    ),
-  );
+
+  const allValidChunks: Chunk[] = [];
+  const workerResults: WorkerResult[] = prepared.map((prep, idx) => {
+    if (prep.earlyResult) {
+      return prep.earlyResult;
+    }
+    if (!prep.chunks || !prep.textToEmbed) {
+      return {
+        normalizedPath: prep.normalizedPath, hash: prep.hash, chunkCount: 0, fileLabel: prep.fileLabel,
+        isNew: false, isModified: false, isUnchanged: false, isEmpty: false, isTooSmall: false, isRemoved: true, hadChunks: false,
+      };
+    }
+
+    const embeddings = embedByPrep.get(idx) ?? [];
+    for (let i = 0; i < prep.chunks.length; i++) {
+      const emb = embeddings[i];
+      if (Array.isArray(emb) && emb.length > 0 && typeof emb[0] === "number") {
+        prep.chunks[i]!.embedding = emb as number[];
+      } else {
+        prep.chunks[i]!.embedding = undefined;
+      }
+    }
+
+    const validChunks = prep.chunks.filter((c) => c.embedding && c.embedding.length > 0);
+    allValidChunks.push(...validChunks);
+
+    logger.info(`  ${prep.fileLabel} (${prep.chunks.length} chunks${prep.isModified ? ", modified" : ", new"})`);
+
+    return {
+      normalizedPath: prep.normalizedPath,
+      hash: prep.hash,
+      chunkCount: prep.chunks.length,
+      fileLabel: prep.fileLabel,
+      isNew: !prep.isModified,
+      isModified: prep.isModified,
+      isUnchanged: false,
+      isEmpty: false,
+      isTooSmall: false,
+      isRemoved: false,
+      hadChunks: prep.chunks.length > 0,
+    };
+  });
+
+  if (allValidChunks.length > 0) {
+    const STORE_BATCH = 1000;
+    for (let i = 0; i < allValidChunks.length; i += STORE_BATCH) {
+      const batch = allValidChunks.slice(i, i + STORE_BATCH);
+      await options.store.addChunks(batch);
+    }
+    logger.debug(`  Stored ${allValidChunks.length} chunks in batched writes`);
+  }
 
   // ── Aggregate stats and update manifest ──
   aggregateStats(stats, workerResults, manifest, workspaceFiles);

@@ -153,19 +153,19 @@ See [Web UI](webui.md) for the full dashboard reference.
 ## Pipeline Stages
 
 ### 1. Scanning (`scanWorkspace` in `indexer.ts`)
-Walks the workspace directory tree, filtering by `includeExtensions` and `excludeDirs`. Reads text files as UTF-8, binary files (PDF, DOCX, DOC, Excel) via extraction libraries.
+Walks the workspace directory tree, filtering by `includeExtensions` and `excludeDirs`. Reads text files as UTF-8, binary files (PDF, DOCX, DOC, Excel) via extraction libraries. Supports incremental scanning via git-diff — when a previous git commit is recorded in the manifest, only changed/untracked files are scanned.
 
 ### 2. Chunking (`chunkFile` in `chunker/factory.ts`)
 Dispatches to the appropriate `Chunker` based on file extension. Each chunker splits content into semantically meaningful units (AST nodes, headings, paragraphs, etc.).
 
 ### 3. Description (Optional, `DescriptionProvider`)
-An LLM generates a natural-language description of each chunk. The embedded text becomes `filePath + "\n\n" + description + "\n\n" + content`. If disabled, the description defaults to `lines N-M, language`.
+An LLM generates a natural-language description of each chunk. Batches of chunks are processed concurrently (configurable via `description.batchConcurrency`). The embedded text becomes `filePath + "\n\n" + description + "\n\n" + content`. If disabled, the description defaults to `lines N-M, language`.
 
 ### 4. Embedding (`embedBatch` in `embedder/factory.ts`)
-Texts are optionally prefixed with `documentPrefix` (e.g., `search_document:`) and sent to the embedding provider in batches. The resulting vectors are written to the chunk objects.
+Texts are optionally prefixed with `documentPrefix` (e.g., `search_document:`) and sent to the embedding provider in batches. Multiple batches are sent concurrently (configurable via `indexing.embedConcurrency`). The resulting vectors are written to the chunk objects.
 
 ### 5. Storage (`LanceDBStore`)
-Chunks and their embeddings are stored in LanceDB. The keyword index is maintained separately as an in-memory TF×IDF inverted index, serialized to `keyword-index.json`.
+Chunks and their embeddings are stored in LanceDB in batched writes. The keyword index is maintained separately as an in-memory TF×IDF inverted index, serialized to `keyword-index.json`.
 
 ### 6. Retrieval (`retrieve` in `retriever/retriever.ts`)
 The query is prefixed with `queryPrefix` and embedded. Vector search returns results. If hybrid search is enabled, keyword search runs in parallel. Results are fused via weighted score: `(1 - kw) * vScore + kw * kScore`.

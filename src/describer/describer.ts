@@ -1,6 +1,7 @@
 import type { Chunk, DescriptionProvider } from "../core/interfaces.js";
 import type { DescriptionConfig, ProxyConfig } from "../core/config.js";
 import { postJson } from "../embedder/http.js";
+import pLimit from "p-limit";
 
 interface ChatMessage {
   role: "system" | "user" | "assistant";
@@ -37,33 +38,44 @@ export class LLMDescriptionProvider implements DescriptionProvider {
     }
 
     const batchMaxChunks = this.config.batchMaxChunks ?? 25;
+    const batchConcurrency = this.config.batchConcurrency ?? 3;
     const batches: Chunk[][] = [];
     for (let i = 0; i < chunks.length; i += batchMaxChunks) {
       batches.push(chunks.slice(i, i + batchMaxChunks));
     }
 
     const result = new Map<string, string>();
-    for (const batch of batches) {
-      try {
-        const batchResult = await this.executeBatch(batch);
-        for (const [id, desc] of batchResult) {
-          result.set(id, desc);
-        }
-      } catch {
-        // Batch failed — individual fallback loop below will handle missing chunks
-      }
-    }
+    const batchLimit = pLimit(batchConcurrency);
+    await Promise.all(
+      batches.map((batch) =>
+        batchLimit(async () => {
+          try {
+            const batchResult = await this.executeBatch(batch);
+            for (const [id, desc] of batchResult) {
+              result.set(id, desc);
+            }
+          } catch {
+            // Batch failed — individual fallback loop below will handle missing chunks
+          }
+        }),
+      ),
+    );
 
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i]!;
-      if (!result.has(chunk.id)) {
-        try {
-          const desc = await this.generateDescription(chunk);
-          result.set(chunk.id, desc);
-        } catch {
-          // skip — caller will fall back to content
-        }
-      }
+    const missingChunks = chunks.filter((c) => !result.has(c.id));
+    if (missingChunks.length > 0) {
+      const fallbackLimit = pLimit(batchConcurrency);
+      await Promise.all(
+        missingChunks.map((chunk) =>
+          fallbackLimit(async () => {
+            try {
+              const desc = await this.generateDescription(chunk);
+              result.set(chunk.id, desc);
+            } catch {
+              // skip — caller will fall back to content
+            }
+          }),
+        ),
+      );
     }
 
     return result;

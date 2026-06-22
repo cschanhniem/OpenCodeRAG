@@ -9,6 +9,73 @@ export interface HttpResponseLike {
   json<T = unknown>(): Promise<T>;
 }
 
+const MAX_POOL_SIZE = 4;
+const IDLE_TIMEOUT_MS = 30000;
+
+interface PooledSocket {
+  socket: net.Socket | tls.TLSSocket;
+  idleTimer: ReturnType<typeof setTimeout>;
+}
+
+const connectionPool = new Map<string, PooledSocket[]>();
+
+function poolKey(host: string, port: number, isHttps: boolean): string {
+  return `${isHttps ? "tls" : "tcp"}:${host}:${port}`;
+}
+
+function acquireConnection(host: string, port: number, isHttps: boolean): net.Socket | tls.TLSSocket | null {
+  const key = poolKey(host, port, isHttps);
+  const pool = connectionPool.get(key);
+  if (!pool || pool.length === 0) return null;
+
+  const entry = pool.pop()!;
+  clearTimeout(entry.idleTimer);
+  if (!entry.socket.destroyed && entry.socket.writable) {
+    return entry.socket;
+  }
+  entry.socket.destroy();
+  return acquireConnection(host, port, isHttps);
+}
+
+function releaseConnection(socket: net.Socket | tls.TLSSocket, host: string, port: number, isHttps: boolean): void {
+  if (socket.destroyed || !socket.writable) {
+    socket.destroy();
+    return;
+  }
+
+  const key = poolKey(host, port, isHttps);
+  let pool = connectionPool.get(key);
+  if (!pool) {
+    pool = [];
+    connectionPool.set(key, pool);
+  }
+
+  if (pool.length >= MAX_POOL_SIZE) {
+    socket.destroy();
+    return;
+  }
+
+  const idleTimer = setTimeout(() => {
+    const idx = pool!.findIndex((e) => e.socket === socket);
+    if (idx >= 0) pool!.splice(idx, 1);
+    socket.destroy();
+  }, IDLE_TIMEOUT_MS);
+
+  pool.push({ socket, idleTimer });
+}
+
+function destroyAllPooledConnections(): void {
+  for (const pool of connectionPool.values()) {
+    for (const entry of pool) {
+      clearTimeout(entry.idleTimer);
+      entry.socket.destroy();
+    }
+  }
+  connectionPool.clear();
+}
+
+export { destroyAllPooledConnections };
+
 export function isLocalhost(hostname: string): boolean {
   const normalized = hostname.toLowerCase();
   return (
@@ -81,7 +148,7 @@ function buildRequestPayload(body: unknown, headers: Record<string, string>, url
   const payload = JSON.stringify(body);
   const requestHeaders: Record<string, string> = {
     Host: url.host,
-    Connection: "close",
+    Connection: "keep-alive",
     "Content-Type": "application/json",
     "Content-Length": Buffer.byteLength(payload).toString(),
     ...headers,
@@ -189,15 +256,15 @@ async function sendRawHttpRequest(
   const isHttps = url.protocol === "https:";
 
   const responseBuffer = await new Promise<Buffer>((resolve, reject) => {
-    const socket = isHttps
-      ? tls.connect({ host: url.hostname, port, servername: url.hostname })
-      : net.connect({ host: url.hostname, port });
+    const pooled = acquireConnection(url.hostname, port, isHttps);
+    let socket: net.Socket | tls.TLSSocket;
 
     const chunks: Buffer[] = [];
     let settled = false;
     let headerEndIndex = -1;
     let expectedBodyLength = -1;
     let isChunked = false;
+    let responseConnectionClose = false;
 
     const settle = (fn: () => void) => {
       if (settled) return;
@@ -213,11 +280,15 @@ async function sendRawHttpRequest(
       });
     }, timeoutMs);
 
-    socket.on("connect", () => {
-      socket.write(requestBuffer);
-    });
+    const releaseOrDestroy = () => {
+      if (responseConnectionClose) {
+        socket.destroy();
+      } else {
+        releaseConnection(socket, url.hostname, port, isHttps);
+      }
+    };
 
-    socket.on("data", (chunk) => {
+    const dataHandler = (chunk: Buffer) => {
       chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
       if (settled) return;
 
@@ -242,6 +313,9 @@ async function sendRawHttpRequest(
           if (name === "transfer-encoding" && value.toLowerCase().includes("chunked")) {
             isChunked = true;
           }
+          if (name === "connection" && value.toLowerCase().includes("close")) {
+            responseConnectionClose = true;
+          }
         }
       }
 
@@ -250,7 +324,7 @@ async function sendRawHttpRequest(
       if (expectedBodyLength >= 0) {
         if (bodyBuffer.length >= expectedBodyLength) {
           settle(() => {
-            socket.destroy();
+            releaseOrDestroy();
             resolve(assembled.slice(0, headerEndIndex + 4 + expectedBodyLength));
           });
         }
@@ -262,23 +336,42 @@ async function sendRawHttpRequest(
           const tail = bodyBuffer.slice(-7).toString("ascii");
           if (tail === "\r\n0\r\n\r\n") {
             settle(() => {
-              socket.destroy();
+              releaseOrDestroy();
               resolve(assembled);
             });
           }
         }
         return;
       }
-    });
+    };
 
-    socket.on("end", () => {
+    const endHandler = () => {
       const buffer = Buffer.concat(chunks);
       settle(() => resolve(buffer));
-    });
+    };
 
-    socket.on("error", (err) => {
+    const errorHandler = (err: Error) => {
       settle(() => reject(err));
-    });
+    };
+
+    if (pooled) {
+      socket = pooled;
+      socket.on("data", dataHandler);
+      socket.on("end", endHandler);
+      socket.on("error", errorHandler);
+      socket.write(requestBuffer);
+    } else {
+      socket = isHttps
+        ? tls.connect({ host: url.hostname, port, servername: url.hostname })
+        : net.connect({ host: url.hostname, port });
+
+      socket.on("connect", () => {
+        socket.write(requestBuffer);
+      });
+      socket.on("data", dataHandler);
+      socket.on("end", endHandler);
+      socket.on("error", errorHandler);
+    }
   });
 
   const response = parseResponse(responseBuffer);

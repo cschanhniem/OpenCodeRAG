@@ -6,9 +6,9 @@ OpenCodeRAG supports three embedding providers, dispatched via the `EmbeddingPro
 
 | Provider | Config Value | Transport | Batching |
 |---|---|---|---|
-| Ollama | `"ollama"` | HTTP POST /embed | One text per request |
-| OpenAI | `"openai"` | HTTP POST with auth header | Batched input |
-| Cohere | `"cohere"` | HTTP POST | Batched input |
+| Ollama | `"ollama"` | HTTP POST /embed | Batched input (parallel via `embedConcurrency`) |
+| OpenAI | `"openai"` | HTTP POST with auth header | Batched input (parallel via `embedConcurrency`) |
+| Cohere | `"cohere"` | HTTP POST | Batched input (parallel via `embedConcurrency`) |
 
 ### Ollama (Default)
 
@@ -138,6 +138,25 @@ If both env vars and config `proxy.url` are set, env vars take precedence.
 ## Dimension Probing
 
 At startup, the plugin probes the embedding dimension by sending a single `"dimension-probe"` request. If the probe fails, it falls back to **384 dimensions**. This auto-detection ensures the LanceDB schema matches the model without manual configuration.
+
+## Parallel Embedding
+
+The `embedBatch` function sends multiple embedding batch requests concurrently, controlled by `indexing.embedConcurrency` (default: 3). This means if you have 1000 chunks and a batch size of 100, instead of 10 sequential HTTP requests, OpenCodeRAG will send up to 3 batches in parallel, reducing total embedding time.
+
+```json
+{
+  "indexing": {
+    "embedBatchSize": 100,
+    "embedConcurrency": 3
+  }
+}
+```
+
+Increase `embedConcurrency` if your embedding provider can handle concurrent requests (e.g., local Ollama). For rate-limited providers, keep it low or at 1.
+
+## Connection Reuse
+
+OpenCodeRAG maintains an HTTP connection pool for the embedding provider. When multiple embedding requests are sent to the same host, TCP connections are reused instead of creating new ones for each request. This reduces connection overhead, especially for remote providers. Connections are kept alive for 30 seconds and the pool maintains up to 4 connections per host.
 
 ## Embedding Provider Extensibility
 

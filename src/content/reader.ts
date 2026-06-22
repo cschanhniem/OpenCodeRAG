@@ -98,6 +98,7 @@ export async function scanWorkspaceFiles(
   config: RagConfig,
   logger?: Logger,
   manifest?: FileManifest,
+  filterPaths?: string[],
 ): Promise<WorkspaceFile[]> {
   const extensions = new Set(config.indexing.includeExtensions);
 
@@ -114,11 +115,28 @@ export async function scanWorkspaceFiles(
     imageResizeMaxDimension = imageCfg.resizeMaxDimension;
   }
 
-  const files = await walkFiles(
-    cwd,
-    extensions,
-    new Set(config.indexing.excludeDirs),
-  );
+  let files: string[];
+  if (filterPaths && filterPaths.length > 0) {
+    const excludeDirs = new Set(config.indexing.excludeDirs);
+    files = filterPaths
+      .map((p) => path.resolve(cwd, p))
+      .filter((fp) => {
+        const ext = path.extname(fp).toLowerCase();
+        const basename = path.basename(fp).toLowerCase();
+        if (!extensions.has(ext) && !extensions.has(basename)) return false;
+        const rel = path.relative(cwd, fp);
+        if (rel.startsWith("..")) return false;
+        const parts = rel.split(path.sep);
+        if (parts.some((part) => excludeDirs.has(part))) return false;
+        return true;
+      });
+  } else {
+    files = await walkFiles(
+      cwd,
+      extensions,
+      new Set(config.indexing.excludeDirs),
+    );
+  }
 
   const totalFiles = files.length;
   logger?.info(`Found ${totalFiles} files to scan`);

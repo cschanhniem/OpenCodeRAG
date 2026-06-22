@@ -77,7 +77,9 @@ Controls file discovery and chunking behavior.
     "chunkOverlap": 0,
     "minFileSizeBytes": 0,
     "concurrency": 4,
-    "embedBatchSize": 100
+    "embedBatchSize": 100,
+    "embedConcurrency": 3,
+    "descriptionConcurrency": 4
   }
 }
 ```
@@ -89,7 +91,9 @@ Controls file discovery and chunking behavior.
 | `chunkOverlap` | `0` | Overlap between adjacent chunks |
 | `minFileSizeBytes` | `0` | Skip files smaller than this (files below threshold are also removed from index) |
 | `concurrency` | `4` | Max files processed in parallel during indexing. Higher values speed up indexing but increase memory and embedding API pressure |
-| `embedBatchSize` | `50` | Texts per embedding API call. Larger batches reduce round-trips. Ollama supports up to ~100 |
+| `embedBatchSize` | `100` | Texts per embedding API call. Larger batches reduce round-trips. Ollama supports up to ~100 |
+| `embedConcurrency` | `3` | Number of embedding batch requests sent in parallel. Higher values speed up embedding but increase API pressure |
+| `descriptionConcurrency` | `4` | Number of files processed in parallel during description generation. Higher values speed up descriptions but increase LLM pressure |
 
 ### `vectorStore`
 
@@ -145,6 +149,7 @@ Controls LLM-based description generation for code chunks.
     "systemPrompt": "Describe code for embedding search in caveman style...",
     "batchMaxChunks": 25,
     "batchTimeoutMs": 120000,
+    "batchConcurrency": 3,
     "retryMax": 3,
     "retryBaseDelayMs": 1000
   }
@@ -160,6 +165,7 @@ Controls LLM-based description generation for code chunks.
 | `timeoutMs` | `60000` | Timeout per LLM call |
 | `batchMaxChunks` | `25` | Maximum chunks per batch description call |
 | `batchTimeoutMs` | `120000` | Timeout for batch description calls |
+| `batchConcurrency` | `3` | Number of LLM batch description requests sent in parallel. Higher values speed up description generation but increase LLM pressure |
 | `retryMax` | `3` | Retry attempts on failure |
 | `retryBaseDelayMs` | `1000` | Base delay for exponential backoff |
 
