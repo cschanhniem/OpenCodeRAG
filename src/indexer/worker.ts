@@ -140,6 +140,7 @@ export async function prepareFile(
     };
   }
 
+  logger.debug(`  ${fileLabel}: ${chunks.length} chunks produced`);
   keywordIndex?.addChunks(chunks);
 
   const docPrefix = config.embedding.documentPrefix ?? "";
@@ -176,6 +177,8 @@ export async function prepareFile(
       }
     }
   }
+
+  logger.debug(`  ${fileLabel}: textToEmbed ${textToEmbed.length} entries (descProvider: ${descriptionProvider ? "yes" : "no"})`);
 
   return {
     normalizedPath: file.normalizedPath,

@@ -7,6 +7,7 @@ export interface DescriptionResult {
 
 interface Logger {
   warn(message: string): void;
+  debug(message: string): void;
 }
 
 export async function generateDescriptions(
@@ -27,10 +28,12 @@ export async function generateDescriptions(
 
   let batchMap: Map<string, string> | null = null;
   if (nonImageChunks.length > 1) {
+    logger?.debug(`  Generating batch descriptions for ${nonImageChunks.length} chunks...`);
     try {
       batchMap = await descriptionProvider.generateBatchDescriptions(
         nonImageChunks,
       );
+      logger?.debug(`  Batch descriptions received for ${batchMap.size} chunks`);
     } catch (err) {
       logger?.warn(
         `Batch description failed, falling back to individual: ${(err as Error).message}`,
@@ -42,6 +45,7 @@ export async function generateDescriptions(
     if (chunk.metadata.contentType === "image") {
       chunk.description = chunk.content;
       descriptionMap.set(chunk.id, chunk.description);
+      logger?.debug(`  description [${chunk.id}] (image): ${chunk.description.substring(0, 100)}...`);
       continue;
     }
 
@@ -49,11 +53,13 @@ export async function generateDescriptions(
     if (batchDesc && batchDesc.trim().length > 0) {
       chunk.description = batchDesc;
       descriptionMap.set(chunk.id, batchDesc);
+      logger?.debug(`  description [${chunk.id}] (batch): ${batchDesc.substring(0, 100)}...`);
     } else {
       try {
         const desc = await descriptionProvider.generateDescription(chunk);
         chunk.description = desc;
         descriptionMap.set(chunk.id, desc);
+        logger?.debug(`  description [${chunk.id}] (individual): ${desc.substring(0, 100)}...`);
       } catch (err) {
         const errorMsg = (err as Error).message;
         logger?.warn(

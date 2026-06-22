@@ -62,8 +62,11 @@ export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexR
   let manifestStatus = loadResult.status;
   let rebuildPerformed = false;
 
+  logger.debug(`Manifest loaded: ${manifestStatus}, ${Object.keys(manifest.files).length} entries`);
+
   if (options.force) {
     manifestStatus = "missing";
+    logger.debug("Force mode: ignoring manifest");
   }
 
   const workspaceFiles = await scanWorkspaceFiles(
@@ -72,6 +75,8 @@ export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexR
     logger,
     options.force ? undefined : manifest,
   );
+
+  logger.debug(`Workspace scan complete: ${workspaceFiles.length} files`);
 
   const existingCount = await options.store.count();
   if (options.force || (manifestStatus !== "ok" && existingCount > 0)) {
@@ -104,6 +109,7 @@ export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexR
   const currentPaths = new Set(workspaceFiles.map((file) => file.normalizedPath));
   const stalePaths = Object.keys(manifest.files).filter((p) => !currentPaths.has(p));
   if (stalePaths.length > 0) {
+    logger.debug(`Removing ${stalePaths.length} stale files from index...`);
     const deleteLimit = pLimit(options.config.indexing.concurrency);
     await Promise.all(
       stalePaths.map((p) =>
@@ -203,6 +209,7 @@ export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexR
       options.config.indexing.embedBatchSize,
       "document",
     );
+    logger.debug(`  Embedding batch complete: ${allEmbeddings.length} vectors`);
   }
 
   // ── Distribute embeddings back to prepared files ──
@@ -219,6 +226,7 @@ export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexR
   }
 
   // ── Phase 3: store all files with their embeddings ──
+  logger.debug(`Phase 3: storing chunks for ${prepared.length} files...`);
   const storeLimit = pLimit(options.config.indexing.concurrency);
   const workerResults = await Promise.all(
     prepared.map((prep, idx) =>

@@ -189,7 +189,7 @@ export async function scanWorkspaceFiles(
     if (totalFiles > 20 && completed % 50 === 0) {
       logger?.info(`  Scanning files... ${completed}/${totalFiles}`);
     }
-    logger?.debug(`  scanWorkspaceFiles: ${filePath}`);
+    logger?.info(`  ${filePath}`);
 
     return {
       filePath,

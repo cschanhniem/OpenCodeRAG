@@ -10,6 +10,9 @@
       ],
       "cwd": ".",
       "enabled": true
+    },
+    "lsp": {
+      "enabled": true
     }
   }
 }
