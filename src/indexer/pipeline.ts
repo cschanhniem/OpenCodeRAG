@@ -1,5 +1,4 @@
 import fs from "node:fs/promises";
-import { unlinkSync } from "node:fs";
 import path from "node:path";
 import pLimit from "p-limit";
 import { scanWorkspaceFiles } from "../content/reader.js";
@@ -45,7 +44,7 @@ export interface RunIndexPassOptions {
   progress?: IndexProgress;
 }
 
-interface Logger {
+export interface Logger {
   info(message: string): void;
   warn(message: string): void;
   debug(message: string): void;
@@ -116,18 +115,9 @@ export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexR
     // Best-effort lock
   }
 
-  const cleanupLock = () => {
-    try { unlinkSync(lockPath); } catch {}
-  };
-
-  process.once("SIGINT", cleanupLock);
-  process.once("SIGTERM", cleanupLock);
-
   try {
     return await runIndexPassInner(options, logger);
   } finally {
-    process.off("SIGINT", cleanupLock);
-    process.off("SIGTERM", cleanupLock);
     try { await fs.unlink(lockPath); } catch {}
   }
 }
@@ -236,7 +226,8 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
   const currentPaths = new Set(workspaceFiles.map((file) => file.normalizedPath));
   let stalePaths: string[];
   if (filterPaths) {
-    stalePaths = gitDeletedPaths.map((p) => normalizeFilePath(path.resolve(options.cwd, p)));
+    const repoRoot = getRepoRoot(options.cwd) ?? options.cwd;
+    stalePaths = gitDeletedPaths.map((p) => normalizeFilePath(path.resolve(repoRoot, p)));
   } else {
     stalePaths = Object.keys(manifest.files).filter((p) => !currentPaths.has(p));
   }

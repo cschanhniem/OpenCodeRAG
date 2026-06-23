@@ -93,7 +93,7 @@ export function applyRuntimeOverrides(
 ): RagConfig {
   if (!overrides || Object.keys(overrides).length === 0) return cfg;
 
-  const merged: RagConfig = JSON.parse(JSON.stringify(cfg));
+  const merged: RagConfig = structuredClone(cfg);
 
   if (overrides.retrieval) {
     if (overrides.retrieval.topK !== undefined) merged.retrieval.topK = overrides.retrieval.topK;

@@ -16,22 +16,22 @@ interface SerializedKeywordIndex {
   }>;
 }
 
-/** Simple suffix-stripping stemmer for English and German keywords. */
+/** Suffix-stripping stemmer. Only stems words >= 6 characters to reduce false positives. */
 function stem(word: string): string {
-  if (word.length < 5) return word;
+  if (word.length < 6) return word;
   if (word.endsWith("ing") && word.length >= 6) return word.slice(0, -3);
-  if (word.endsWith("ed") && word.length >= 5) return word.slice(0, -2);
-  if (word.endsWith("ly") && word.length >= 5) return word.slice(0, -2);
-  if (word.endsWith("es") && word.length >= 5) {
+  if (word.endsWith("ed") && word.length >= 6) return word.slice(0, -2);
+  if (word.endsWith("ly") && word.length >= 6) return word.slice(0, -2);
+  if (word.endsWith("es") && word.length >= 6) {
     const beforeEs = word[word.length - 3];
     if (beforeEs === "s" || beforeEs === "x" || beforeEs === "z" || beforeEs === "h") {
       return word.slice(0, -2);
     }
   }
-  if (word.endsWith("er") && word.length >= 5) return word.slice(0, -2);
-  if (word.endsWith("en") && word.length >= 5) return word.slice(0, -2);
-  if (word.endsWith("s") && !word.endsWith("ss") && word.length >= 4) return word.slice(0, -1);
-  if (word.endsWith("e") && word.length >= 5) return word.slice(0, -1);
+  if (word.endsWith("er") && word.length >= 6) return word.slice(0, -2);
+  if (word.endsWith("en") && word.length >= 6) return word.slice(0, -2);
+  if (word.endsWith("s") && !word.endsWith("ss") && word.length >= 5) return word.slice(0, -1);
+  if (word.endsWith("e") && word.length >= 6) return word.slice(0, -1);
   return word;
 }
 

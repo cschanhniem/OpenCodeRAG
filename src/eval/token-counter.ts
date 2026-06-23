@@ -8,6 +8,7 @@
  * modern LLMs. It is the closest universal approximation available locally.
  */
 
+import { createRequire } from "node:module";
 import type { SearchResult } from "../core/interfaces.js";
 
 type TiktokenEncoder = {
@@ -17,13 +18,14 @@ type TiktokenEncoder = {
 let cachedEncoder: TiktokenEncoder | null = null;
 let loadFailed = false;
 
+const _require = createRequire(import.meta.url);
+
 function getEncoder(): TiktokenEncoder | null {
   if (loadFailed) return null;
   if (cachedEncoder) return cachedEncoder;
 
   try {
-    // Dynamic import — CJS module in an ESM project
-    const mod = require("js-tiktoken") as { getEncoding(name: string): TiktokenEncoder };
+    const mod = _require("js-tiktoken") as { getEncoding(name: string): TiktokenEncoder };
     cachedEncoder = mod.getEncoding("cl100k_base");
     return cachedEncoder;
   } catch {
@@ -83,12 +85,10 @@ export function sumTokens(texts: string[]): number {
  * providing a more accurate estimate than counting the fully-assembled string.
  *
  * @param chunks - Search results to count
- * @param worktree - Working tree for path relativity (unused, kept for interface compat)
- * @param estimateFn - Fallback estimator (used if tiktoken unavailable)
  */
 export function estimateContextTokensFormatted(
   chunks: SearchResult[],
-  worktree: string,
+  _worktree?: string,
 ): number {
   if (chunks.length === 0) return 0;
 

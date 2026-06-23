@@ -1,6 +1,5 @@
 import path from "node:path";
-import { existsSync } from "node:fs";
-import { loadConfig, DEFAULT_CONFIG, type RagConfig } from "./config.js";
+import { loadConfig, findConfigFile, DEFAULT_CONFIG, type RagConfig } from "./config.js";
 import { resolveApiKey } from "./resolve-api-key.js";
 import { loadChunkersFromConfig } from "../chunker/loader.js";
 import { createEmbedder } from "../embedder/factory.js";
@@ -77,17 +76,7 @@ export async function resolveRagContext(
   if (opts.configPath) {
     configPath = path.resolve(workDir, opts.configPath);
   } else {
-    for (const loc of [
-      "opencode-rag.json",
-      ".opencode/opencode-rag.json",
-      ".opencode/rag.json",
-    ]) {
-      const candidate = path.join(workDir, loc);
-      if (existsSync(candidate)) {
-        configPath = candidate;
-        break;
-      }
-    }
+    configPath = findConfigFile(workDir);
   }
 
   let cfg: RagConfig;

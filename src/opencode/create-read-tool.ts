@@ -40,6 +40,7 @@ export function createRagReadTool(
   const openCodeCfg = config.openCode;
   const maxContextChunks = openCodeCfg.maxContextChunks;
   const maxReadOutputChars = openCodeCfg.maxReadOutputChars ?? 20000;
+  // Over-fetch by 4x so post-filtering (line range, minScore) still yields enough results
   const retrievalTopK = maxContextChunks * 4;
   const readRelatedFilesMax = openCodeCfg.readRelatedFilesMax ?? 5;
 

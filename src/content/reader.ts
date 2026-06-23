@@ -46,7 +46,7 @@ export async function walkFiles(
 
     if (entry.isDirectory()) {
       if (excludeDirs.has(entry.name)) continue;
-      if (entry.name.startsWith(".") && !extensions.size) continue;
+      if (entry.name.startsWith(".")) continue;
       results.push(...(await walkFiles(fullPath, extensions, excludeDirs)));
     } else if (entry.isFile()) {
       const ext = path.extname(entry.name).toLowerCase();

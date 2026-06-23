@@ -8,6 +8,7 @@ export {
   getIndexStatusSummary,
   createWatchPassScheduler,
   createWatchIgnore,
+  type Logger,
 } from "./indexer/pipeline.js";
 
 import { scanWorkspaceFiles } from "./content/reader.js";

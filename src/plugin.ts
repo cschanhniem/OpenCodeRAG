@@ -1,7 +1,7 @@
 import type { Plugin, PluginInput, Hooks, ToolDefinition } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin/tool";
 import type { EmbeddingProvider, DescriptionProvider, KeywordIndex, VectorStore, SearchResult } from "./core/interfaces.js";
-import { loadConfig, DEFAULT_CONFIG, resolveLogConfig, type RagConfig } from "./core/config.js";
+import { loadConfig, findConfigFile, DEFAULT_CONFIG, resolveLogConfig, type RagConfig } from "./core/config.js";
 import { createEmbedder } from "./embedder/factory.js";
 import { createDescriptionProvider } from "./describer/factory.js";
 import { createVectorStore } from "./vectorstore/factory.js";
@@ -170,12 +170,8 @@ async function getConfig(directory: string): Promise<RagConfig> {
   const cached = configCache.get(directory);
   if (cached) return cached;
 
-  for (const loc of ["opencode-rag.json", ".opencode/opencode-rag.json", ".opencode/rag.json"]) {
-    const configPath = path.join(directory, loc);
-    if (!existsSync(configPath)) {
-      continue;
-    }
-
+  const configPath = findConfigFile(directory);
+  if (configPath) {
     try {
       const cfg = loadConfig(configPath);
       await loadChunkersFromConfig(cfg, path.dirname(configPath));
@@ -529,11 +525,7 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
   // Session-level doc mode kickoff tracking
   const sessionDocKickoff = new Map<string, boolean>();
 
-  // Session-level tool usage tracking for nudge mechanism
-  const RAG_TOOL_NAMES = new Set(["search_semantic", "get_file_skeleton", "find_usages"]);
-  const sessionRagToolCalls = new Map<string, number>();
-  const sessionMessageCount = new Map<string, number>();
-  const sessionSkeletonCalls = new Map<string, Set<string>>(); // sessionID → set of filePaths
+
 
   // Evaluation session logger — captures OpenCode events for analysis
   const sessionLogger: SessionLogger = createSessionLogger(options.storePath);
@@ -772,24 +764,6 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
       sessionLogger.onEvent(event as Parameters<typeof sessionLogger.onEvent>[0]);
     },
     tool: tools,
-    async "tool.execute.after"(input, output) {
-      // Track RAG tool usage per session
-      if (RAG_TOOL_NAMES.has(input.tool)) {
-        const prev = sessionRagToolCalls.get(input.sessionID) ?? 0;
-        sessionRagToolCalls.set(input.sessionID, prev + 1);
-      }
-    },
-    async "tool.execute.before"(input, output) {
-      // Track skeleton calls per session for read-interception analytics
-      if (input.tool === "get_file_skeleton") {
-        const filePath = output.args?.filePath as string | undefined;
-        if (filePath) {
-          const set = sessionSkeletonCalls.get(input.sessionID) ?? new Set<string>();
-          set.add(filePath);
-          sessionSkeletonCalls.set(input.sessionID, set);
-        }
-      }
-    },
     async "experimental.chat.system.transform"(_input, output) {
       appendDebugLog(options.logFilePath, {
         scope: "experimental.chat.system.transform",
@@ -877,10 +851,6 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
         if (text.length === 0) return;
 
         sessionLastMessage.set(input.sessionID, text);
-
-        // Track message count for nudge mechanism
-        const prevMsgCount = sessionMessageCount.get(input.sessionID) ?? 0;
-        sessionMessageCount.set(input.sessionID, prevMsgCount + 1);
 
         // Documentation mode auto-kickoff on first message
         const docModeCfg = getEffectiveCfg().documentationMode;

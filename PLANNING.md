@@ -11,18 +11,18 @@
 - [x] API key auto-resolution from OpenCode provider config
 - [x] Manifest schema versioning with auto-rebuild
 - [x] Runtime overrides system (no JSON editing required)
-- [x] OpenCode plugin integration with `search_semantic`, `get_file_skeleton`, `find_usages` tools
+- [x] OpenCode plugin integration with `search_semantic`, `get_file_skeleton`, `find_usages`, `describe_image` tools
 - [x] TUI settings menu with model picker for embedding and description providers
 - [x] RAG-backed read tool with related code enrichment
 - [x] Install/uninstall scripts for global setup
 - [x] Workspace-native bootstrap (`opencode-rag init`)
 - [x] Web UI with chunk browser, file explorer, and evaluation dashboard
-- [x] MCP server (`opencode-rag mcp`) — expose `search_semantic`, `get_file_skeleton`, `find_usages` via stdio MCP for any MCP-compatible client
+- [x] MCP server (`opencode-rag mcp`) — expose `search_semantic`, `get_file_skeleton`, `find_usages`, `describe_image` via stdio MCP for any MCP-compatible client
 - [x] Programmatic TypeScript API (`search()`, `indexWorkspace()`, `getContext()`, `validateConfig()`, `scanWorkspace()`, `createBackgroundIndexer()`, `getIndexStatusSummary()`)
 - [x] Retrieval debug surfaces (explain why files/chunks were returned) — `SearchExplanation` type, `getMatchedTerms()`, `--explain` CLI flag, `explain` param on API calls
+- [x] Image description via vision LLMs — `describe_image` tool in OpenCode plugin, MCP server, and CLI; image indexing with searchable vector chunks
 
 ## Short Term
-- [ ] Add function `describe_image` for OpenCode plugin and MCP server to describe images via vision LLMs and index descriptions as searchable vector chunks
 - [ ] LLM-based re-ranking layer (cross-encoder or lightweight model after vector search)
 - [ ] Query rewriting / multi-variant expansion
 - [ ] Context window optimization (dedup, merge adjacent chunks)
@@ -151,14 +151,14 @@ Score chunks during indexing for size, coherence, and boundary quality. Flag poo
 OpenCodeRAG delivers a local-first semantic code search pipeline with AST and
 document-aware chunking, incremental/background indexing, configurable
 embeddings with proxy support, LanceDB vector storage, a full-lifecycle CLI,
-OpenCode plugin integration with read-override and TUI modules, and
+OpenCode plugin integration with read-override and TUI modules, MCP server with 4 tools, and
 install/release automation.
 
 **Key strengths:**
 - Local + privacy-first
 - Modular architecture (interfaces + factory/adapter patterns)
 - Workspace-native bootstrap via `opencode-rag init`
-- Broad source and document coverage (JS/TS, PDF, DOCX, DOC, Excel)
+- Broad source and document coverage (JS/TS, PDF, DOCX, DOC, Excel) plus image indexing via vision LLMs
 - RAG-backed read tool that enriches file reads with related code chunks
 - Hybrid keyword + vector search with configurable fusion weights
 - TUI settings menu with model picker for embedding and description providers

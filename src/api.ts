@@ -1,7 +1,8 @@
 import { resolveRagContext, type BootstrapOptions } from "./core/bootstrap.js";
 import { retrieve } from "./retriever/retriever.js";
 import type { RetrieveOptions } from "./retriever/retriever.js";
-import { runIndexPass, getIndexStatusSummary, scanWorkspace, type IndexRunStats, type WorkspaceFile } from "./indexer.js";
+import { runIndexPass, getIndexStatusSummary, type IndexRunStats } from "./indexer.js";
+import { scanWorkspaceFiles, type WorkspaceFile } from "./content/reader.js";
 import type { SearchResult } from "./core/interfaces.js";
 
 /** Options controlling a semantic search query. */
@@ -150,5 +151,22 @@ export async function getContext(
 export { validateConfig } from "./core/config.js";
 export type { ConfigValidationResult } from "./core/config.js";
 /** Scan workspace files and return a summary of indexing status. */
-export { scanWorkspace, getIndexStatusSummary } from "./indexer.js";
-export type { WorkspaceFile, IndexRunStats } from "./indexer.js";
+export { getIndexStatusSummary } from "./indexer.js";
+export type { IndexRunStats } from "./indexer.js";
+export type { WorkspaceFile } from "./content/reader.js";
+
+import type { Logger } from "./indexer/pipeline.js";
+
+/**
+ * Scan the workspace directory for indexable files according to the configuration.
+ * @param cwd - Root directory to scan.
+ * @param config - Workspace RAG configuration.
+ * @param logger - Optional logger.
+ */
+export async function scanWorkspace(
+  cwd: string,
+  config: import("./core/config.js").RagConfig,
+  logger?: Logger,
+): Promise<WorkspaceFile[]> {
+  return scanWorkspaceFiles(cwd, config, logger);
+}

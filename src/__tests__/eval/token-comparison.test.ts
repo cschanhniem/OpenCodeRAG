@@ -99,16 +99,22 @@ const dummyProvider: EmbeddingProvider = {
 // ── Token estimation tests ──────────────────────────────────────
 
 describe("estimateContextTokens", () => {
-  it("estimates tokens using 4 chars per token rule", () => {
+  it("returns 0 for empty string", () => {
     assert.equal(estimateContextTokens(""), 0);
-    assert.equal(estimateContextTokens("abcd"), 1);
-    assert.equal(estimateContextTokens("abcdefgh"), 2);
-    assert.equal(estimateContextTokens("a".repeat(100)), 25);
   });
 
-  it("rounds up for non-multiples of 4", () => {
-    assert.equal(estimateContextTokens("abc"), 1);
-    assert.equal(estimateContextTokens("abcde"), 2);
+  it("returns a positive token count for non-empty text", () => {
+    assert.ok(estimateContextTokens("abcd") > 0);
+    assert.ok(estimateContextTokens("abcdefgh") > 0);
+    assert.ok(estimateContextTokens("a".repeat(100)) > 0);
+    assert.ok(estimateContextTokens("abc") > 0);
+    assert.ok(estimateContextTokens("abcde") > 0);
+  });
+
+  it("returns more tokens for longer text", () => {
+    const short = estimateContextTokens("short text");
+    const long = estimateContextTokens("this is a much longer text with many more words in it to test token counting");
+    assert.ok(long >= short, `Expected ${long} >= ${short}`);
   });
 });
 

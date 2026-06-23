@@ -1,5 +1,10 @@
 import type { EmbeddingProvider, KeywordIndex, VectorStore, SearchResult, SearchExplanation } from "../core/interfaces.js";
 
+/** Multiplier applied to topK when fetching raw results from vector/keyword stores.
+ *  We request extra results up-front, then after hybrid fusion + minScore filtering,
+ *  we slice back to the requested topK. */
+const FETCH_OVERFETCH_FACTOR = 3;
+
 export interface RetrieveOptions {
   topK?: number;
   minScore?: number;
@@ -30,12 +35,11 @@ export async function retrieve(
       return [];
     }
 
-    const vectorFactor = 3;
-    const vectorResults = await store.search(embedding as number[], topK * vectorFactor);
+    const vectorResults = await store.search(embedding as number[], topK * FETCH_OVERFETCH_FACTOR);
 
     let keywordResults: SearchResult[] = [];
     if (options.keywordIndex) {
-      keywordResults = options.keywordIndex.search(query, topK * vectorFactor);
+      keywordResults = options.keywordIndex.search(query, topK * FETCH_OVERFETCH_FACTOR);
     }
 
     if (keywordResults.length === 0) {

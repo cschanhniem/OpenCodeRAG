@@ -122,7 +122,14 @@ export class LanceDBStore implements VectorStore {
       mode: "overwrite",
     });
 
-    await this.table.delete('id = "__seed__"');
+    const deleted = await this.table.delete('id = "__seed__"');
+    if (deleted === undefined) {
+      // LanceDB may not return a count; try a direct query to verify
+      const leftover = await this.table.query().filter('id = "__seed__"').limit(1).toArray();
+      if (leftover.length > 0) {
+        console.warn("[lancedb] WARNING: seed row still present — filtering in search");
+      }
+    }
 
     return this.table;
   }
@@ -203,7 +210,7 @@ export class LanceDBStore implements VectorStore {
     try {
       return await this.searchInternal(embedding, topK);
     } catch (err) {
-      if (this.isCorruptionError(err)) {
+      if (isCorruptionError(err)) {
         const repaired = await this.tryRepair();
         if (repaired) {
           return this.searchInternal(embedding, topK);
@@ -319,7 +326,9 @@ export class LanceDBStore implements VectorStore {
     if (count === 0) return [];
 
     const results = await table.search(embedding).limit(topK).toArray();
-    return results.map((row) => this.rowToSearchResult(row));
+    return results
+      .map((row) => this.rowToSearchResult(row))
+      .filter((r) => r.chunk.id !== "__seed__");
   }
 
   /**
@@ -404,10 +413,6 @@ export class LanceDBStore implements VectorStore {
     const table = await this.getTable();
     const normalizedPath = normalizeFilePath(filePath).replace(/'/g, "''");
     await table.delete(`filePath = '${normalizedPath}'`);
-  }
-
-  private isCorruptionError(err: unknown): boolean {
-    return isCorruptionError(err);
   }
 
   private async tryRepair(): Promise<boolean> {

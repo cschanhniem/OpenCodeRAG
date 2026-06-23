@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { env } from "node:process";
 import type { EmbeddingProvider, Chunker, VectorStore } from "./interfaces.js";
@@ -507,8 +507,9 @@ export function validateConfig(config: RagConfig): ConfigValidationResult {
     }
   }
 
-  if (!["ollama", "openai"].includes(config.embedding.provider)) {
-    warnings.push(`embedding.provider "${config.embedding.provider}" — expected "ollama" or "openai"`);
+  const KNOWN_EMBEDDING_PROVIDERS = new Set(["ollama", "openai", "cohere", "nvidia", "azure", "mistral", "together", "groq", "deepseek", "fireworks"]);
+  if (!KNOWN_EMBEDDING_PROVIDERS.has(config.embedding.provider)) {
+    warnings.push(`embedding.provider "${config.embedding.provider}" — unknown provider`);
   }
   if (config.embedding.timeoutMs != null && config.embedding.timeoutMs <= 0) {
     warnings.push("embedding.timeoutMs must be > 0");
@@ -564,8 +565,9 @@ export function validateConfig(config: RagConfig): ConfigValidationResult {
   }
 
   if (config.description) {
-    if (!["ollama", "openai"].includes(config.description.provider)) {
-      warnings.push(`description.provider "${config.description.provider}" — expected "ollama" or "openai"`);
+    const KNOWN_DESCRIPTION_PROVIDERS = new Set(["ollama", "openai", "anthropic", "google"]);
+    if (!KNOWN_DESCRIPTION_PROVIDERS.has(config.description.provider)) {
+      warnings.push(`description.provider "${config.description.provider}" — unknown provider`);
     }
     if (config.description.timeoutMs != null && config.description.timeoutMs <= 0) {
       warnings.push("description.timeoutMs must be > 0");
@@ -581,6 +583,27 @@ export function validateConfig(config: RagConfig): ConfigValidationResult {
   }
 
   return { valid: warnings.length === 0, warnings };
+}
+
+/** Config file locations to search, in order of precedence. */
+export const CONFIG_FILE_CANDIDATES = [
+  "opencode-rag.json",
+  ".opencode/opencode-rag.json",
+  ".opencode/rag.json",
+];
+
+/**
+ * Find the first existing config file in a directory.
+ * @returns The absolute path to the config file, or undefined if none found.
+ */
+export function findConfigFile(directory: string): string | undefined {
+  for (const loc of CONFIG_FILE_CANDIDATES) {
+    const configPath = path.join(directory, loc);
+    if (existsSync(configPath)) {
+      return configPath;
+    }
+  }
+  return undefined;
 }
 
 /** Load and parse a JSON config file, deep-merge with defaults, optionally validate. */
