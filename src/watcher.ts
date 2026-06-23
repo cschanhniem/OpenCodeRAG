@@ -147,7 +147,7 @@ export function createBackgroundIndexer(options: CreateBackgroundIndexerOptions)
     }, logLevel);
   });
 
-  const autoIndexCfg = config.openCode.autoIndex ?? { enabled: true, debounceMs: 5000, intervalMs: 300000 };
+  const autoIndexCfg = config.openCode.autoIndex ?? { enabled: false, debounceMs: 5000, intervalMs: 300000 };
   const scheduler = createWatchPassScheduler(
     runPass,
     (error) => {

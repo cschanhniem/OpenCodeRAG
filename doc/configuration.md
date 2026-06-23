@@ -231,7 +231,7 @@ Controls the OpenCode plugin integration.
     "maxReadOutputChars": 50000,
     "readRelatedFilesMax": 5,
     "autoIndex": {
-      "enabled": true,
+      "enabled": false,
       "debounceMs": 2000,
       "intervalMs": 300000
     },

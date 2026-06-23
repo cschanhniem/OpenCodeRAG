@@ -386,7 +386,7 @@ export const DEFAULT_CONFIG: RagConfig = {
     maxContextChunks: 10,
     readOverride: true,
     autoIndex: {
-      enabled: true,
+      enabled: false,
       debounceMs: 2000,
       intervalMs: 300000,
     },

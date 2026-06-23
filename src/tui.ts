@@ -32,6 +32,8 @@ type WatcherState = {
   running: boolean;
   /** Timestamp of the last completed watcher run, or undefined. */
   lastRunAt: number | undefined;
+  /** Whether the watcher is disabled (no status file — not started). */
+  disabled?: boolean;
 };
 
 /** Aggregate status of the RAG index displayed in the sidebar. */
@@ -63,7 +65,7 @@ const DEFAULT_STATUS: RagStatus = {
 /** Load the watcher running state from the persisted status file. */
 function loadWatcherStatus(storePath: string): WatcherState {
   const statusPath = join(storePath, "watcher-status.json");
-  if (!existsSync(statusPath)) return { running: false, lastRunAt: undefined };
+  if (!existsSync(statusPath)) return { running: false, lastRunAt: undefined, disabled: true };
   try {
     const raw: Record<string, unknown> = JSON.parse(readFileSync(statusPath, "utf-8"));
     return {
@@ -198,10 +200,12 @@ function renderSidebar(
     : "Not indexed";
   const timeLine = `Indexed ${formatRelativeTime(status.lastIndexedAt)}`;
 
-  const watcherRunning = status.watcher.running;
-  const watcherLine = watcherRunning
+  const { watcher } = status;
+  const watcherLine = watcher.disabled
+    ? "Watcher disabled"
+    : watcher.running
     ? "Watcher running\u2026"
-    : `Watcher idle \u00B7 last ${formatRelativeTime(status.watcher.lastRunAt)}`;
+    : `Watcher idle \u00B7 last ${formatRelativeTime(watcher.lastRunAt)}`;
 
   const fileListKey = tuiConfig?.fileListKeybinding ?? "ctrl+enter";
   const chunksKey = tuiConfig?.chunksKeybinding ?? "ctrl+alt+enter";
@@ -234,7 +238,7 @@ function renderSidebar(
       ),
       text({ fg: theme.text }, [statusLine]),
       text({ fg: theme.textMuted }, [timeLine]),
-      text({ fg: watcherRunning ? theme.accent : theme.textMuted }, [watcherLine]),
+      text({ fg: watcher.running ? theme.accent : theme.textMuted }, [watcherLine]),
       text({ fg: theme.textMuted }, ["Ctrl+Shift+R → Settings"]),
       text({ fg: theme.textMuted }, [`${formatKeybinding(fileListKey)} → Add Files`]),
       text({ fg: theme.textMuted }, [`${formatKeybinding(chunksKey)} → Add Chunks`]),

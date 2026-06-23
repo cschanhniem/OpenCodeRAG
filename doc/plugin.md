@@ -241,7 +241,7 @@ export default plugin;
 The plugin spawns one `BackgroundIndexer` per workspace directory (via `src/watcher.ts`):
 
 - **chokidar watcher**: Monitors file changes in the workspace
-- **Debounced scheduler**: Waits `autoIndex.debounceMs` (default 2000ms) after changes before re-indexing
+- **Debounced scheduler**: Waits `autoIndex.debounceMs` (2000ms) after changes before re-indexing (disabled by default; enable via `autoIndex.enabled`)
 - **Periodic timer**: Runs a full pass every `autoIndex.intervalMs` (default 5 min)
 - **Error recovery**: Detects LanceDB corruption and triggers auto-rebuild
 - **Status file**: Writes `watcher-status.json` to the store path for observability
