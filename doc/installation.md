@@ -43,7 +43,7 @@ npm install --legacy-peer-deps
 .\install.ps1         # Windows
 ```
 
-> **Important:** The install scripts build from source (npm pack). They never call `opencode plugin <name> --global`, which could download a potentially stale npm-published version. If you don't use the install script, the opencode-rag CLI and web tools would be missing.
+> **Important:** The install scripts build from source and create filesystem links (junctions/symlinks) — no `npm pack` or global plugin installation. The `opencode-rag` CLI is globally available via `~/.local/bin/`. The plugin itself is workspace-local — OpenCode loads it from `.opencode/plugins/`. Data (vector store, manifest) lives in the workspace.
 
 ### Uninstall
 
@@ -66,12 +66,13 @@ opencode-rag init
 ```
 
 This creates:
-- `.opencode/plugins/rag-plugin.js` — workspace-local plugin fallback (re-exports from `node_modules/`)
+- `opencode-rag.json` — Workspace-specific RAG configuration
+- `.opencode/plugins/rag-plugin.js` — Plugin entry (re-exports from workspace `node_modules/`)
 - `.opencode/plugins/rag-tui.js` — TUI plugin module
 - `.opencode/opencode.json` — OpenCode workspace config
 - `.opencode/tui.json` — TUI plugin settings
-- `.opencode/package.json` — workspace dependencies
-- `opencode-rag.json` — Runtime configuration
+- `.opencode/package.json` — Workspace dependencies (links to the globally-installed plugin)
+- `.opencode/skills/opencode-rag/SKILL.md` — AI agent skill file
 - `.opencode/.gitignore` — ignores `node_modules/` and `rag_db/`
 - Runs `npm install` to install workspace dependencies
 

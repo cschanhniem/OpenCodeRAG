@@ -4,7 +4,7 @@ import { createServer, type Server } from "node:http";
 import type { Chunk } from "../../core/interfaces.js";
 import type { DescriptionConfig } from "../../core/config.js";
 import { LLMDescriptionProvider } from "../../describer/describer.js";
-import { buildBatchUserMessage, parseBatchResponse } from "../../describer/shared.js";
+
 import { createDescriptionProvider } from "../../describer/factory.js";
 
 function makeChunk(overrides: Partial<Chunk> = {}): Chunk {
@@ -30,8 +30,6 @@ function makeConfig(overrides: Partial<DescriptionConfig> = {}): DescriptionConf
     model: "test-model",
     timeoutMs: 5000,
     systemPrompt: "Describe the code.",
-    batchMaxChunks: 25,
-    batchTimeoutMs: 120000,
     retryMax: 0,
     retryBaseDelayMs: 10,
     ...overrides,
@@ -324,64 +322,21 @@ describe("LLMDescriptionProvider.generateBatchDescriptions", () => {
     }
   });
 
-  it("sends batch prompt with all chunks labeled", async () => {
-    let capturedBody: Record<string, unknown> = {};
+  it("makes one individual request per chunk", async () => {
+    const requests: Array<{ body: Record<string, unknown>; chunkId: string }> = [];
     const { server, baseUrl, close } = await startMockServer((body) => {
-      capturedBody = body;
+      const userMsg = (body.messages as Array<{ role: string; content: string }>)[1]?.content ?? "";
+      const idMatch = userMsg.match(/File: src\/(\S+)/);
+      const chunkId = idMatch ? idMatch[1]!.replace(".ts", "") : "unknown";
+      requests.push({ body: body as Record<string, unknown>, chunkId });
       return {
         status: 200,
         body: {
           message: {
-            content: "CHUNK 0: First function.\nCHUNK 1: Second function.",
+            content: `Description for ${chunkId}.`,
           },
         },
       };
-    });
-
-    try {
-      const provider = new LLMDescriptionProvider(
-        makeConfig({ baseUrl: `${baseUrl}/api` })
-      );
-      const chunks = [
-        makeChunk({ id: "c0", content: "function first() {}", metadata: { filePath: "src/a.ts", startLine: 1, endLine: 2, language: "typescript" } }),
-        makeChunk({ id: "c1", content: "function second() {}", metadata: { filePath: "src/a.ts", startLine: 4, endLine: 5, language: "typescript" } }),
-      ];
-      const result = await provider.generateBatchDescriptions(chunks);
-
-      const messages = capturedBody.messages as Array<{ role: string; content: string }>;
-      assert.equal(messages.length, 2);
-      assert.ok(messages[1]!.content.includes("=== CHUNK 0 (lines 1-2) ==="));
-      assert.ok(messages[1]!.content.includes("=== CHUNK 1 (lines 4-5) ==="));
-      assert.ok(messages[1]!.content.includes("Chunks: 2"));
-
-      assert.equal(result.size, 2);
-      assert.equal(result.get("c0"), "First function.");
-      assert.equal(result.get("c1"), "Second function.");
-    } finally {
-      await close();
-    }
-  });
-
-  it("falls back to individual calls for missing descriptions", async () => {
-    let callCount = 0;
-    const { server, baseUrl, close } = await startMockServer((body) => {
-      const messages = (body.messages as Array<{ role: string; content: string }>);
-      const userMsg = messages[1]?.content ?? "";
-      callCount++;
-
-      if (userMsg.includes("Chunks:")) {
-        return {
-          status: 200,
-          body: { message: { content: "CHUNK 0: First desc." } },
-        };
-      }
-      if (userMsg.includes("second.ts")) {
-        return {
-          status: 200,
-          body: { message: { content: "Second desc (individual)." } },
-        };
-      }
-      return { status: 200, body: { message: { content: "Fallback." } } };
     });
 
     try {
@@ -394,23 +349,23 @@ describe("LLMDescriptionProvider.generateBatchDescriptions", () => {
       ];
       const result = await provider.generateBatchDescriptions(chunks);
 
+      assert.equal(requests.length, 2);
       assert.equal(result.size, 2);
-      assert.equal(result.get("c0"), "First desc.");
-      assert.equal(result.get("c1"), "Second desc (individual).");
-      assert.equal(callCount, 2);
+      assert.equal(result.get("c0"), "Description for first.");
+      assert.equal(result.get("c1"), "Description for second.");
     } finally {
       await close();
     }
   });
 
-  it("throws on batch HTTP error", async () => {
-    const { server, baseUrl, close } = await startMockServer((body) => {
-      const messages = (body.messages as Array<{ role: string; content: string }>);
-      const userMsg = messages[1]?.content ?? "";
-      if (userMsg.includes("Chunks:")) {
+  it("collects descriptions despite individual failures", async () => {
+    let callIndex = 0;
+    const { server, baseUrl, close } = await startMockServer(() => {
+      callIndex++;
+      if (callIndex === 1) {
         return { status: 500, body: { error: "internal error" } };
       }
-      return { status: 200, body: { message: { content: "Individual." } } };
+      return { status: 200, body: { message: { content: "Second desc." } } };
     });
 
     try {
@@ -423,141 +378,13 @@ describe("LLMDescriptionProvider.generateBatchDescriptions", () => {
       ];
 
       const result = await provider.generateBatchDescriptions(chunks);
-      assert.equal(result.size, 2);
-      assert.equal(result.get("c0"), "Individual.");
-      assert.equal(result.get("c1"), "Individual.");
+      assert.equal(result.size, 1);
+      assert.equal(result.get("c1"), "Second desc.");
     } finally {
       await close();
     }
   });
 
-  it("splits large batches into sub-batches", async () => {
-    let batchCount = 0;
-    const { server, baseUrl, close } = await startMockServer((body) => {
-      const messages = (body.messages as Array<{ role: string; content: string }>);
-      const userMsg = messages[1]?.content ?? "";
-      if (userMsg.includes("Chunks:")) {
-        batchCount++;
-        return {
-          status: 200,
-          body: { message: { content: "CHUNK 0: Desc A.\nCHUNK 1: Desc B." } },
-        };
-      }
-      return { status: 200, body: { message: { content: "Individual." } } };
-    });
-
-    try {
-      const provider = new LLMDescriptionProvider(
-        makeConfig({ baseUrl: `${baseUrl}/api`, batchMaxChunks: 2 })
-      );
-      const chunks = [
-        makeChunk({ id: "c0", metadata: { filePath: "src/a.ts", startLine: 1, endLine: 5, language: "typescript" } }),
-        makeChunk({ id: "c1", metadata: { filePath: "src/a.ts", startLine: 6, endLine: 10, language: "typescript" } }),
-        makeChunk({ id: "c2", metadata: { filePath: "src/a.ts", startLine: 11, endLine: 15, language: "typescript" } }),
-        makeChunk({ id: "c3", metadata: { filePath: "src/a.ts", startLine: 16, endLine: 20, language: "typescript" } }),
-      ];
-
-      const result = await provider.generateBatchDescriptions(chunks);
-
-      assert.equal(batchCount, 2);
-      assert.equal(result.size, 4);
-      assert.equal(result.get("c0"), "Desc A.");
-      assert.equal(result.get("c1"), "Desc B.");
-      assert.equal(result.get("c2"), "Desc A.");
-      assert.equal(result.get("c3"), "Desc B.");
-    } finally {
-      await close();
-    }
-  });
-});
-
-describe("buildBatchUserMessage", () => {
-  it("builds correct message for multiple chunks", () => {
-    const chunks = [
-      makeChunk({ metadata: { filePath: "src/a.ts", startLine: 1, endLine: 10, language: "typescript" } }),
-      makeChunk({ id: "c2", content: "class Bar {}", metadata: { filePath: "src/a.ts", startLine: 12, endLine: 20, language: "typescript" } }),
-    ];
-
-    const msg = buildBatchUserMessage(chunks);
-
-    assert.ok(msg.includes("File: src/a.ts"));
-    assert.ok(msg.includes("Language: typescript"));
-    assert.ok(msg.includes("Chunks: 2"));
-    assert.ok(msg.includes("=== CHUNK 0 (lines 1-10) ==="));
-    assert.ok(msg.includes("=== CHUNK 1 (lines 12-20) ==="));
-    assert.ok(msg.includes("```typescript"));
-  });
-});
-
-describe("parseBatchResponse", () => {
-  it("extracts descriptions for each chunk", () => {
-    const chunks = [
-      makeChunk({ id: "c0" }),
-      makeChunk({ id: "c1" }),
-      makeChunk({ id: "c2" }),
-    ];
-
-    const text = "CHUNK 0: First desc.\nCHUNK 1: Second desc.\nCHUNK 2: Third desc.";
-    const result = parseBatchResponse(text, chunks);
-
-    assert.equal(result.size, 3);
-    assert.equal(result.get("c0"), "First desc.");
-    assert.equal(result.get("c1"), "Second desc.");
-    assert.equal(result.get("c2"), "Third desc.");
-  });
-
-  it("handles multi-line descriptions", () => {
-    const chunks = [
-      makeChunk({ id: "c0" }),
-      makeChunk({ id: "c1" }),
-    ];
-
-    const text = "CHUNK 0: First line of desc.\nMore details here.\nCHUNK 1: Single line.";
-    const result = parseBatchResponse(text, chunks);
-
-    assert.equal(result.size, 2);
-    assert.equal(result.get("c0"), "First line of desc. More details here.");
-    assert.equal(result.get("c1"), "Single line.");
-  });
-
-  it("ignores chunks with empty descriptions", () => {
-    const chunks = [
-      makeChunk({ id: "c0" }),
-      makeChunk({ id: "c1" }),
-    ];
-
-    const text = "CHUNK 0: Real desc.\nCHUNK 1:";
-    const result = parseBatchResponse(text, chunks);
-
-    assert.equal(result.size, 1);
-    assert.equal(result.get("c0"), "Real desc.");
-    assert.equal(result.get("c1"), undefined);
-  });
-
-  it("ignores out-of-range chunk indices", () => {
-    const chunks = [
-      makeChunk({ id: "c0" }),
-      makeChunk({ id: "c1" }),
-    ];
-
-    const text = "CHUNK 0: Good.\nCHUNK 5: Out of range.";
-    const result = parseBatchResponse(text, chunks);
-
-    assert.equal(result.size, 1);
-    assert.equal(result.get("c0"), "Good.");
-  });
-
-  it("handles empty response", () => {
-    const chunks = [
-      makeChunk({ id: "c0" }),
-      makeChunk({ id: "c1" }),
-    ];
-
-    const text = "";
-    const result = parseBatchResponse(text, chunks);
-
-    assert.equal(result.size, 0);
-  });
 });
 
 describe("createDescriptionProvider", () => {
@@ -708,41 +535,4 @@ describe("LLMDescriptionProvider retry logic", () => {
     }
   });
 
-  it("retries batch calls on 502 and succeeds", async () => {
-    let callCount = 0;
-    const { server, baseUrl, close } = await startMockServer((body) => {
-      callCount++;
-      const messages = (body.messages as Array<{ role: string; content: string }>);
-      const userMsg = messages?.[1]?.content ?? "";
-
-      if (userMsg.includes("Chunks:")) {
-        if (callCount <= 1) {
-          return { status: 502, body: { error: "bad gateway" } };
-        }
-        return {
-          status: 200,
-          body: { message: { content: "CHUNK 0: Batch desc A.\nCHUNK 1: Batch desc B." } },
-        };
-      }
-      return { status: 200, body: { message: { content: "Individual." } } };
-    });
-
-    try {
-      const provider = new LLMDescriptionProvider(
-        makeConfig({ baseUrl: `${baseUrl}/api`, retryMax: 2, retryBaseDelayMs: 10 })
-      );
-      const chunks = [
-        makeChunk({ id: "c0", metadata: { filePath: "src/a.ts", startLine: 1, endLine: 5, language: "typescript" } }),
-        makeChunk({ id: "c1", metadata: { filePath: "src/a.ts", startLine: 6, endLine: 10, language: "typescript" } }),
-      ];
-      const result = await provider.generateBatchDescriptions(chunks);
-
-      assert.equal(result.size, 2);
-      assert.equal(result.get("c0"), "Batch desc A.");
-      assert.equal(result.get("c1"), "Batch desc B.");
-      assert.equal(callCount, 2);
-    } finally {
-      await close();
-    }
-  });
 });

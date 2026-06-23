@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 # shellcheck shell=bash
 set -Eeuo pipefail
 IFS=$'\n\t'
@@ -10,89 +10,34 @@ readonly CLI_BIN_DIR="$HOME/.local/bin"
 readonly GLOBAL_CONFIG="$HOME/.config/opencode"
 readonly RUNTIME_DIR="$HOME/.opencode"
 
-# --- helpers ------------------------------------------------------------------
-
-die() {
-  printf 'Error: %s\n' "$*" >&2
-  exit 1
-}
-
+die()   { printf 'Error: %s\n' "$*" >&2; exit 1; }
 info()  { printf '  %s\n' "$*"; }
 step()  { printf '\n%s\n' "$*"; }
 ok()    { printf '  %s  OK\n' "$1"; }
 fail()  { printf '  %s  FAILED\n' "$1" >&2; }
 
-# Remove stale "plugin" entries from global config — plugin is loaded via
-# .opencode/plugins/ auto-discovery, NOT via npm package resolution.
-# Stale "plugin" entries trigger npm install which fails on native
-# dependencies and produces "Plugin export is not a function".
 remove_stale_plugin_from_config() {
   local removed=false
   for cfg in opencode.jsonc opencode.json; do
     local cfgpath="$GLOBAL_CONFIG/$cfg"
     [[ -f "$cfgpath" ]] || continue
-
-    if node -e "
-      const fs = require('fs');
-      const p = '$cfgpath';
-      const c = JSON.parse(fs.readFileSync(p, 'utf8'));
-      if (c.plugin) {
-        delete c.plugin;
-        fs.writeFileSync(p, JSON.stringify(c, null, 2) + '\n');
-        process.exit(0);
-      }
-      process.exit(1);
-    " 2>/dev/null; then
-      info "Removed stale 'plugin' entry from $cfgpath"
+    if node -e "const fs=require('fs');const c=JSON.parse(fs.readFileSync('$cfgpath','utf8'));if(c.plugin){delete c.plugin;fs.writeFileSync('$cfgpath',JSON.stringify(c,null,2)+'\n');process.exit(0)}process.exit(1)" 2>/dev/null; then
+      info "Removed stale plugin entry from $cfgpath"
       removed=true
     fi
   done
   $removed
 }
 
-# Remove stale MCP server configs that use "npx -y opencode-rag-plugin mcp"
-# (downloads stale npm version). The plugin auto-starts MCP server itself.
-cleanup_stale_workspace_mcp_configs() {
-  local search_root="${1:-.}"
-  find "$search_root" -path "*/.opencode/opencode.json" -not -path "$search_root/.opencode/opencode.json" 2>/dev/null | while read -r cfgpath; do
-    node -e "
-      const fs = require('fs');
-      const p = '$cfgpath';
-      const c = JSON.parse(fs.readFileSync(p, 'utf8'));
-      if (c.mcp && c.mcp['opencode-rag']) {
-        const entry = c.mcp['opencode-rag'];
-        if (entry.command && entry.command.join(' ').includes('npx') && entry.command.join(' ').includes('opencode-rag-plugin')) {
-          delete c.mcp['opencode-rag'];
-          if (Object.keys(c.mcp).length === 0) delete c.mcp;
-          fs.writeFileSync(p, JSON.stringify(c, null, 2) + '\n');
-          process.exit(0);
-        }
-      }
-      process.exit(1);
-    " 2>/dev/null && info "Removed stale MCP config from $cfgpath" || true
-  done
-}
-
 cleanup_tgz() {
-  rm -f "$GLOBAL_CONFIG/$PLUGIN_NAME-"*.tgz
+  rm -f "$RUNTIME_DIR/$PLUGIN_NAME-"*.tgz "$GLOBAL_CONFIG/$PLUGIN_NAME-"*.tgz
 }
 
 remove_from_npm() {
-  local dir="$1"
-  local pkg="$dir/package.json"
-
+  local dir="$1" pkg="$dir/package.json"
   rm -rf "$dir/node_modules/$PLUGIN_NAME"
-
   if [[ -f "$pkg" ]]; then
-    node -e "
-      const fs = require('fs');
-      const p = '$pkg';
-      const pkg = JSON.parse(fs.readFileSync(p, 'utf8'));
-      if (pkg.dependencies && pkg.dependencies['$PLUGIN_NAME']) {
-        delete pkg.dependencies['$PLUGIN_NAME'];
-      }
-      fs.writeFileSync(p, JSON.stringify(pkg, null, 2) + '\n');
-    "
+    node -e "const fs=require('fs');const p='$pkg';const pkg=JSON.parse(fs.readFileSync(p,'utf8'));if(pkg.dependencies&&pkg.dependencies['$PLUGIN_NAME']){delete pkg.dependencies['$PLUGIN_NAME']}fs.writeFileSync(p,JSON.stringify(pkg,null,2)+'\n')"
     (cd "$dir" && npm prune --silent 2>/dev/null || true)
   fi
 }
@@ -101,156 +46,72 @@ remove_from_config() {
   for cfg in opencode.jsonc opencode.json; do
     local cfgpath="$GLOBAL_CONFIG/$cfg"
     [[ -f "$cfgpath" ]] || continue
-    node -e "
-      const fs = require('fs');
-      const c = JSON.parse(fs.readFileSync('$cfgpath', 'utf8'));
-      if (c.plugin) {
-        c.plugin = c.plugin.filter(p => p !== '$PLUGIN_NAME');
-        if (c.plugin.length === 0) delete c.plugin;
-      }
-      fs.writeFileSync('$cfgpath', JSON.stringify(c, null, 2) + '\n');
-    "
+    node -e "const fs=require('fs');const c=JSON.parse(fs.readFileSync('$cfgpath','utf8'));if(c.plugin){c.plugin=c.plugin.filter(p=>p!=='$PLUGIN_NAME');if(c.plugin.length===0)delete c.plugin}fs.writeFileSync('$cfgpath',JSON.stringify(c,null,2)+'\n')"
     info "Removed $PLUGIN_NAME from $cfgpath"
   done
 }
 
-# --- preflight checks ---------------------------------------------------------
+# --- preflight ---
 
 command -v npm >/dev/null 2>&1 || die "npm is required but was not found in PATH"
 command -v opencode >/dev/null 2>&1 || die "opencode is required but was not found in PATH"
 
-# --- uninstall ---------------------------------------------------------------
+# --- uninstall ---
 
 if [[ "${1:-}" = "uninstall" ]]; then
   step "Uninstalling $PLUGIN_NAME from all locations..."
-  
-  # Remove CLI wrapper
   info "Removing CLI wrapper..."
-  rm -f "$CLI_BIN_DIR/opencode-rag" \
-        "$CLI_BIN_DIR/opencode-rag.ps1" \
-        "$CLI_BIN_DIR/opencode-rag.sh"
-  
-  # Remove from global config node_modules
-  info "Removing from global config ($GLOBAL_CONFIG)..."
-  remove_from_npm "$GLOBAL_CONFIG"
-  
-  # Remove from OpenCode runtime node_modules
-  info "Removing from OpenCode runtime ($RUNTIME_DIR)..."
-  remove_from_npm "$RUNTIME_DIR"
-  
-  # Clean up .tgz files
-  info "Removing .tgz package files..."
-  cleanup_tgz
-  
-  # Remove stale OpenCode cache (npm-published version)
+  rm -f "$CLI_BIN_DIR/opencode-rag" "$CLI_BIN_DIR/opencode-rag.ps1" "$CLI_BIN_DIR/opencode-rag.sh"
+  info "Removing from global config ($GLOBAL_CONFIG)...";  remove_from_npm "$GLOBAL_CONFIG"
+  info "Removing from OpenCode runtime ($RUNTIME_DIR)...";   remove_from_npm "$RUNTIME_DIR"
+  info "Removing .tgz package files...";                     cleanup_tgz
   info "Removing OpenCode cache..."
   rm -rf "$HOME/.cache/opencode/packages/$PLUGIN_NAME-"* 2>/dev/null || true
-  
-  # Remove from OpenCode config
-  info "Updating OpenCode configuration..."
-  remove_from_config
-  
-  # Remove stale plugin registrations from global config
-  info "Removing stale plugin registrations..."
-  remove_stale_plugin_from_config || true
-  
-  # Remove workspace-local legacy files
+  info "Updating OpenCode configuration...";                 remove_from_config
+  info "Removing stale plugin registrations...";              remove_stale_plugin_from_config || true
   info "Removing workspace-local files..."
-  rm -f "$REPO_ROOT/.opencode/plugins/rag-plugin.js" \
-        "$REPO_ROOT/.opencode/plugins/package.json"
+  rm -f "$REPO_ROOT/.opencode/plugins/rag-plugin.js" "$REPO_ROOT/.opencode/plugins/package.json"
   rm -rf "$REPO_ROOT/.opencode/plugins" 2>/dev/null || true
-  
   step "Uninstalled. Restart OpenCode if it is running."
   exit 0
 fi
 
-# --- install -----------------------------------------------------------------
+# --- install ---
 
 cd "$REPO_ROOT"
 
 step "Building $PLUGIN_NAME..."
 npm run build
 
-step "Packing plugin..."
-mkdir -p "$GLOBAL_CONFIG"
-cleanup_tgz
-
-PACKED=$(npm pack --pack-destination "$GLOBAL_CONFIG" 2>/dev/null | tail -1)
-[[ -n "$PACKED" && -f "$GLOBAL_CONFIG/$PACKED" ]] \
-  || die "npm pack failed to produce a .tgz file."
-info "Packed: $GLOBAL_CONFIG/$PACKED"
-
-# Install into opencode runtime node_modules (primary global location)
-step "Cleaning stale OpenCode cache..."
-rm -rf "$HOME/.cache/opencode/packages/$PLUGIN_NAME-"* 2>/dev/null || true
-
 step "Installing into OpenCode runtime ($RUNTIME_DIR)..."
-mkdir -p "$RUNTIME_DIR"
-npm install --prefix "$RUNTIME_DIR" --silent "$GLOBAL_CONFIG/$PACKED" 2>&1 \
-  || die "npm install into runtime failed."
-
-if [[ -d "$RUNTIME_DIR/node_modules/$PLUGIN_NAME/dist" ]]; then
-  ok "Runtime node_modules"
+mkdir -p "$(dirname "$RUNTIME_DIR/node_modules/$PLUGIN_NAME")"
+rm -rf "$RUNTIME_DIR/node_modules/$PLUGIN_NAME"
+ln -sfn "$REPO_ROOT" "$RUNTIME_DIR/node_modules/$PLUGIN_NAME"
+if [[ -d "$REPO_ROOT/dist" ]]; then
+  ok "Runtime node_modules (symlink to repo)"
 else
   fail "Runtime node_modules"
-  die "$PLUGIN_NAME not found in $RUNTIME_DIR/node_modules/"
+  die "dist/ not found in repo root -- did npm run build succeed?"
 fi
 
-# Also install into config node_modules (opencode plugin command resolution)
-step "Installing into OpenCode config ($GLOBAL_CONFIG)..."
-npm install --prefix "$GLOBAL_CONFIG" --silent "$GLOBAL_CONFIG/$PACKED" 2>&1 \
-  || die "npm install into config failed."
-
-if [[ -d "$GLOBAL_CONFIG/node_modules/$PLUGIN_NAME/dist" ]]; then
-  ok "Config node_modules"
-else
-  fail "Config node_modules"
-  die "$PLUGIN_NAME not found in $GLOBAL_CONFIG/node_modules/"
-fi
-
-# Clean up .tgz
-cleanup_tgz
-
-# Clean up stale plugin registrations from global config (legacy installs)
-step "Cleaning stale plugin registrations..."
-remove_stale_plugin_from_config || true
-
-# Clean up stale workspace-local MCP configs that use npx
-step "Cleaning stale workspace MCP configs..."
-cleanup_stale_workspace_mcp_configs "$REPO_ROOT"
-
-# Create CLI wrapper (pointing to runtime's node_modules for stability)
 step "Making CLI available on PATH..."
 mkdir -p "$CLI_BIN_DIR"
-rm -f "$CLI_BIN_DIR/opencode-rag"
-cat > "$CLI_BIN_DIR/opencode-rag" << WRAPPER
+cat > "$CLI_BIN_DIR/opencode-rag" << 'WRAPPER'
 #!/usr/bin/env bash
-exec node "$RUNTIME_DIR/node_modules/$PLUGIN_NAME/dist/cli.js" "\$@"
+exec node "$HOME/.opencode/node_modules/opencode-rag-plugin/dist/cli.js" "$@"
 WRAPPER
 chmod +x "$CLI_BIN_DIR/opencode-rag"
 ok "$CLI_BIN_DIR/opencode-rag"
 
-# Clean up old workspace-local wrappers (legacy)
-rm -f "$REPO_ROOT/.opencode/plugins/rag-plugin.js" \
-      "$REPO_ROOT/.opencode/plugins/package.json"
-rmdir "$REPO_ROOT/.opencode/plugins" 2>/dev/null || true
-
-# --- verification ------------------------------------------------------------
+# --- verification ---
 
 step "Verifying installation..."
-
 verified=true
 
-if [[ -f "$RUNTIME_DIR/node_modules/$PLUGIN_NAME/dist/plugin-entry.js" ]]; then
-  ok "Runtime plugin entry"
+if [[ -d "$RUNTIME_DIR/node_modules/$PLUGIN_NAME/dist" ]]; then
+  ok "Runtime link (resolves via symlink)"
 else
-  fail "Runtime plugin entry"; verified=false
-fi
-
-if [[ -f "$GLOBAL_CONFIG/node_modules/$PLUGIN_NAME/dist/plugin-entry.js" ]]; then
-  ok "Config plugin entry"
-else
-  fail "Config plugin entry"; verified=false
+  fail "Runtime link"; verified=false
 fi
 
 if [[ -x "$CLI_BIN_DIR/opencode-rag" ]]; then
@@ -259,34 +120,25 @@ else
   fail "CLI wrapper"; verified=false
 fi
 
-# Quick smoke test: can the plugin be resolved by Node?
-if node -e "require.resolve('$PLUGIN_NAME', {paths:['$RUNTIME_DIR']})" 2>/dev/null; then
-  ok "Node resolution (runtime)"
-else
-  fail "Node resolution (runtime)"; verified=false
-fi
-
-if node -e "require.resolve('$PLUGIN_NAME', {paths:['$GLOBAL_CONFIG']})" 2>/dev/null; then
-  ok "Node resolution (config)"
-else
-  fail "Node resolution (config)"; verified=false
-fi
+# --- workspace init ---
 
 step "Initializing workspace for OpenCodeRAG..."
-node "$RUNTIME_DIR/node_modules/$PLUGIN_NAME/dist/cli.js" init --skip-health-check || true
+node "$RUNTIME_DIR/node_modules/$PLUGIN_NAME/dist/cli.js" init --skip-health-check --skip-install || true
+ok "Workspace config files"
+
+mkdir -p "$(dirname "$REPO_ROOT/.opencode/node_modules/$PLUGIN_NAME")"
+rm -rf "$REPO_ROOT/.opencode/node_modules/$PLUGIN_NAME"
+ln -sfn "$RUNTIME_DIR/node_modules/$PLUGIN_NAME" "$REPO_ROOT/.opencode/node_modules/$PLUGIN_NAME"
+ok "Workspace node_modules (symlink to runtime)"
+
+# --- done ---
 
 step ""
-if $verified; then
-  printf 'Installation complete!\n'
-else
-  printf 'Installation finished with warnings (see above).\n' >&2
-fi
+if $verified; then printf 'Installation complete!\n'; else printf 'Installation finished with warnings (see above).\n' >&2; fi
 
-printf '\n'
-printf 'What to do next:\n'
+printf '\nWhat to do next:\n'
 printf '  1. Restart OpenCode if it is running.\n'
 printf '  2. Run "opencode-rag index" in this workspace to index its files.\n'
 printf '  3. OpenCode will automatically use the indexed data for context-aware queries.\n'
 printf '  (The workspace was already initialized by the install script.)\n'
-printf '\n'
-printf 'Run "%s uninstall" to remove.\n' "$0"
+printf '\nRun "%s uninstall" to remove.\n' "$0"

@@ -1,4 +1,4 @@
-import { readFileSync, rmSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -133,42 +133,27 @@ export function applyUpdate(options: {
     return { success: false, message: `build failed: ${(err as Error).message}` };
   }
 
-  const globalConfig = path.join(
-    process.env.USERPROFILE ?? process.env.HOME ?? "",
-    ".config", "opencode",
-  );
   const runtimeDir = path.join(
     process.env.USERPROFILE ?? process.env.HOME ?? "",
     ".opencode",
   );
+  const pluginDir = path.join(runtimeDir, "node_modules", "opencode-rag-plugin");
+  const junctionScript = path.join(repoRoot, "scripts", "make-junction.cjs");
 
   try {
-    const packOutput = execSync(
-      `npm pack --pack-destination "${globalConfig}"`,
-      { cwd: repoRoot, stdio: "pipe", encoding: "utf-8", timeout: 30_000 },
+    execSync(
+      `node "${junctionScript}" "${pluginDir}" "${repoRoot}"`,
+      { stdio, timeout: 10_000 },
     );
-    const lines = packOutput.trim().split("\n");
-    const tgzName = lines[lines.length - 1]?.trim();
-    if (!tgzName) {
-      return { success: false, message: "npm pack did not produce a .tgz file" };
-    }
-    const tgzPath = path.join(globalConfig, tgzName);
 
-    for (const targetDir of [runtimeDir, globalConfig]) {
-      try {
-        execSync(
-          `npm install --prefix "${targetDir}" "${tgzPath}"`,
-          { stdio, timeout: 120_000 },
-        );
-      } catch {
-        execSync(
-          `npm install --prefix "${targetDir}" --ignore-scripts --no-optional "${tgzPath}"`,
-          { stdio, timeout: 120_000 },
-        );
-      }
+    // Also recreate workspace junction if we're inside a workspace root
+    const workspaceLink = path.join(repoRoot, ".opencode", "node_modules", "opencode-rag-plugin");
+    if (existsSync(path.dirname(workspaceLink))) {
+      execSync(
+        `node "${junctionScript}" "${workspaceLink}" "${pluginDir}"`,
+        { stdio, timeout: 10_000 },
+      );
     }
-
-    rmSync(tgzPath, { force: true });
 
     return { success: true, message: "Update installed successfully. Restart OpenCode to use the new version." };
   } catch (err) {

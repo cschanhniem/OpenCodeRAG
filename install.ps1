@@ -1,4 +1,4 @@
-#!/usr/bin/env pwsh
+﻿#!/usr/bin/env pwsh
 #Requires -Version 5.1
 
 $ErrorActionPreference = "Stop"
@@ -10,126 +10,56 @@ $CLI_BIN_DIR = Join-Path (Join-Path $env:USERPROFILE ".local") "bin"
 $GLOBAL_CONFIG = Join-Path (Join-Path $env:USERPROFILE ".config") "opencode"
 $RUNTIME_DIR = Join-Path $env:USERPROFILE ".opencode"
 
-# --- helpers ------------------------------------------------------------------
-
-function die {
-    param([string]$Message)
-    Write-Host "Error: $Message" -ForegroundColor Red
-    exit 1
-}
-
+function die { param([string]$Message); Write-Host "Error: $Message" -ForegroundColor Red; exit 1 }
 function info { Write-Host "  $($args -join ' ')" }
-
-function step { Write-Host "`n$($args -join ' ')" }
-
+function step { Write-Host ""; Write-Host $($args -join ' ') }
 function ok { Write-Host "  $($args[0])  OK" -ForegroundColor Green }
-
 function fail_msg { Write-Host "  $($args[0])  FAILED" -ForegroundColor Red }
 
 function ensure_user_path_contains {
     param([string]$Dir)
-
-    if (-not (Test-Path -LiteralPath $Dir -PathType Container)) {
-        return $false
-    }
-
+    if (-not (Test-Path -LiteralPath $Dir -PathType Container)) { return $false }
     $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
-    if ([string]::IsNullOrWhiteSpace($userPath)) {
-        [Environment]::SetEnvironmentVariable("Path", $Dir, "User")
-        return $true
-    }
-
+    if ([string]::IsNullOrWhiteSpace($userPath)) { [Environment]::SetEnvironmentVariable("Path", $Dir, "User"); return $true }
     $entries = $userPath -split ";" | Where-Object { $_ -and $_.Trim().Length -gt 0 }
-    foreach ($entry in $entries) {
-        if ($entry.TrimEnd('\\') -ieq $Dir.TrimEnd('\\')) {
-            return $false
-        }
-    }
-
+    foreach ($entry in $entries) { if ($entry.TrimEnd('\\') -ieq $Dir.TrimEnd('\\')) { return $false } }
     [Environment]::SetEnvironmentVariable("Path", "$userPath;$Dir", "User")
     return $true
 }
 
 function remove_stale_plugin_from_global_config {
-    # Remove "plugin" entries from global config — plugin is loaded via
-    # .opencode/plugins/ auto-discovery, NOT via npm package resolution.
-    # Stale "plugin" entries trigger npm install which fails on native
-    # dependencies and produces "Plugin export is not a function".
     $removed = $false
     foreach ($cfgFile in @("opencode.jsonc", "opencode.json")) {
         $cfgPath = Join-Path $GLOBAL_CONFIG $cfgFile
         if (-not (Test-Path -LiteralPath $cfgPath -PathType Leaf)) { continue }
-
         try {
             $cfg = Get-Content -LiteralPath $cfgPath -Raw | ConvertFrom-Json
             if ($cfg.plugin) {
                 $cfg.PSObject.Properties.Remove('plugin')
                 $cfg | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $cfgPath -NoNewline
                 Add-Content -LiteralPath $cfgPath -Value "`n"
-                info "Removed stale 'plugin' entry from $cfgPath"
+                info "Removed stale plugin entry from $cfgPath"
                 $removed = $true
             }
-        }
-        catch {
-            continue
-        }
+        } catch { continue }
     }
     return $removed
 }
 
-function cleanup_stale_workspace_mcp_configs {
-    # Remove stale MCP server configs that use "npx -y opencode-rag-plugin mcp"
-    # (downloads stale npm version). The plugin auto-starts MCP server itself.
-    param([string]$SearchRoot)
-    
-    $mcpConfigFiles = Get-ChildItem -Path $SearchRoot -Recurse -Filter "opencode.json" -ErrorAction SilentlyContinue |
-        Where-Object { $_.DirectoryName -match '\.opencode$' -and $_.DirectoryName -ne (Join-Path $SearchRoot ".opencode") }
-    
-    foreach ($file in $mcpConfigFiles) {
-        try {
-            $cfg = Get-Content -LiteralPath $file.FullName -Raw | ConvertFrom-Json
-            if ($cfg.mcp -and $cfg.mcp.'opencode-rag') {
-                $mcpEntry = $cfg.mcp.'opencode-rag'
-                if ($mcpEntry.command -and ($mcpEntry.command -join ' ') -match 'npx.*opencode-rag-plugin') {
-                    $cfg.mcp.PSObject.Properties.Remove('opencode-rag')
-                    if ($cfg.mcp.PSObject.Properties.Count -eq 0) {
-                        $cfg.PSObject.Properties.Remove('mcp')
-                    }
-                    $cfg | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $file.FullName -NoNewline
-                    Add-Content -LiteralPath $file.FullName -Value "`n"
-                    info "Removed stale MCP config from $($file.FullName)"
-                }
-            }
-        }
-        catch {
-            continue
-        }
-    }
-}
-
-function test_node_resolution {
-    param(
-        [string]$ModuleName,
-        [string]$BaseDir
-    )
-
-    & node -e "const moduleName=process.argv[1];const baseDir=process.argv[2];try{require.resolve(moduleName,{paths:[baseDir]});}catch{process.exit(1);}" -- $ModuleName $BaseDir 2>$null
-    return ($LASTEXITCODE -eq 0)
-}
-
 function cleanup_tgz {
-    Remove-Item -Path "$GLOBAL_CONFIG\$PLUGIN_NAME-*.tgz" -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path "$RUNTIME_DIR\$PLUGIN_NAME-*.tgz" -Force -ErrorAction SilentlyContinue
 }
 
 function remove_from_npm {
     param([string]$dir)
     $pkg = Join-Path $dir "package.json"
     $pluginDir = Join-Path (Join-Path $dir "node_modules") $PLUGIN_NAME
-    
-    # Remove plugin directory
-    Remove-Item -Path $pluginDir -Recurse -Force -ErrorAction SilentlyContinue
-    
-    # Update package.json if it exists
+    if (Test-Path -LiteralPath $pluginDir) {
+        & cmd /c "rmdir /q `"$pluginDir`" 2>nul"
+        if (Test-Path -LiteralPath $pluginDir) {
+            Remove-Item -LiteralPath $pluginDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
     if (Test-Path -LiteralPath $pkg -PathType Leaf) {
         try {
             $content = Get-Content -LiteralPath $pkg -Raw | ConvertFrom-Json
@@ -138,12 +68,7 @@ function remove_from_npm {
             }
             $content | ConvertTo-Json | Set-Content -LiteralPath $pkg -NoNewline
             Add-Content -LiteralPath $pkg -Value "`n"
-        }
-        catch {
-            # Silently skip if package.json is malformed
-        }
-        
-        # Try npm prune
+        } catch {}
         Push-Location $dir
         & cmd /c "npm prune --prefix `"$dir`" --silent 2>nul"
         Pop-Location
@@ -154,7 +79,6 @@ function remove_from_config {
     foreach ($cfg in @("opencode.jsonc", "opencode.json")) {
         $cfgpath = Join-Path $GLOBAL_CONFIG $cfg
         if (-not (Test-Path -LiteralPath $cfgpath -PathType Leaf)) { continue }
-        
         try {
             $content = Get-Content -LiteralPath $cfgpath -Raw | ConvertFrom-Json
             if ($content.plugin) {
@@ -166,247 +90,110 @@ function remove_from_config {
             $content | ConvertTo-Json | Set-Content -LiteralPath $cfgpath -NoNewline
             Add-Content -LiteralPath $cfgpath -Value "`n"
             info "Removed $PLUGIN_NAME from $cfgpath"
-        }
-        catch {
-            # Silently skip if config is malformed
-        }
+        } catch {}
     }
 }
 
-# --- preflight checks ---------------------------------------------------------
+# --- preflight checks ---
 
-if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
-    die "npm is required but was not found in PATH"
-}
+if (-not (Get-Command npm -ErrorAction SilentlyContinue)) { die "npm is required but was not found in PATH" }
+if (-not (Get-Command opencode -ErrorAction SilentlyContinue)) { die "opencode is required but was not found in PATH" }
 
-if (-not (Get-Command opencode -ErrorAction SilentlyContinue)) {
-    die "opencode is required but was not found in PATH"
-}
-
-# --- uninstall ---------------------------------------------------------------
+# --- uninstall ---
 
 if ($args[0] -eq "uninstall") {
     step "Uninstalling $PLUGIN_NAME from all locations..."
-    
-    # Remove CLI wrapper
+
     info "Removing CLI wrapper..."
     Remove-Item -Path "$CLI_BIN_DIR\opencode-rag.ps1" -Force -ErrorAction SilentlyContinue
     Remove-Item -Path "$CLI_BIN_DIR\opencode-rag" -Force -ErrorAction SilentlyContinue
     Remove-Item -Path "$CLI_BIN_DIR\opencode-rag.sh" -Force -ErrorAction SilentlyContinue
-    
-    # Remove from global config node_modules
+
     info "Removing from global config ($GLOBAL_CONFIG)..."
     remove_from_npm $GLOBAL_CONFIG
-    
-    # Remove from OpenCode runtime node_modules
+
     info "Removing from OpenCode runtime ($RUNTIME_DIR)..."
     remove_from_npm $RUNTIME_DIR
-    
-    # Clean up .tgz files
+
     info "Removing .tgz package files..."
     cleanup_tgz
-    
-    # Remove stale OpenCode cache (npm-published version)
+    Remove-Item -Path "$GLOBAL_CONFIG\$PLUGIN_NAME-*.tgz" -Force -ErrorAction SilentlyContinue
+
     info "Removing OpenCode cache..."
     Remove-Item -Path "$env:USERPROFILE\.cache\opencode\packages\$PLUGIN_NAME-*" -Recurse -Force -ErrorAction SilentlyContinue
-    
-    # Remove from OpenCode config
+
     info "Updating OpenCode configuration..."
     remove_from_config
-    
-    # Remove stale plugin entries from global config
+
     info "Removing stale plugin registrations..."
     remove_stale_plugin_from_global_config | Out-Null
-    
-    # Remove workspace-local legacy files
+
     info "Removing workspace-local files..."
     Remove-Item -Path "$REPO_ROOT\.opencode\plugins\rag-plugin.js" -Force -ErrorAction SilentlyContinue
     Remove-Item -Path "$REPO_ROOT\.opencode\plugins\package.json" -Force -ErrorAction SilentlyContinue
     Remove-Item -Path "$REPO_ROOT\.opencode\plugins" -Recurse -Force -ErrorAction SilentlyContinue
-    
+
     step "Uninstalled. Restart OpenCode if it is running."
     exit 0
 }
 
-# --- install -----------------------------------------------------------------
+# --- install ---
 
 Set-Location $REPO_ROOT
 
-$distPath = Join-Path $REPO_ROOT "dist"
-if (Test-Path -LiteralPath $distPath -PathType Container) {
-    step "Building $PLUGIN_NAME..."
-    & cmd /c "npm run build"
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "  Build failed but dist/ exists, continuing with existing build..." -ForegroundColor Yellow
-    }
-}
-else {
-    step "Building $PLUGIN_NAME..."
-    & cmd /c "npm run build"
-    if ($LASTEXITCODE -ne 0) { die "npm run build failed" }
-}
-
-step "Packing plugin..."
-New-Item -ItemType Directory -Path $GLOBAL_CONFIG -Force | Out-Null
-cleanup_tgz
-
-$packOutput = & cmd /c "npm pack --pack-destination `"$GLOBAL_CONFIG`" 2>nul"
-if ($LASTEXITCODE -ne 0) { die "npm pack failed to produce a .tgz file" }
-$PACKED = ($packOutput | Select-Object -Last 1).Trim()
-if (-not $PACKED -or -not (Test-Path -LiteralPath "$GLOBAL_CONFIG\$PACKED" -PathType Leaf)) {
-    die "npm pack failed to produce a .tgz file"
-}
-info "Packed: $GLOBAL_CONFIG\$PACKED"
-
-function install_plugin {
-    param([string]$targetDir, [string]$packPath)
-    $output = & cmd /c "npm install --prefix `"$targetDir`" --silent `"$packPath`" 2>nul"
-    if ($LASTEXITCODE -eq 0) {
-        return $true 
-    } 
-    else {
-        # Output error
-        Write-Host $output -ForegroundColor Red
-    }
-    # Retry with --ignore-scripts for native modules (e.g. canvas has a pure-JS fallback)
-    Write-Host "  Retrying without native module compilation..." -ForegroundColor Yellow
-    $output = & cmd /c "npm install --prefix `"$targetDir`" --silent --ignore-scripts --no-optional `"$packPath`" 2>nul"
-    return ($LASTEXITCODE -eq 0)
-}
-
-# Install into opencode runtime node_modules
-step "Cleaning stale OpenCode cache..."
-Remove-Item -Path "$env:USERPROFILE\.cache\opencode\packages\$PLUGIN_NAME-*" -Recurse -Force -ErrorAction SilentlyContinue
+step "Building $PLUGIN_NAME..."
+& cmd /c "npm run build"
+if ($LASTEXITCODE -ne 0) { die "npm run build failed" }
 
 step "Installing into OpenCode runtime ($RUNTIME_DIR)..."
-New-Item -ItemType Directory -Path $RUNTIME_DIR -Force | Out-Null
-if (-not (install_plugin $RUNTIME_DIR "$GLOBAL_CONFIG\$PACKED")) {
-    die "npm install into runtime failed"
-}
+$junctionScript = Join-Path $REPO_ROOT "scripts\make-junction.cjs"
+& node $junctionScript "$RUNTIME_DIR\node_modules\$PLUGIN_NAME" "$REPO_ROOT"
+if ($LASTEXITCODE -eq 0) { ok "Runtime node_modules (junction to repo)" } else { fail_msg "Runtime node_modules"; die "Failed to link runtime node_modules" }
 
-$runtimeDist = Join-Path (Join-Path (Join-Path $RUNTIME_DIR "node_modules") $PLUGIN_NAME) "dist"
-if (Test-Path -LiteralPath $runtimeDist -PathType Container) {
-    ok "Runtime node_modules"
-}
-else {
-    fail_msg "Runtime node_modules"
-    die "$PLUGIN_NAME not found in $RUNTIME_DIR\node_modules\"
-}
-
-# Install into config node_modules
-step "Installing into OpenCode config ($GLOBAL_CONFIG)..."
-if (-not (install_plugin $GLOBAL_CONFIG "$GLOBAL_CONFIG\$PACKED")) {
-    die "npm install into config failed"
-}
-
-$configDist = Join-Path (Join-Path (Join-Path $GLOBAL_CONFIG "node_modules") $PLUGIN_NAME) "dist"
-if (Test-Path -LiteralPath $configDist -PathType Container) {
-    ok "Config node_modules"
-}
-else {
-    fail_msg "Config node_modules"
-    die "$PLUGIN_NAME not found in $GLOBAL_CONFIG\node_modules\"
-}
-
-# Clean up .tgz
-cleanup_tgz
-
-# Clean up stale plugin registrations from global config (legacy installs)
-step "Cleaning stale plugin registrations..."
-remove_stale_plugin_from_global_config | Out-Null
-
-# Clean up stale workspace-local MCP configs that use npx
-step "Cleaning stale workspace MCP configs..."
-cleanup_stale_workspace_mcp_configs $REPO_ROOT
-
-# Create CLI wrapper
 step "Making CLI available on PATH..."
 New-Item -ItemType Directory -Path $CLI_BIN_DIR -Force | Out-Null
-Remove-Item -Path "$CLI_BIN_DIR\opencode-rag.ps1" -Force -ErrorAction SilentlyContinue
-@"
-& node "$RUNTIME_DIR\node_modules\$PLUGIN_NAME\dist\cli.js" @args
-"@ | Set-Content -LiteralPath "$CLI_BIN_DIR\opencode-rag.ps1" -Encoding UTF8
+$wrapperLine = '& node "{0}\node_modules\{1}\dist\cli.js" @args' -f $RUNTIME_DIR, $PLUGIN_NAME
+Set-Content -LiteralPath "$CLI_BIN_DIR\opencode-rag.ps1" -Value $wrapperLine -Encoding UTF8
 ok "$CLI_BIN_DIR\opencode-rag.ps1"
 
 $pathUpdated = ensure_user_path_contains $CLI_BIN_DIR
-if ($pathUpdated) {
-    info "Added $CLI_BIN_DIR to your user PATH"
-}
+if ($pathUpdated) { info "Added $CLI_BIN_DIR to your user PATH" }
 
-# Clean up old workspace-local wrappers (legacy)
-Remove-Item -Path "$REPO_ROOT\.opencode\plugins\rag-plugin.js" -Force -ErrorAction SilentlyContinue
-Remove-Item -Path "$REPO_ROOT\.opencode\plugins\package.json" -Force -ErrorAction SilentlyContinue
-Remove-Item -Recurse -Path "$REPO_ROOT\.opencode\plugins" -Force -ErrorAction SilentlyContinue
-
-# --- verification ------------------------------------------------------------
+# --- verification ---
 
 step "Verifying installation..."
-
 $verified = $true
 
-$runtimeEntry = Join-Path (Join-Path (Join-Path (Join-Path $RUNTIME_DIR "node_modules") $PLUGIN_NAME) "dist") "plugin-entry.js"
-if (Test-Path -LiteralPath $runtimeEntry -PathType Leaf) {
-    ok "Runtime plugin entry"
-}
-else {
-    fail_msg "Runtime plugin entry"; $verified = $false
-}
+$runtimeLink = "$RUNTIME_DIR\node_modules\$PLUGIN_NAME"
+if (Test-Path -LiteralPath "$runtimeLink\dist") { ok "Runtime link (resolves via junction)" } else { fail_msg "Runtime link"; $verified = $false }
 
-$configEntry = Join-Path (Join-Path (Join-Path (Join-Path $GLOBAL_CONFIG "node_modules") $PLUGIN_NAME) "dist") "plugin-entry.js"
-if (Test-Path -LiteralPath $configEntry -PathType Leaf) {
-    ok "Config plugin entry"
-}
-else {
-    fail_msg "Config plugin entry"; $verified = $false
-}
+if (Test-Path -LiteralPath "$CLI_BIN_DIR\opencode-rag.ps1") { ok "CLI wrapper" } else { fail_msg "CLI wrapper"; $verified = $false }
 
-$cliPath = "$CLI_BIN_DIR\opencode-rag.ps1"
-if (Test-Path -LiteralPath $cliPath -PathType Leaf) {
-    ok "CLI wrapper"
-}
-else {
-    fail_msg "CLI wrapper"; $verified = $false
-}
-
-# Node resolution check (runtime)
-if (test_node_resolution $PLUGIN_NAME $RUNTIME_DIR) {
-    ok "Node resolution (runtime)"
-}
-else {
-    fail_msg "Node resolution (runtime)"; $verified = $false
-}
-
-# Node resolution check (config)
-if (test_node_resolution $PLUGIN_NAME $GLOBAL_CONFIG) {
-    ok "Node resolution (config)"
-}
-else {
-    fail_msg "Node resolution (config)"; $verified = $false
-}
+# --- workspace init ---
 
 step "Initializing workspace for OpenCodeRAG..."
-& node "$RUNTIME_DIR\node_modules\$PLUGIN_NAME\dist\cli.js" init --skip-health-check
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "  init command completed with warnings, continuing..." -ForegroundColor Yellow
-}
-else {
-    ok "Workspace initialized"
-}
+& node "$runtimeLink\dist\cli.js" init --skip-health-check --skip-install
+if ($LASTEXITCODE -eq 0) { ok "Workspace config files" } else { Write-Host "  init command completed with warnings, continuing..." -ForegroundColor Yellow }
+
+$workspaceNodeModules = Join-Path $REPO_ROOT ".opencode\node_modules"
+& node $junctionScript "$workspaceNodeModules\$PLUGIN_NAME" $runtimeLink
+ok "Workspace node_modules (junction to runtime)"
+
+# --- done ---
 
 step ""
-if ($verified) {
-    Write-Host "Installation complete!" -ForegroundColor Green
-}
-else {
-    Write-Host "Installation finished with warnings (see above)." -ForegroundColor Yellow
-}
+if ($verified) { Write-Host "Installation complete!" -ForegroundColor Green } else { Write-Host "Installation finished with warnings (see above)." -ForegroundColor Yellow }
 
-Write-Host "`nWhat to do next:"
+Write-Host ""
+Write-Host "What to do next:"
 Write-Host "  1. Restart OpenCode if it is running."
-Write-Host "  2. Run 'opencode-rag index' in this workspace to index its files."
+Write-Host "  2. Run opencode-rag index in this workspace to index its files."
 Write-Host "  3. OpenCode will automatically use the indexed data for context-aware queries."
 Write-Host "  (The workspace was already initialized by the install script.)"
 if ($pathUpdated) {
-    Write-Host "  4. In your current PowerShell session run: `$env:Path += ';$CLI_BIN_DIR'"
+    $hint = "  4. In your current PowerShell session run: " + '$env:Path += ' + $CLI_BIN_DIR
+    Write-Host $hint
 }
-Write-Host "`nRun '$PSCommandPath uninstall' to remove."
+Write-Host ""
+$uninstallHint = "Run " + $PSCommandPath + " uninstall to remove."
+Write-Host $uninstallHint

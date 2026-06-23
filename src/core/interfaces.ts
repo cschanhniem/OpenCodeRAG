@@ -14,7 +14,7 @@ export interface Chunk {
 
 export interface DescriptionProvider {
   generateDescription(chunk: Chunk): Promise<string>;
-  generateBatchDescriptions(chunks: Chunk[]): Promise<Map<string, string>>;
+  generateBatchDescriptions(chunks: Chunk[], logDebug?: (msg: string) => void): Promise<Map<string, string>>;
 }
 
 export interface SearchExplanation {

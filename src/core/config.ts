@@ -293,8 +293,6 @@ export const DEFAULT_CONFIG: RagConfig = {
     timeoutMs: 60000,
     systemPrompt:
       "Describe code precise and concise in 2 sentences. Maximum 20 words. Focus on functionality and purpose.",
-    batchMaxChunks: 25,
-    batchTimeoutMs: 120000,
     batchConcurrency: 3,
     retryMax: 3,
     retryBaseDelayMs: 1000,

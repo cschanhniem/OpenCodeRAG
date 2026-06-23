@@ -32,6 +32,7 @@ export async function generateDescriptions(
     try {
       batchMap = await descriptionProvider.generateBatchDescriptions(
         nonImageChunks,
+        (msg: string) => logger?.debug(msg),
       );
       logger?.debug(`  Batch descriptions received for ${batchMap.size} chunks`);
     } catch (err) {
