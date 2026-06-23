@@ -501,13 +501,25 @@ function buildSettingCategories(
     {
       id: "documentation",
       label: "Documentation Mode",
-      description: "Configure documentation system prompt injection for undocumented codebases",
+      description: "Configure automatic code documentation via JSDoc/TSDoc comment injection",
       entries: [
         {
           path: ["documentationMode", "enabled"],
           label: "Documentation mode",
           type: "boolean",
           currentValue: (docModeRo.enabled as boolean) ?? (docModeCfg.enabled as boolean) ?? false,
+        },
+        {
+          path: ["documentationMode", "autoStart"],
+          label: "Auto-start on session",
+          type: "boolean",
+          currentValue: (docModeRo.autoStart as boolean) ?? (docModeCfg.autoStart as boolean) ?? true,
+        },
+        {
+          path: ["documentationMode", "batchSize"],
+          label: "Files per batch",
+          type: "number",
+          currentValue: (docModeRo.batchSize as number) ?? (docModeCfg.batchSize as number) ?? 5,
         },
       ],
     },

@@ -120,7 +120,44 @@ The skill teaches the workflow: skeleton → find_usages → search → read →
 
 The `experimental.chat.system.transform` hook prepends a tool list to the system prompt on every message, ensuring agents always know the tools are available — even before the index is built.
 
-### 5. Read Tool Override
+### 5. Documentation Mode — Auto-Kickoff
+
+When `documentationMode.enabled` is `true`, the plugin can automatically start documenting the codebase without prompting.
+
+**Configuration:**
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `enabled` | `false` | Enable documentation mode |
+| `autoStart` | `true` | Automatically kick off documentation on session start |
+| `batchSize` | `5` | Files to process per batch |
+
+**How it works:**
+
+1. **System prompt injection** — When `autoStart` is enabled, the `experimental.chat.system.transform` hook injects a directive system prompt instructing the LLM to document all public symbols by reading files, generating JSDoc/TSDoc comments, and applying edits.
+
+2. **First-message kickoff** — On the first user message in a session, the `chat.message` hook queries the manifest for indexed files, loads the doc progress tracker, and injects a kickoff message listing the next batch of files to document. The LLM then autonomously:
+   - Calls `get_file_skeleton` to understand file structure
+   - Calls `read` to get full file contents
+   - Adds/updates doc comments
+   - Calls `mark_documented(filePath)` to record progress
+
+3. **Progress tracking** — Documented files are recorded in `.opencode/rag_db/doc-mode-progress.json`. On subsequent sessions or batch completions, the LLM resumes where it left off, skipping already-documented files.
+
+4. **`mark_documented` tool** — A dedicated tool that the LLM calls after documenting each file. It persists the file path to the progress tracker.
+
+**Config example:**
+```json
+{
+  "documentationMode": {
+    "enabled": true,
+    "autoStart": true,
+    "batchSize": 5
+  }
+}
+```
+
+### 6. Read Tool Override
 
 When `openCode.readOverride` is `true`:
 
@@ -130,7 +167,7 @@ When `openCode.readOverride` is `true`:
 - If retrieval fails, the file is still returned without RAG context
 - If no relevant chunks are found but the file has indexed chunks, related files are suggested
 
-### 6. Session Logging & Evaluation
+### 7. Session Logging & Evaluation
 
 The plugin automatically captures session events for token usage analysis:
 

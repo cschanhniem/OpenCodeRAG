@@ -72,6 +72,8 @@ export interface UiConfig {
 
 export interface DocumentationModeConfig {
   enabled: boolean;
+  autoStart: boolean;
+  batchSize: number;
   systemPrompt: string;
 }
 
@@ -307,6 +309,8 @@ export const DEFAULT_CONFIG: RagConfig = {
   },
   documentationMode: {
     enabled: false,
+    autoStart: true,
+    batchSize: 5,
     systemPrompt:
       "You are a code documentation expert. Your task is to document any existing, undocumented codebase.\n\n" +
       "## Instructions\n\n" +

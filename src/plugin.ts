@@ -18,6 +18,8 @@ import {
 } from "./opencode/tools.js";
 import { resolveApiKey } from "./core/resolve-api-key.js";
 import { consumePendingRagInjection } from "./core/rag-injection-flag.js";
+import { loadDocProgress, markFileDocumented } from "./core/doc-progress.js";
+import { loadManifest } from "./core/manifest.js";
 import { createSessionLogger, type SessionLogger } from "./eval/session-logger.js";
 import { countTokens, estimateContextTokensFormatted } from "./eval/token-counter.js";
 import { checkForUpdate, type UpdateInfo } from "./updater.js";
@@ -437,6 +439,9 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
   const sessionLastMessage = new Map<string, string>();
   const sessionRetrievalCache = new Map<string, { messageText: string; rawResults: SearchResult[] }>();
 
+  // Session-level doc mode kickoff tracking
+  const sessionDocKickoff = new Map<string, boolean>();
+
   // Session-level tool usage tracking for nudge mechanism
   const RAG_TOOL_NAMES = new Set(["search_semantic", "get_file_skeleton", "find_usages"]);
   const sessionRagToolCalls = new Map<string, number>();
@@ -619,6 +624,38 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
     });
   }
 
+  try {
+    const docMode = getEffectiveCfg().documentationMode;
+    if (docMode?.enabled) {
+      const markDocTool = tool({
+        description:
+          "Mark a file as documented after adding doc comments. Call this after you finish documenting each file.",
+        args: {
+          filePath: tool.schema.string().min(1, "File path is required."),
+        },
+        async execute(args: { filePath: string }) {
+          markFileDocumented(options.storePath, args.filePath);
+          appendDebugLog(options.logFilePath, {
+            scope: "mark_documented",
+            message: `Marked as documented: ${args.filePath}`,
+          });
+          return {
+            title: "Documented",
+            output: `${args.filePath} marked as documented.`,
+            metadata: { tool: "mark_documented", filePath: args.filePath },
+          };
+        },
+      });
+      tools["mark_documented"] = markDocTool;
+    }
+  } catch (err) {
+    appendDebugLog(options.logFilePath, {
+      scope: "plugin",
+      message: "Failed to register mark_documented tool",
+      error: err,
+    });
+  }
+
   if (readOverride) {
     const readTool = createRagReadTool({
       worktree: options.worktree,
@@ -716,8 +753,35 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
 
       // Inject documentation mode system prompt if enabled
       const docMode = getEffectiveCfg().documentationMode;
-      if (docMode?.enabled && docMode.systemPrompt) {
-        output.system.unshift(docMode.systemPrompt);
+      if (docMode?.enabled) {
+        if (docMode.autoStart) {
+          const directivePrompt = [
+            "## PRIMARY OBJECTIVE: Document this codebase",
+            "",
+            "Your primary task is to add/update JSDoc/TSDoc comments on every public symbol in this codebase.",
+            "",
+            "### Workflow",
+            "",
+            "When you receive a documentation kickoff message listing files to process:",
+            "1. For each file in the batch:",
+            "   a. Call `get_file_skeleton(filePath)` to see the structure",
+            "   b. Call `read` to read the full file content",
+            "   c. Add or update doc comments on EVERY public symbol: classes, interfaces, types, methods, functions, properties, and exported constants",
+            "   d. Call `mark_documented(filePath)` to record completion",
+            "2. Use the codebase's existing comment style (JSDoc, TSDoc, etc.)",
+            "3. Write descriptions that explain WHAT and WHY, not HOW",
+            "4. Include @param (with types and descriptions), @returns, and @throws where applicable",
+            "5. Do NOT change any implementation code — only add/update doc comments",
+            "6. Do NOT add comments that restate the obvious",
+            "7. For private/internal symbols, add concise inline comments only when logic is non-obvious",
+            "8. Preserve any existing comments — update them only if incorrect",
+            "",
+            "After finishing a batch, report which files were documented and wait for the next batch.",
+          ].join("\n");
+          output.system.unshift(directivePrompt);
+        } else {
+          output.system.unshift(docMode.systemPrompt);
+        }
       }
     },
     async "chat.message"(input, output) {
@@ -730,6 +794,54 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
         // Track message count for nudge mechanism
         const prevMsgCount = sessionMessageCount.get(input.sessionID) ?? 0;
         sessionMessageCount.set(input.sessionID, prevMsgCount + 1);
+
+        // Documentation mode auto-kickoff on first message
+        const docModeCfg = getEffectiveCfg().documentationMode;
+        if (docModeCfg?.enabled && docModeCfg.autoStart && !sessionDocKickoff.get(input.sessionID)) {
+          sessionDocKickoff.set(input.sessionID, true);
+          try {
+            const manifest = await loadManifest(options.storePath);
+            const allFiles = Object.keys(manifest.manifest.files);
+            if (allFiles.length > 0) {
+              const progress = loadDocProgress(options.storePath);
+              const remaining = allFiles.filter((f) => !progress.documented.includes(f));
+
+              if (remaining.length === 0) {
+                const doneMsg = "\n\n**Documentation Mode: Complete** — All indexed files have been documented.";
+                const parts = output?.parts ?? (output?.message as Record<string, unknown>)?.parts;
+                if (Array.isArray(parts) && parts.length > 0) {
+                  const first = parts[0] as Record<string, unknown>;
+                  if (typeof first.text === "string") {
+                    parts[0] = { ...first, text: `${first.text}${doneMsg}` } as typeof parts[0];
+                  }
+                }
+              } else {
+                const batch = remaining.slice(0, docModeCfg.batchSize);
+                const kickoffMsg = [
+                  "",
+                  "## Documentation Mode: Auto-Kickoff",
+                  "",
+                  "Begin documenting the codebase. Process these files in order:",
+                  ...batch.map((f) => `- \`${f}\``),
+                  "",
+                  `Progress: ${progress.documented.length} / ${allFiles.length} files documented.`,
+                  `Remaining: ${remaining.length} files.`,
+                  "",
+                  "For each file: call `get_file_skeleton` → `read` → add doc comments → call `mark_documented`",
+                ].join("\n");
+                const parts = output?.parts ?? (output?.message as Record<string, unknown>)?.parts;
+                if (Array.isArray(parts) && parts.length > 0) {
+                  const first = parts[0] as Record<string, unknown>;
+                  if (typeof first.text === "string") {
+                    parts[0] = { ...first, text: `${first.text}${kickoffMsg}` } as typeof parts[0];
+                  }
+                }
+              }
+            }
+          } catch {
+            // silently ignore doc mode kickoff failures
+          }
+        }
 
         const pendingInjection = consumePendingRagInjection(options.storePath);
 
