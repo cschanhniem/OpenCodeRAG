@@ -33,3 +33,5 @@ src/__tests__/_images
 *.jpg
 build/config.gypi
 opencode-rag-db/__manifest/*
+graphify_out/*
+.graphify*
