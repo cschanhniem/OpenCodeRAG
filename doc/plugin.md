@@ -120,38 +120,46 @@ The skill teaches the workflow: skeleton → find_usages → search → read →
 
 The `experimental.chat.system.transform` hook prepends a tool list to the system prompt on every message, ensuring agents always know the tools are available — even before the index is built.
 
-### 5. Documentation Mode — Auto-Kickoff
+### 5. Documentation Mode — Slash Command (`/doc`)
 
-When `documentationMode.enabled` is `true`, the plugin can automatically start documenting the codebase without prompting.
+When `documentationMode.enabled` is `true`, the plugin provides a `/doc` slash command for documenting the codebase. No agent tools are registered — documentation is driven entirely through the slash command.
 
 **Configuration:**
 
 | Field | Default | Description |
 |-------|---------|-------------|
 | `enabled` | `false` | Enable documentation mode |
-| `autoStart` | `true` | Automatically kick off documentation on session start |
-| `batchSize` | `5` | Files to process per batch |
+| `systemPrompt` | *(built-in)* | System prompt for the documentation agent |
 
 **How it works:**
 
-1. **System prompt injection** — When `autoStart` is enabled, the `experimental.chat.system.transform` hook injects a directive system prompt instructing the LLM to document all public symbols by reading files, generating JSDoc/TSDoc comments, and applying edits.
+1. **User types `/doc`** — The `chat.message` hook intercepts the slash command and returns a list of all undocumented files, grouped by subdirectory.
 
-2. **First-message kickoff** — On the first user message in a session, the `chat.message` hook queries the manifest for indexed files, loads the doc progress tracker, and injects a kickoff message listing the next batch of files to document. The LLM then autonomously:
-   - Calls `get_file_skeleton` to understand file structure
+2. **Agent picks a subdirectory** — The agent reads the file list, chooses a subdirectory, and documents all files within it:
+   - Calls `get_file_skeleton(filePath)` to understand file structure
    - Calls `read` to get full file contents
-   - Adds/updates doc comments
-   - Calls `mark_documented(filePath)` to record progress
+   - Adds/updates JSDoc/TSDoc comments on public symbols
+   - Preserves existing comments
 
-3. **Progress tracking** — Documented files are recorded in `.opencode/rag_db/doc-mode-progress.json`. On subsequent sessions or batch completions, the LLM resumes where it left off, skipping already-documented files.
+3. **Agent marks subdirectory complete** — When done, the agent types `/doc src/auth/` (or similar) to mark that subdirectory as documented. The plugin updates the progress tracker and shows remaining files.
 
-4. **`mark_documented` tool** — A dedicated tool that the LLM calls after documenting each file. It persists the file path to the progress tracker.
+4. **Progress tracking** — Documented files are recorded in `.opencode/rag_db/doc-mode-progress.json`. On subsequent sessions, the `/doc` command resumes where it left off.
+
+**Workflow:**
+```
+User:     /doc
+Plugin:   ## Documentation — lists all files grouped by subdirectory
+Agent:    picks a subdirectory, documents files
+Agent:    /doc src/auth/
+Plugin:   marks src/auth/* as documented, shows remaining files
+Agent:    picks next subdirectory, repeats
+```
 
 **Config example:**
 ```json
 {
   "documentationMode": {
     "enabled": true,
-    "autoStart": true,
     "batchSize": 5
   }
 }

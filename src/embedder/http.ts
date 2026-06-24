@@ -386,6 +386,14 @@ async function sendRawHttpRequest(
         }
         return;
       }
+
+      // No Content-Length and not chunked — response body is empty (e.g., 301 redirect).
+      if (headerEndIndex >= 0) {
+        settle(() => {
+          releaseOrDestroy();
+          resolve(assembled);
+        });
+      }
     };
 
     const endHandler = () => {

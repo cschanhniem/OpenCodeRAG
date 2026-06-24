@@ -729,84 +729,6 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
       sessionLogger.onEvent(event as Parameters<typeof sessionLogger.onEvent>[0]);
     },
     tool: tools,
-    async "command.execute.before"(input, output) {
-      if (input.command === "doc") {
-        const docMode = getEffectiveCfg().documentationMode;
-        if (!docMode?.enabled) {
-          output.parts = [{
-            type: "text",
-            text: "Documentation mode is not enabled. Set `documentationMode.enabled` to `true` in opencode-rag.json.",
-          } as Part];
-          return;
-        }
-
-        const arg = input.args?.trim();
-
-        try {
-          const manifest = await loadManifest(options.storePath);
-          const allFiles = Object.keys(manifest.manifest.files);
-          if (allFiles.length === 0) {
-            output.parts = [{
-              type: "text",
-              text: "No indexed files found. Run indexing first, then use `/doc`.",
-            } as Part];
-            return;
-          }
-
-          if (arg) {
-            markSubdirectoryDocumented(options.storePath, arg, allFiles);
-          }
-
-          const progress = loadDocProgress(options.storePath);
-          const remaining = allFiles.filter((f) => !progress.documented.includes(f));
-
-          if (remaining.length === 0) {
-            output.parts = [{
-              type: "text",
-              text: `**All ${allFiles.length} indexed files have been documented.** No remaining files.`,
-            } as Part];
-            return;
-          }
-
-          const grouped: Record<string, string[]> = {};
-          for (const f of remaining) {
-            const dir = path.dirname(f);
-            (grouped[dir] ??= []).push(f);
-          }
-
-          const lines = [
-            "## Documentation",
-            "",
-            "Pick a subdirectory and document ALL files within it using Google JSDoc style.",
-            `When done, type \`/doc <subdirectory>\` to mark it complete and see what's left.`,
-            "",
-          ];
-
-          for (const [dir, files] of Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b))) {
-            lines.push(`### ${dir} (${files.length} file${files.length === 1 ? "" : "s"})`);
-            for (const f of files) {
-              lines.push(`- \`${f}\``);
-            }
-            lines.push("");
-          }
-
-          lines.push(`Progress: ${progress.documented.length} / ${allFiles.length} files documented.`);
-          lines.push(`Remaining: ${remaining.length} files.`);
-
-          output.parts = [{ type: "text", text: lines.join("\n") } as Part];
-        } catch (err) {
-          appendDebugLog(options.logFilePath, {
-            scope: "command.execute.before",
-            message: "Failed to handle /doc command",
-            error: err,
-          });
-          output.parts = [{
-            type: "text",
-            text: "Failed to start documentation. Ensure the workspace is indexed.",
-          } as Part];
-        }
-      }
-    },
     async "experimental.chat.system.transform"(_input, output) {
       appendDebugLog(options.logFilePath, {
         scope: "experimental.chat.system.transform",
@@ -867,6 +789,98 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
         if (text.length === 0) return;
 
         sessionLastMessage.set(input.sessionID, text);
+
+        // Handle /doc slash command
+        if (text.startsWith("/doc")) {
+          const docMode = getEffectiveCfg().documentationMode;
+          if (!docMode?.enabled) {
+            const parts = output?.parts ?? (output?.message as Record<string, unknown>)?.parts;
+            if (Array.isArray(parts) && parts.length > 0) {
+              const first = parts[0] as Record<string, unknown>;
+              if (typeof first.text === "string") {
+                parts[0] = { ...first, text: "Documentation mode is not enabled. Set `documentationMode.enabled` to `true` in opencode-rag.json." } as typeof parts[0];
+              }
+            }
+            return;
+          }
+
+          const arg = text.slice(4).trim();
+
+          try {
+            const manifest = await loadManifest(options.storePath);
+            const allFiles = Object.keys(manifest.manifest.files);
+            if (allFiles.length === 0) {
+              const parts = output?.parts ?? (output?.message as Record<string, unknown>)?.parts;
+              if (Array.isArray(parts) && parts.length > 0) {
+                const first = parts[0] as Record<string, unknown>;
+                if (typeof first.text === "string") {
+                  parts[0] = { ...first, text: "No indexed files found. Run indexing first, then use `/doc`." } as typeof parts[0];
+                }
+              }
+              return;
+            }
+
+            if (arg) {
+              markSubdirectoryDocumented(options.storePath, arg, allFiles);
+            }
+
+            const progress = loadDocProgress(options.storePath);
+            const remaining = allFiles.filter((f) => !progress.documented.includes(f));
+
+            let docMsg: string;
+            if (remaining.length === 0) {
+              docMsg = `**All ${allFiles.length} indexed files have been documented.** No remaining files.`;
+            } else {
+              const grouped: Record<string, string[]> = {};
+              for (const f of remaining) {
+                const dir = path.dirname(f);
+                (grouped[dir] ??= []).push(f);
+              }
+
+              const lines = [
+                "## Documentation",
+                "",
+                "Pick a subdirectory and document ALL files within it using Google JSDoc style.",
+                `When done, type \`/doc <subdirectory>\` to mark it complete and see what's left.`,
+                "",
+              ];
+
+              for (const [dir, files] of Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b))) {
+                lines.push(`### ${dir} (${files.length} file${files.length === 1 ? "" : "s"})`);
+                for (const f of files) {
+                  lines.push(`- \`${f}\``);
+                }
+                lines.push("");
+              }
+
+              lines.push(`Progress: ${progress.documented.length} / ${allFiles.length} files documented.`);
+              lines.push(`Remaining: ${remaining.length} files.`);
+              docMsg = lines.join("\n");
+            }
+
+            const parts = output?.parts ?? (output?.message as Record<string, unknown>)?.parts;
+            if (Array.isArray(parts) && parts.length > 0) {
+              const first = parts[0] as Record<string, unknown>;
+              if (typeof first.text === "string") {
+                parts[0] = { ...first, text: docMsg } as typeof parts[0];
+              }
+            }
+          } catch (err) {
+            appendDebugLog(options.logFilePath, {
+              scope: "chat.message",
+              message: "Failed to handle /doc command",
+              error: err,
+            });
+            const parts = output?.parts ?? (output?.message as Record<string, unknown>)?.parts;
+            if (Array.isArray(parts) && parts.length > 0) {
+              const first = parts[0] as Record<string, unknown>;
+              if (typeof first.text === "string") {
+                parts[0] = { ...first, text: "Failed to start documentation. Ensure the workspace is indexed." } as typeof parts[0];
+              }
+            }
+          }
+          return;
+        }
 
         const pendingInjection = consumePendingRagInjection(options.storePath);
 
