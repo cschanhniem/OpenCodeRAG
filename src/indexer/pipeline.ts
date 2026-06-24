@@ -128,7 +128,7 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
   let manifestStatus = loadResult.status;
   let rebuildPerformed = false;
 
-  logger.debug(`Manifest loaded: ${manifestStatus}, ${Object.keys(manifest.files).length} entries`);
+  logger.info(`Manifest loaded: ${manifestStatus}, ${Object.keys(manifest.files).length} entries`);
 
   if (options.force) {
     manifestStatus = "missing";
@@ -165,6 +165,7 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
     }
   }
 
+  const scanStart = Date.now();
   const workspaceFiles = await scanWorkspaceFiles(
     options.cwd,
     options.config,
@@ -173,7 +174,8 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
     filterPaths,
   );
 
-  logger.debug(`Workspace scan complete: ${workspaceFiles.length} files`);
+  const scanSec = ((Date.now() - scanStart) / 1000).toFixed(1);
+  logger.info(`Workspace scan complete: ${workspaceFiles.length} files in ${scanSec}s`);
 
   const existingCount = await options.store.count();
 
