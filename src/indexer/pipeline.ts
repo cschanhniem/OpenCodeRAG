@@ -459,15 +459,8 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
           };
         }
 
-        // ── Store (new data first, then cleanup old) ──
+        // ── Store (new data first; orphan cleanup is handled inside the store) ──
         const result = await storeFileChunks(prep, embeddings, effectiveStore, logger);
-
-        // ── Clean up old store/keyword entries for modified files ──
-        // Done *after* storing the new chunks so an abort never orphans data.
-        if (prep.isModified && !result.isRemoved && result.chunkCount > 0) {
-          await effectiveStore.deleteByFilePath(prep.normalizedPath).catch(() => {});
-          options.keywordIndex?.removeByFilePath(prep.normalizedPath);
-        }
 
         // ── Update manifest in-memory and enqueue an atomic save ──
         if (result.chunkCount > 0 && !result.isRemoved) {

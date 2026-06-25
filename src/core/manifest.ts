@@ -95,7 +95,7 @@ export async function loadManifest(dbPath: string): Promise<LoadedManifest> {
   }
 }
 
-/** Persist a manifest to disk with atomic write (temp file + rename). */
+/** Persist a manifest to disk with atomic write (temp file + rename, with Windows fallback). */
 export async function saveManifest(dbPath: string, manifest: FileManifest): Promise<void> {
   const filePath = manifestPathFor(dbPath);
   const tempPath = `${filePath}.tmp`;
@@ -104,5 +104,11 @@ export async function saveManifest(dbPath: string, manifest: FileManifest): Prom
 
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(tempPath, JSON.stringify(manifest, null, 2), "utf-8");
-  await fs.rename(tempPath, filePath);
+  try {
+    await fs.rename(tempPath, filePath);
+  } catch {
+    // Windows: rename fails with EPERM if destination exists
+    await fs.unlink(filePath).catch(() => {});
+    await fs.rename(tempPath, filePath);
+  }
 }

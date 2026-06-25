@@ -252,6 +252,31 @@ export class LanceDBStore implements VectorStore {
         );
       }
     }
+
+    // FINALLY: remove stale chunks for the same file that belong to a
+    // previous revision (different startLines).  Exclude the new inserts
+    // so an abort never orphans data.
+    const filePathsDone = new Set<string>();
+    for (const [key] of newIdsByLine) {
+      const colonIdx = key.lastIndexOf(":");
+      const filePath = key.slice(0, colonIdx);
+      if (filePathsDone.has(filePath)) continue;
+      filePathsDone.add(filePath);
+
+      // Collect all new IDs inserted for this file
+      const fileNewIds: string[] = [];
+      for (const [k, ids] of newIdsByLine) {
+        if (k.startsWith(filePath + ":")) {
+          fileNewIds.push(...ids);
+        }
+      }
+
+      const escapedPath = filePath.replace(/'/g, "''");
+      const idList = fileNewIds.map((id) => `'${id.replace(/'/g, "''")}'`).join(", ");
+      await table.delete(
+        `filePath = '${escapedPath}' AND id NOT IN (${idList})`,
+      );
+    }
   }
 
   /**
