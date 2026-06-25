@@ -23,10 +23,20 @@ export function getPackageRoot(): string {
  * Read and parse `package.json` from the package root.
  *
  * @returns The parsed `PackageMetadata` containing name, version, and dependency maps.
+ * @throws {Error} If the package.json file cannot be read or parsed (e.g. merge conflicts).
  */
 export function getPackageMetadata(): PackageMetadata {
   const packageJsonPath = path.join(getPackageRoot(), "package.json");
-  return JSON.parse(readFileSync(packageJsonPath, "utf-8")) as PackageMetadata;
+  try {
+    return JSON.parse(readFileSync(packageJsonPath, "utf-8")) as PackageMetadata;
+  } catch (cause) {
+    throw new Error(
+      `Failed to parse package.json at ${packageJsonPath}. ` +
+        "This usually means the file contains invalid JSON, such as unresolved git merge conflict markers " +
+        "(<<<<<<<, =======, >>>>>>>). Resolve the conflict manually.\n" +
+        `Inner error: ${(cause as Error).message}`,
+    );
+  }
 }
 
 /**

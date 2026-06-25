@@ -45,8 +45,9 @@ export function registerInitCommand(program: Command): void {
     .option("--skip-install", "skip installing workspace-local plugin dependencies")
     .option("--skip-health-check", "skip provider connectivity and model availability check")
     .action(async (options: InitOptions) => {
-      const cwd = process.cwd();
-      const packageMetadata = getPackageMetadata();
+      try {
+        const cwd = process.cwd();
+        const packageMetadata = getPackageMetadata();
       const configPath = path.join(cwd, "opencode-rag.json");
       const opencodeDir = path.join(cwd, ".opencode");
       const gitignorePath = path.join(opencodeDir, ".gitignore");
@@ -259,5 +260,10 @@ export function registerInitCommand(program: Command): void {
       }
 
       console.log(`\n${c.success("Done.")} Restart OpenCode if it is running, then run ${c.file("'opencode-rag index'")} in this workspace.`);
+    } catch (err) {
+      console.error(`\n  ${c.error("Init failed:")} ${(err as Error).message}`);
+      console.error(`  ${c.dim("Fix the issue above, then run 'opencode-rag init' again.")}`);
+      process.exitCode = 1;
+    }
     });
 }
