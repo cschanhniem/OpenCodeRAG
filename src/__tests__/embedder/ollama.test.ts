@@ -38,13 +38,13 @@ describe("OllamaProvider", () => {
   it("embeds single text with correct API format", async () => {
     // Test that the embed method exists and is callable.
     // Actual fetch calls are not made in unit tests.
-    const p = new OllamaProvider("http://localhost:11434/api", "embeddinggemma");
+    const p = new OllamaProvider("http://localhost:11434/api", "qwen2.5:3b");
     assert.equal(typeof p.embed, "function");
     assert.equal(p.embed.length, 2); // expects texts array + optional purpose
   });
 
   it("does not require apiKey for construction", () => {
-    const p = new OllamaProvider("http://localhost:11434/api", "embeddinggemma");
+    const p = new OllamaProvider("http://localhost:11434/api", "qwen2.5:3b");
     assert.equal(p.name, "ollama");
   });
 
@@ -81,7 +81,7 @@ describe("OllamaProvider", () => {
     try {
       const p = new OllamaProvider(
         "http://localhost:11434/api",
-        "embeddinggemma",
+        "qwen2.5:3b:latest",
         undefined,
         1
       );
@@ -124,7 +124,7 @@ describe("OllamaProvider", () => {
         throw new Error("failed to start test server");
       }
 
-      const p = new OllamaProvider(`http://localhost:${address.port}/api`, "embeddinggemma");
+      const p = new OllamaProvider(`http://localhost:${address.port}/api`, "qwen2.5:3b");
       const embeddings = await p.embed(["hello"]);
 
       assert.deepEqual(embeddings, [[1, 2, 3]]);
@@ -173,7 +173,7 @@ describe("OllamaProvider", () => {
         throw new Error("failed to start test server");
       }
 
-      const p = new OllamaProvider(`http://localhost:${address.port}/api`, "embeddinggemma");
+      const p = new OllamaProvider(`http://localhost:${address.port}/api`, "qwen2.5:3b");
       const embeddings = await p.embed(["hello"]);
 
       assert.deepEqual(embeddings, [[7, 8, 9]]);
@@ -200,7 +200,7 @@ describe("OllamaProvider", () => {
         assert.match(body, /"input":"hello"/);
 
         res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ model: "embeddinggemma", embeddings: [[4, 5, 6]] }));
+        res.end(JSON.stringify({ model: "qwen2.5:3b", embeddings: [[4, 5, 6]] }));
       });
     });
 
@@ -211,7 +211,7 @@ describe("OllamaProvider", () => {
         throw new Error("failed to start test server");
       }
 
-      const p = new OllamaProvider(`http://localhost:${address.port}/api`, "embeddinggemma");
+      const p = new OllamaProvider(`http://localhost:${address.port}/api`, "qwen2.5:3b");
       const embeddings = await p.embed(["hello"]);
 
       assert.deepEqual(embeddings, [[4, 5, 6]]);

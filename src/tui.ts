@@ -552,7 +552,7 @@ function buildSettingCategories(
           path: ["embedding", "model"],
           label: "Model",
           type: "string",
-          currentValue: displayModel(embeddingRo.provider, embeddingRo.model, embeddingCfg.provider, embeddingCfg.model, "ollama", "embeddinggemma:latest"),
+          currentValue: displayModel(embeddingRo.provider, embeddingRo.model, embeddingCfg.provider, embeddingCfg.model, "ollama", "qwen2.5:3b:latest"),
           options: modelOptions,
         },
       ],

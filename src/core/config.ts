@@ -361,7 +361,8 @@ export const DEFAULT_CONFIG: RagConfig = {
       "memory:",
       "wasm",
       ".commandcode",
-      ".agents"
+      ".agents",
+      "graphify-out",
     ],
     excludeFiles: [
       "package-lock.json",
@@ -370,7 +371,7 @@ export const DEFAULT_CONFIG: RagConfig = {
     minFileSizeBytes: 0,
     concurrency: 8,
     embedBatchSize: 100,
-    embedConcurrency: 3,
+    embedConcurrency: 6,
     ollamaMaxBatchSize: 4000,
     descriptionConcurrency: 4,
   },
@@ -410,8 +411,8 @@ export const DEFAULT_CONFIG: RagConfig = {
     baseUrl: "http://127.0.0.1:11434/api",
     timeoutMs: 60000,
     prompt: "Describe this image precisely and concisely: what it shows, any text content, layout, colors, objects, and purpose. Maximum 40 words. Start with \"Image of ...\" and always mention that this is an image file.",
-    think: true,
-    numCtx: 4096,
+    think: false,
+    numCtx: 2048,
     resizeMaxDimension: 1024,
   },
   description: {
@@ -424,7 +425,7 @@ export const DEFAULT_CONFIG: RagConfig = {
     timeoutMs: 60000,
     systemPrompt:
       "Describe code precise and concise in 2 sentences. Maximum 20 words. Focus on functionality and purpose.",
-    batchConcurrency: 3,
+    batchConcurrency: 6,
     retryMax: 3,
     retryBaseDelayMs: 1000,
   },

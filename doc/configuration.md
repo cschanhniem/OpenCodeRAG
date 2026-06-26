@@ -24,7 +24,7 @@ Controls how code chunks are converted to vector embeddings.
     "provider": "ollama",
     "baseUrl": "http://localhost:11434/api",
     "apiKey": null,
-    "model": "embeddinggemma:latest",
+    "model": "qwen2.5:3b:latest",
     "timeoutMs": 30000,
     "proxy": {
       "url": "http://proxy.example.com:8080",
@@ -43,7 +43,7 @@ Controls how code chunks are converted to vector embeddings.
 | `provider` | `"ollama"` | `"ollama"`, `"openai"`, or `"cohere"` |
 | `baseUrl` | `http://127.0.0.1:11434/api` | API endpoint |
 | `apiKey` | `null` | API key (auto-resolved from OpenCode provider config for OpenAI) |
-| `model` | `"embeddinggemma:latest"` | Model name |
+| `model` | `"qwen2.5:3b:latest"` | Model name |
 | `timeoutMs` | `30000` | Request timeout (increase for cold starts) |
 | `proxy.url` | — | Proxy URL (env vars take precedence) - only needed when need to connect to an external provider behind a firewall /corporatre network |
 | `proxy.username` | — | Proxy auth username |
