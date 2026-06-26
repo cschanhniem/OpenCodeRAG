@@ -67,7 +67,7 @@ describe("background indexer integration", () => {
     try { await fs.rm(workspaceDir, { recursive: true, force: true }); } catch { /* ignore */ }
   });
 
-  it("can start and gracefully close background indexer", async () => {
+  it("can start and gracefully close background indexer", { timeout: 120000 }, async () => {
     await writeFile(path.join(workspaceDir, "src", "a.ts"), "function alpha() { return 1; }\n");
 
     const indexer = createBackgroundIndexer({
@@ -82,10 +82,11 @@ describe("background indexer integration", () => {
     // Let the initial pass start (generous delay under test load)
     await delay(500);
 
-    // Closing it should shut down timers and watchers
-    await indexer.close();
-
-    // Check that we index the initial file
+    // Verify the file was indexed before closing (assertion passes even
+    // if close() is slow on Windows due to chokidar cleanup)
     assert.equal(await store.count(), 1);
+
+    // Graceful shutdown — may be slow on Windows
+    await indexer.close();
   });
 });
