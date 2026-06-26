@@ -2,7 +2,6 @@ import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
@@ -659,12 +658,20 @@ describe("handleDescribeImage", () => {
 // ─── Suite: MCP server integration for describe_image ───────────────────────
 
 describe("MCP server describe_image integration", () => {
-  const FIXTURE_DIR = path.resolve(
-    path.dirname(fileURLToPath(import.meta.url)),
-    "images"
-  );
+  let tmpDir: string;
 
-  function createTestServer(): McpServer {
+  const MINI_PNG_HEX = "89504e470d0a1a0a0000000d4948445200000002000000020802000000fdd49a730000000970485973000003e8000003e801b57b526b0000001349444154089963f8cfc0f09f018cff333000001fee03fda92fc0e20000000049454e44ae426082";
+
+  before(() => {
+    tmpDir = mkdtempSync(path.join(tmpdir(), "opencode-rag-mcp-"));
+    writeFileSync(path.join(tmpDir, "TestFile.png"), Buffer.from(MINI_PNG_HEX, "hex"));
+  });
+
+  after(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function createTestServer(fixtureDir: string): McpServer {
     const server = new McpServer({
       name: "test-server",
       version: "1.0.0",
@@ -680,7 +687,7 @@ describe("MCP server describe_image integration", () => {
         try {
           const cfg = makeConfigWithImageDesc();
           const fakeVision = makeFakeVisionProvider();
-          const result = await handleDescribeImage(args as { filePath: string }, cfg, FIXTURE_DIR, fakeVision);
+          const result = await handleDescribeImage(args as { filePath: string }, cfg, fixtureDir, fakeVision);
           return {
             content: [{ type: "text" as const, text: result.formatted }],
           };
@@ -698,7 +705,7 @@ describe("MCP server describe_image integration", () => {
 
   it("listTools includes describe_image", async () => {
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-    const server = createTestServer();
+    const server = createTestServer(tmpDir);
     const client = new Client({ name: "test-client", version: "1.0.0" });
 
     await server.connect(serverTransport);
@@ -716,7 +723,7 @@ describe("MCP server describe_image integration", () => {
 
   it("callTool describe_image returns text content with image description", async () => {
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-    const server = createTestServer();
+    const server = createTestServer(tmpDir);
     const client = new Client({ name: "test-client", version: "1.0.0" });
 
     await server.connect(serverTransport);
@@ -739,7 +746,7 @@ describe("MCP server describe_image integration", () => {
 
   it("callTool describe_image returns isError when file is not an image", async () => {
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-    const server = createTestServer();
+    const server = createTestServer(tmpDir);
     const client = new Client({ name: "test-client", version: "1.0.0" });
 
     await server.connect(serverTransport);
