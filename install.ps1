@@ -120,13 +120,19 @@ if ($args[0] -eq "uninstall") {
 Push-Location $REPO_ROOT
 
 $pluginDir = "$RUNTIME_DIR\node_modules\$PLUGIN_NAME"
-$version = get_plugin_version
+$pkgJsonFile = Join-Path $REPO_ROOT "package.json"
 $versionFile = Join-Path $RUNTIME_DIR ".bundle-version"
-$versionMatch = (Test-Path -LiteralPath $versionFile) -and ((Get-Content $versionFile) -eq $version)
+
+# Rebuild if the bundle marker doesn't exist or if package.json (source) is newer
+$pkgTime = (Get-Item $pkgJsonFile).LastWriteTime
+$bundleTime = (Get-Item $versionFile -ErrorAction SilentlyContinue).LastWriteTime
+if (-not $bundleTime) { $bundleTime = [datetime]"1970-01-01" }
+$sourceChanged = $pkgTime -gt $bundleTime
+
 $runtimeReady = (Test-Path -LiteralPath "$pluginDir\dist\cli.js") -and
                 (Test-Path -LiteralPath "$RUNTIME_DIR\node_modules\commander") -and
                 (Test-Path -LiteralPath "$RUNTIME_DIR\node_modules\@opencode-ai\plugin\package.json") -and
-                $versionMatch
+                -not $sourceChanged
 
 if ($runtimeReady) {
     step "Runtime already up-to-date at $RUNTIME_DIR"
@@ -156,7 +162,7 @@ if ($runtimeReady) {
     if (-not (Test-Path "package.json")) {
         @{private = $true; type = "module"} | ConvertTo-Json | Set-Content "package.json"
     }
-    $installOutput = cmd /c "npm install $tgzName --no-package-lock --legacy-peer-deps --ignore-scripts 2>&1"
+    $installOutput = cmd /c "npm install $tgzName --no-package-lock --legacy-peer-deps 2>&1"
     if ($LASTEXITCODE -ne 0) { Pop-Location; Pop-Location; die "npm install from .tgz failed: $installOutput" }
 
     # Install @opencode-ai/plugin (peer dep, pure JS, always succeeds)
@@ -168,7 +174,8 @@ if ($runtimeReady) {
         Pop-Location; fail_msg "$pluginDir"; die "Failed to install plugin — dist/ not found"
     }
     ok "$pluginDir (installed from $tgzName via npm)"
-    Set-Content -Path (Join-Path $RUNTIME_DIR ".bundle-version") -Value $version
+    $version = get_plugin_version
+    Set-Content -Path $versionFile -Value $version
 }
 
 step "Making CLI available on PATH..."

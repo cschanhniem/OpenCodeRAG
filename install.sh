@@ -76,14 +76,18 @@ fi
 cd "$REPO_ROOT"
 
 plugin_dir="$RUNTIME_DIR/node_modules/$PLUGIN_NAME"
-version=$(get_plugin_version)
 version_file="$RUNTIME_DIR/.bundle-version"
-version_match=false
-[[ -f "$version_file" ]] && [[ "$(cat "$version_file")" = "$version" ]] && version_match=true
-if [[ -d "$plugin_dir/dist/cli.js" ]] && \
+
+# Rebuild if the bundle marker doesn't exist or if repo's package.json (source) is newer
+pkg_json="$REPO_ROOT/package.json"
+pkg_mtime=$(node -e "console.log(require('fs').statSync('$pkg_json').mtimeMs)" 2>/dev/null || echo 0)
+bundle_mtime=$(node -e "console.log(require('fs').statSync('$version_file').mtimeMs)" 2>/dev/null || echo 0)
+source_changed=$(node -e "console.log($pkg_mtime > $bundle_mtime ? 1 : 0)")
+
+if [[ -d "$plugin_dir/dist" ]] && \
    [[ -d "$RUNTIME_DIR/node_modules/commander" ]] && \
    [[ -f "$RUNTIME_DIR/node_modules/@opencode-ai/plugin/package.json" ]] && \
-   $version_match; then
+   [[ "$source_changed" = "0" ]]; then
   step "Runtime already up-to-date at $RUNTIME_DIR"
   ok "Plugin + dependencies already installed"
 else
@@ -110,7 +114,7 @@ else
   if [[ ! -f "$RUNTIME_DIR/package.json" ]]; then
     printf '{"private":true,"type":"module"}\n' > "$RUNTIME_DIR/package.json"
   fi
-  if ! (cd "$RUNTIME_DIR" && npm install "./$tgz_name" --no-package-lock --legacy-peer-deps --ignore-scripts 2>/dev/null); then
+  if ! (cd "$RUNTIME_DIR" && npm install "./$tgz_name" --no-package-lock --legacy-peer-deps 2>/dev/null); then
     die "npm install from .tgz failed"
   fi
 

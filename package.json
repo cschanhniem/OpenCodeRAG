@@ -85,8 +85,6 @@
     "@lancedb/lancedb": "^0.29.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@thednp/dommatrix": "^3.0.4",
-    "@tree-sitter-grammars/tree-sitter-markdown": "^0.3.2",
-    "@tree-sitter-grammars/tree-sitter-xml": "^0.7.0",
     "@vscode/tree-sitter-wasm": "^0.3.1",
     "apache-arrow": "18.1.0",
     "canvas": "^3.2.3",
@@ -98,22 +96,14 @@
     "pdfjs-dist": "^5.7.284",
     "picocolors": "^1.1.1",
     "sharp": "^0.35.2",
-    "tree-sitter-c": "^0.24.1",
-    "tree-sitter-html": "^0.23.2",
-    "tree-sitter-json": "^0.24.8",
-    "tree-sitter-kotlin": "^0.3.8",
-    "tree-sitter-swift": "^0.7.1",
     "web-tree-sitter": "^0.26.9",
     "word-extractor": "^1.0.4"
   },
   "devDependencies": {
-    "@derekstride/tree-sitter-sql": "^0.3.11",
     "@opencode-ai/plugin": "1.15.5",
     "@opentui/core": "^0.4.0",
     "@opentui/keymap": "^0.4.0",
     "@opentui/solid": "^0.4.0",
-    "@tree-sitter-grammars/tree-sitter-toml": "^0.7.0",
-    "@tree-sitter-grammars/tree-sitter-yaml": "^0.7.1",
     "@types/node": "^22.20.0",
     "@types/react": "^19.2.17",
     "@types/word-extractor": "^1.0.6",
@@ -123,7 +113,6 @@
     "solid-js": "^1.9.12",
     "tailwindcss": "^3.4.19",
     "tree-sitter-cli": "^0.26.9",
-    "tree-sitter-containerfile": "^0.8.0",
     "tsx": "^4.22.4",
     "typescript": "^5.9.3"
   },
@@ -131,5 +120,10 @@
     "uuid": "^11.1.1",
     "web-tree-sitter": "$web-tree-sitter"
   },
-  "allowScripts": {}
+  "allowScripts": {
+    "canvas": true,
+    "esbuild": true,
+    "msgpackr-extract": true,
+    "tree-sitter-cli": true
+  }
 }

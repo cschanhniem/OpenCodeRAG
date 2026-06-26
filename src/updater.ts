@@ -184,8 +184,8 @@ export function applyUpdate(options: {
       execSync(`node -e "require('fs').writeFileSync('${runtimePkg.replace(/\\/g, '\\\\')}','{\\"private\\":true,\\"type\\":\\"module\\"}\\n')"`, { stdio, timeout: 5_000 });
     }
 
-    // Install the plugin from .tgz via npm (resolves all JS deps, skips native compilation)
-    execSync(`npm install "${tgzPath}" --no-save --no-package-lock --ignore-scripts --silent`, {
+    // Install the plugin from .tgz via npm (resolves all JS deps with prebuilt binaries)
+    execSync(`npm install "${tgzPath}" --no-save --no-package-lock --silent`, {
       cwd: runtimeDir,
       stdio,
       timeout: 120_000,
@@ -198,7 +198,7 @@ export function applyUpdate(options: {
       if (!existsSync(workspacePkg)) {
         execSync(`node -e "require('fs').writeFileSync('${workspacePkg.replace(/\\/g, '\\\\')}','{\\"private\\":true,\\"type\\":\\"module\\"}\\n')"`, { stdio, timeout: 5_000 });
       }
-      execSync(`npm install "${tgzPath}" --no-save --no-package-lock --ignore-scripts --silent`, {
+      execSync(`npm install "${tgzPath}" --no-save --no-package-lock --silent`, {
         cwd: path.dirname(workspacePkg),
         stdio,
         timeout: 120_000,
