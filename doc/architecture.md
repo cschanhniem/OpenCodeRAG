@@ -192,7 +192,7 @@ runtime-overrides.json ───┼──> applyRuntimeOverrides() (5s TTL)
 | Language | TypeScript 5.8 |
 | Package manager | npm |
 | Chunking | `web-tree-sitter` (WASM, v0.26.9) |
-| Grammars | `tree-sitter-wasm` (v1.0.2, pre-built WASM) |
+| Grammars | `@vscode/tree-sitter-wasm` + self-bundled `wasm/` (pre-built WASM) |
 | Vector DB | `@lancedb/lancedb` (v0.29.0) |
 | Arrow types | `apache-arrow` (peer dep) |
 | CLI framework | `commander` (v13.1.0) |

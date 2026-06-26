@@ -43,7 +43,7 @@ npm install --legacy-peer-deps
 .\install.ps1         # Windows
 ```
 
-> **Important:** The install scripts build from source and create filesystem links (junctions/symlinks) — no `npm pack` or global plugin installation. The `opencode-rag` CLI is globally available via `~/.local/bin/`. The plugin itself is workspace-local — OpenCode loads it from `.opencode/plugins/`. Data (vector store, manifest) lives in the workspace.
+> **Important:** The install scripts compile TypeScript to JS (`npm run build`), pack the plugin via `npm pack`, and install from the `.tgz` archive — creating filesystem links (junctions/symlinks) for global CLI access. Tree-sitter grammars ship as pre-built WASM files (bundled in `wasm/` and `@vscode/tree-sitter-wasm`). Native dependencies (`canvas`, `sharp`, `@lancedb/lancedb`) use pre-built platform binaries. The `opencode-rag` CLI is globally available via `~/.local/bin/` (Linux/macOS) or `~\.opencode\bin\` (Windows). The plugin itself is workspace-local — OpenCode loads it from `.opencode/plugins/`. Data (vector store, manifest) lives in the workspace.
 
 ### Uninstall
 
