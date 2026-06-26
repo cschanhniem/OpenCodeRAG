@@ -56,9 +56,7 @@ This removes all copies and config entries of OpenCodeRAG.
 
 ## Workspace Initialization
 
-If you used the install script (`install.sh` / `install.ps1`), the current workspace is already initialized — you can skip to indexing.
-
-For any other workspace, initialize it with:
+The install script only installs the CLI globally. Initialize each workspace where you want to use OpenCodeRAG:
 
 ```bash
 cd /path/to/your/project

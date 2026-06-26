@@ -183,12 +183,6 @@ if (Test-Path -LiteralPath "$pluginDir\dist") { ok "Runtime package (installed)"
 
 if (Test-Path -LiteralPath "$CLI_BIN_DIR\opencode-rag.ps1") { ok "CLI wrapper" } else { fail_msg "CLI wrapper"; $verified = $false }
 
-# --- workspace init ---
-
-step "Initializing workspace for OpenCodeRAG..."
-& node "$pluginDir\dist\cli.js" init --skip-health-check --skip-install
-if ($LASTEXITCODE -eq 0) { ok "Workspace config files" } else { Write-Host "  init command completed with warnings, continuing..." -ForegroundColor Yellow }
-
 # --- done ---
 
 step ""
@@ -196,10 +190,10 @@ if ($verified) { Write-Host "Installation complete!" -ForegroundColor Green } el
 
 Write-Host ""
 Write-Host "What to do next:"
-Write-Host "  1. Restart OpenCode if it is running."
-Write-Host "  2. Run opencode-rag index in this workspace to index its files."
-Write-Host "  3. OpenCode will automatically use the indexed data for context-aware queries."
-Write-Host "  (The workspace was already initialized by the install script.)"
+Write-Host "  1. Run opencode-rag init in each workspace you want to use with OpenCodeRAG."
+Write-Host "  2. Run opencode-rag index to index workspace files."
+Write-Host "  3. Restart OpenCode if it is running so it discovers the RAG tools."
+Write-Host "  4. OpenCode will automatically use the indexed data for context-aware queries."
 if ($pathUpdated) {
     $hint = "  4. In your current PowerShell session run: " + '$env:Path += ' + $CLI_BIN_DIR
     Write-Host $hint

@@ -123,20 +123,14 @@ else
   fail "CLI wrapper"; verified=false
 fi
 
-# --- workspace init ---
-
-step "Initializing workspace for OpenCodeRAG..."
-node "$plugin_dir/dist/cli.js" init --skip-health-check --skip-install || true
-ok "Workspace config files"
-
 # --- done ---
 
 step ""
 if $verified; then printf 'Installation complete!\n'; else printf 'Installation finished with warnings (see above).\n' >&2; fi
 
 printf '\nWhat to do next:\n'
-printf '  1. Restart OpenCode if it is running.\n'
-printf '  2. Run "opencode-rag index" in this workspace to index its files.\n'
-printf '  3. OpenCode will automatically use the indexed data for context-aware queries.\n'
-printf '  (The workspace was already initialized by the install script.)\n'
+printf '  1. Run "opencode-rag init" in each workspace you want to use with OpenCodeRAG.\n'
+printf '  2. Run "opencode-rag index" to index workspace files.\n'
+printf '  3. Restart OpenCode if it is running so it discovers the RAG tools.\n'
+printf '  4. OpenCode will automatically use the indexed data for context-aware queries.\n'
 printf '\nRun "%s uninstall" to remove.\n' "$0"
