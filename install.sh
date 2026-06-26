@@ -75,41 +75,54 @@ fi
 
 cd "$REPO_ROOT"
 
-step "Building $PLUGIN_NAME..."
-npm run build
-
-step "Installing $PLUGIN_NAME into global runtime ($RUNTIME_DIR)..."
-mkdir -p "$RUNTIME_DIR"
-
-# Pack plugin (dist/ + wasm/ + package.json, ~13 MB, no node_modules)
-version=$(get_plugin_version)
-tgz_name="$PLUGIN_NAME-$version.tgz"
-tgz_path="$REPO_ROOT/$tgz_name"
-rm -f "$tgz_path"
-npm pack --pack-destination "$REPO_ROOT" 2>/dev/null
-if [[ $? -ne 0 ]]; then die "npm pack failed"; fi
-
-# Move .tgz to runtime dir
-mv "$tgz_path" "$RUNTIME_DIR/"
-tgz_path="$RUNTIME_DIR/$tgz_name"
-
-# Install from .tgz — resolves ALL dependencies (commander, picocolors, canvas,
-# sharp, lancedb, etc.) with prebuilt binaries via npm. This is the ONE install.
-if [[ ! -f "$RUNTIME_DIR/package.json" ]]; then
-  printf '{"private":true,"type":"module"}\n' > "$RUNTIME_DIR/package.json"
-fi
-if ! (cd "$RUNTIME_DIR" && npm install "./$tgz_name" --no-package-lock --legacy-peer-deps --ignore-scripts 2>/dev/null); then
-  die "npm install from .tgz failed"
-fi
-
-# Install @opencode-ai/plugin (peer dep, pure JS, always succeeds)
-(cd "$RUNTIME_DIR" && npm install @opencode-ai/plugin --no-save 2>/dev/null || true)
-
 plugin_dir="$RUNTIME_DIR/node_modules/$PLUGIN_NAME"
-if [[ ! -d "$plugin_dir/dist" ]]; then
-  fail "$plugin_dir"; die "Failed to install plugin — dist/ not found"
+version=$(get_plugin_version)
+version_file="$RUNTIME_DIR/.bundle-version"
+version_match=false
+[[ -f "$version_file" ]] && [[ "$(cat "$version_file")" = "$version" ]] && version_match=true
+if [[ -d "$plugin_dir/dist/cli.js" ]] && \
+   [[ -d "$RUNTIME_DIR/node_modules/commander" ]] && \
+   [[ -f "$RUNTIME_DIR/node_modules/@opencode-ai/plugin/package.json" ]] && \
+   $version_match; then
+  step "Runtime already up-to-date at $RUNTIME_DIR"
+  ok "Plugin + dependencies already installed"
+else
+  step "Building $PLUGIN_NAME..."
+  npm run build
+
+  step "Installing $PLUGIN_NAME into global runtime ($RUNTIME_DIR)..."
+  mkdir -p "$RUNTIME_DIR"
+
+  # Pack plugin (dist/ + wasm/ + package.json, ~13 MB, no node_modules)
+  version=$(get_plugin_version)
+  tgz_name="$PLUGIN_NAME-$version.tgz"
+  tgz_path="$REPO_ROOT/$tgz_name"
+  rm -f "$tgz_path"
+  npm pack --pack-destination "$REPO_ROOT" 2>/dev/null
+  if [[ $? -ne 0 ]]; then die "npm pack failed"; fi
+
+  # Move .tgz to runtime dir
+  mv "$tgz_path" "$RUNTIME_DIR/"
+  tgz_path="$RUNTIME_DIR/$tgz_name"
+
+  # Install from .tgz — resolves ALL dependencies (commander, picocolors, canvas,
+  # sharp, lancedb, etc.) with prebuilt binaries via npm. This is the ONE install.
+  if [[ ! -f "$RUNTIME_DIR/package.json" ]]; then
+    printf '{"private":true,"type":"module"}\n' > "$RUNTIME_DIR/package.json"
+  fi
+  if ! (cd "$RUNTIME_DIR" && npm install "./$tgz_name" --no-package-lock --legacy-peer-deps --ignore-scripts 2>/dev/null); then
+    die "npm install from .tgz failed"
+  fi
+
+  # Install @opencode-ai/plugin (peer dep, pure JS, always succeeds)
+  (cd "$RUNTIME_DIR" && npm install @opencode-ai/plugin --no-save 2>/dev/null || true)
+
+  if [[ ! -d "$plugin_dir/dist" ]]; then
+    fail "$plugin_dir"; die "Failed to install plugin — dist/ not found"
+  fi
+  ok "$plugin_dir (installed from $tgz_name via npm)"
+  printf '%s\n' "$version" > "$version_file"
 fi
-ok "$plugin_dir (installed from $tgz_name via npm)"
 
 step "Making CLI available on PATH..."
 mkdir -p "$CLI_BIN_DIR"

@@ -91,6 +91,7 @@ if ($args[0] -eq "uninstall") {
     info "Removing from OpenCode runtime ($RUNTIME_DIR)..."
     Remove-Item -LiteralPath "$RUNTIME_DIR\node_modules" -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath "$RUNTIME_DIR\package.json" -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath "$RUNTIME_DIR\.bundle-version" -Force -ErrorAction SilentlyContinue
 
     info "Removing .tgz package files..."
     cleanup_tgz
@@ -118,43 +119,57 @@ if ($args[0] -eq "uninstall") {
 
 Push-Location $REPO_ROOT
 
-step "Building $PLUGIN_NAME..."
-npm run build
-if ($LASTEXITCODE -ne 0) { Pop-Location; die "npm run build failed" }
-
-step "Installing $PLUGIN_NAME into global runtime ($RUNTIME_DIR)..."
-New-Item -ItemType Directory -Path $RUNTIME_DIR -Force | Out-Null
-
-# Pack plugin (dist/ + wasm/ + package.json, ~13 MB, no node_modules)
-$version = get_plugin_version
-$tgzName = "$PLUGIN_NAME-$version.tgz"
-$tgzPath = Join-Path $REPO_ROOT $tgzName
-Remove-Item -Path $tgzPath -Force -ErrorAction SilentlyContinue
-$null = cmd /c "npm pack --pack-destination `"$REPO_ROOT`" 2>&1"
-if ($LASTEXITCODE -ne 0) { Pop-Location; die "npm pack failed" }
-
-# Move .tgz to runtime dir
-Move-Item -LiteralPath $tgzPath -Destination $RUNTIME_DIR -Force
-
-# Install from .tgz — resolves ALL dependencies (commander, picocolors, canvas,
-# sharp, lancedb, etc.) with prebuilt binaries via npm. This is the ONE install.
-Push-Location $RUNTIME_DIR
-if (-not (Test-Path "package.json")) {
-    @{private = $true; type = "module"} | ConvertTo-Json | Set-Content "package.json"
-}
-$installOutput = cmd /c "npm install $tgzName --no-package-lock --legacy-peer-deps --ignore-scripts 2>&1"
-if ($LASTEXITCODE -ne 0) { Pop-Location; Pop-Location; die "npm install from .tgz failed: $installOutput" }
-
-# Install @opencode-ai/plugin (peer dep, pure JS, always succeeds)
-$null = cmd /c "npm install @opencode-ai/plugin --no-save 2>&1"
-
-Pop-Location
-
 $pluginDir = "$RUNTIME_DIR\node_modules\$PLUGIN_NAME"
-if (-not (Test-Path -LiteralPath "$pluginDir\dist")) {
-    Pop-Location; fail_msg "$pluginDir"; die "Failed to install plugin — dist/ not found"
+$version = get_plugin_version
+$versionFile = Join-Path $RUNTIME_DIR ".bundle-version"
+$versionMatch = (Test-Path -LiteralPath $versionFile) -and ((Get-Content $versionFile) -eq $version)
+$runtimeReady = (Test-Path -LiteralPath "$pluginDir\dist\cli.js") -and
+                (Test-Path -LiteralPath "$RUNTIME_DIR\node_modules\commander") -and
+                (Test-Path -LiteralPath "$RUNTIME_DIR\node_modules\@opencode-ai\plugin\package.json") -and
+                $versionMatch
+
+if ($runtimeReady) {
+    step "Runtime already up-to-date at $RUNTIME_DIR"
+    ok "Plugin + dependencies already installed"
+} else {
+    step "Building $PLUGIN_NAME..."
+    npm run build
+    if ($LASTEXITCODE -ne 0) { Pop-Location; die "npm run build failed" }
+
+    step "Installing $PLUGIN_NAME into global runtime ($RUNTIME_DIR)..."
+    New-Item -ItemType Directory -Path $RUNTIME_DIR -Force | Out-Null
+
+    # Pack plugin (dist/ + wasm/ + package.json, ~13 MB, no node_modules)
+    $version = get_plugin_version
+    $tgzName = "$PLUGIN_NAME-$version.tgz"
+    $tgzPath = Join-Path $REPO_ROOT $tgzName
+    Remove-Item -Path $tgzPath -Force -ErrorAction SilentlyContinue
+    $null = cmd /c "npm pack --pack-destination `"$REPO_ROOT`" 2>&1"
+    if ($LASTEXITCODE -ne 0) { Pop-Location; die "npm pack failed" }
+
+    # Move .tgz to runtime dir
+    Move-Item -LiteralPath $tgzPath -Destination $RUNTIME_DIR -Force
+
+    # Install from .tgz — resolves ALL dependencies (commander, picocolors, canvas,
+    # sharp, lancedb, etc.) with prebuilt binaries via npm. This is the ONE install.
+    Push-Location $RUNTIME_DIR
+    if (-not (Test-Path "package.json")) {
+        @{private = $true; type = "module"} | ConvertTo-Json | Set-Content "package.json"
+    }
+    $installOutput = cmd /c "npm install $tgzName --no-package-lock --legacy-peer-deps --ignore-scripts 2>&1"
+    if ($LASTEXITCODE -ne 0) { Pop-Location; Pop-Location; die "npm install from .tgz failed: $installOutput" }
+
+    # Install @opencode-ai/plugin (peer dep, pure JS, always succeeds)
+    $null = cmd /c "npm install @opencode-ai/plugin --no-save 2>&1"
+
+    Pop-Location
+
+    if (-not (Test-Path -LiteralPath "$pluginDir\dist")) {
+        Pop-Location; fail_msg "$pluginDir"; die "Failed to install plugin — dist/ not found"
+    }
+    ok "$pluginDir (installed from $tgzName via npm)"
+    Set-Content -Path (Join-Path $RUNTIME_DIR ".bundle-version") -Value $version
 }
-ok "$pluginDir (installed from $tgzName via npm)"
 
 step "Making CLI available on PATH..."
 New-Item -ItemType Directory -Path $CLI_BIN_DIR -Force | Out-Null
