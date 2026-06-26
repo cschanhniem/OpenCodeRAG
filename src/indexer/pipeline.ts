@@ -599,10 +599,10 @@ export async function getIndexStatusSummary(
   storePath: string,
   config: RagConfig,
   store: VectorStore,
+  skipScan?: boolean,
 ): Promise<IndexStatusSummary> {
   const loadResult = await loadManifest(storePath);
   const manifest = loadResult.manifest;
-  const workspaceFiles = await scanWorkspaceFiles(cwd, config, undefined, manifest);
   const storeCount = await store.count();
 
   if (loadResult.status !== "ok") {
@@ -610,40 +610,49 @@ export async function getIndexStatusSummary(
       manifestStatus: loadResult.status,
       manifestEntries: 0,
       upToDateFiles: 0,
-      pendingFiles: workspaceFiles.length,
+      pendingFiles: 0,
       rebuildRequired: storeCount > 0,
       storeChunkCount: storeCount,
       manifestExpectedChunks: 0,
     };
   }
 
-  const currentPaths = new Set(workspaceFiles.map((file) => file.normalizedPath));
   let upToDateFiles = 0;
   let pendingFiles = 0;
+  let manifestExpectedChunks = 0;
 
-  for (const file of workspaceFiles) {
-    const previous = manifest.files[file.normalizedPath];
-    if (file.isEmpty || file.isTooSmall) {
-      if (previous) pendingFiles++;
-      continue;
+  if (!skipScan) {
+    const workspaceFiles = await scanWorkspaceFiles(cwd, config, undefined, manifest);
+    const currentPaths = new Set(workspaceFiles.map((file) => file.normalizedPath));
+
+    for (const file of workspaceFiles) {
+      const previous = manifest.files[file.normalizedPath];
+      if (file.isEmpty || file.isTooSmall) {
+        if (previous) pendingFiles++;
+        continue;
+      }
+
+      if (previous && previous.hash === file.hash) {
+        upToDateFiles++;
+      } else {
+        pendingFiles++;
+      }
     }
 
-    if (previous && previous.hash === file.hash) {
-      upToDateFiles++;
-    } else {
-      pendingFiles++;
+    for (const indexedPath of Object.keys(manifest.files)) {
+      if (!currentPaths.has(indexedPath)) {
+        pendingFiles++;
+      }
     }
+
+    manifestExpectedChunks = Object.values(manifest.files).reduce(
+      (sum, entry) => sum + entry.chunkCount, 0
+    );
+  } else {
+    manifestExpectedChunks = Object.values(manifest.files).reduce(
+      (sum, entry) => sum + entry.chunkCount, 0
+    );
   }
-
-  for (const indexedPath of Object.keys(manifest.files)) {
-    if (!currentPaths.has(indexedPath)) {
-      pendingFiles++;
-    }
-  }
-
-  const manifestExpectedChunks = Object.values(manifest.files).reduce(
-    (sum, entry) => sum + entry.chunkCount, 0
-  );
 
   return {
     manifestStatus: loadResult.status,

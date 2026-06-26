@@ -76,6 +76,7 @@ export function registerStatusCommand(program: Command): void {
           storePath,
           config,
           store,
+          true, // skipScan — don't walk the workspace tree, just use manifest stats
         );
 
         logCliInfo(logFilePath, "status", `\n${c.heading("Indexed chunks:")}    ${c.num(count)}`);
