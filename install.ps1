@@ -114,84 +114,47 @@ if ($args[0] -eq "uninstall") {
     exit 0
 }
 
-# --- compile ---
-
-if ($args[0] -eq "compile") {
-    Push-Location $REPO_ROOT
-
-    step "Building $PLUGIN_NAME..."
-    npm run build
-    if ($LASTEXITCODE -ne 0) { Pop-Location; die "npm run build failed" }
-
-    step "Stripping dev dependencies and installing production deps..."
-    npm install --omit=dev --legacy-peer-deps --ignore-scripts --no-package-lock 2>&1
-    if ($LASTEXITCODE -ne 0) { Pop-Location; die "npm install --omit=dev failed" }
-
-    step "Ensuring @opencode-ai/plugin is available..."
-    # Re-install @opencode-ai/plugin after it was removed by --omit=dev
-    npm install @opencode-ai/plugin --no-save --no-package-lock --legacy-peer-deps --silent 2>&1
-    if ($LASTEXITCODE -ne 0) { Pop-Location; die "npm install @opencode-ai/plugin failed" }
-
-    step "Packing $PLUGIN_NAME..."
-    $version = get_plugin_version
-    $tgzName = "$PLUGIN_NAME-$version.tgz"
-    $tgzPath = Join-Path $REPO_ROOT $tgzName
-    Remove-Item -Path $tgzPath -Force -ErrorAction SilentlyContinue
-    $packOutput = npm pack --pack-destination $REPO_ROOT 2>&1
-    if ($LASTEXITCODE -ne 0) { Pop-Location; die "npm pack failed: $packOutput" }
-
-    step "Preparing runtime directory ($RUNTIME_DIR)..."
-    New-Item -ItemType Directory -Path $RUNTIME_DIR -Force | Out-Null
-
-    # Extract plugin (dist/ + wasm/ + package.json) from .tgz
-    $pluginDir = "$RUNTIME_DIR\node_modules\$PLUGIN_NAME"
-    Remove-Item -LiteralPath $pluginDir -Recurse -Force -ErrorAction SilentlyContinue
-    & tar -xzf $tgzPath -C "$RUNTIME_DIR\node_modules"
-    Rename-Item "$RUNTIME_DIR\node_modules\package" $pluginDir -Force
-
-    # Copy all production deps to runtime
-    if (Test-Path -LiteralPath $pluginDir\dist) {
-        $depsTarget = "$RUNTIME_DIR\node_modules"
-        if (Test-Path -LiteralPath "$depsTarget\commander") {
-            info "Runtime deps already exist — skipping copy"
-        } else {
-            info "Copying production dependencies to runtime..."
-            Get-ChildItem -LiteralPath "$REPO_ROOT\node_modules" -Directory |
-                Where-Object { $_.Name -ne $PLUGIN_NAME -and $_.Name -ne ".bin" } |
-                ForEach-Object {
-                    Copy-Item -LiteralPath $_.FullName -Destination "$depsTarget\$($_.Name)" -Recurse -Force -ErrorAction SilentlyContinue
-                }
-            info "Dependencies copied."
-        }
-    } else {
-        Pop-Location; fail_msg "$pluginDir"; die "Failed to extract plugin — dist/ not found"
-    }
-
-    # Verify
-    if ((Test-Path -LiteralPath "$RUNTIME_DIR\node_modules\commander") -and
-        (Test-Path -LiteralPath "$RUNTIME_DIR\node_modules\@opencode-ai\plugin\package.json")) {
-        ok "Precompiled bundle ready at $RUNTIME_DIR"
-    } else {
-        Pop-Location; fail_msg "Precompiled bundle"; die "Runtime deps incomplete"
-    }
-
-    Remove-Item -Path $tgzPath -Force -ErrorAction SilentlyContinue
-    Pop-Location
-    exit 0
-}
-
 # --- install ---
 
-Set-Location $REPO_ROOT
+Push-Location $REPO_ROOT
 
-# Check that the precompiled bundle exists at the runtime dir
+step "Building $PLUGIN_NAME..."
+npm run build
+if ($LASTEXITCODE -ne 0) { Pop-Location; die "npm run build failed" }
+
+step "Installing $PLUGIN_NAME into global runtime ($RUNTIME_DIR)..."
+New-Item -ItemType Directory -Path $RUNTIME_DIR -Force | Out-Null
+
+# Pack plugin (dist/ + wasm/ + package.json, ~13 MB, no node_modules)
+$version = get_plugin_version
+$tgzName = "$PLUGIN_NAME-$version.tgz"
+$tgzPath = Join-Path $REPO_ROOT $tgzName
+Remove-Item -Path $tgzPath -Force -ErrorAction SilentlyContinue
+$null = cmd /c "npm pack --pack-destination `"$REPO_ROOT`" 2>&1"
+if ($LASTEXITCODE -ne 0) { Pop-Location; die "npm pack failed" }
+
+# Move .tgz to runtime dir
+Move-Item -LiteralPath $tgzPath -Destination $RUNTIME_DIR -Force
+
+# Install from .tgz — resolves ALL dependencies (commander, picocolors, canvas,
+# sharp, lancedb, etc.) with prebuilt binaries via npm. This is the ONE install.
+Push-Location $RUNTIME_DIR
+if (-not (Test-Path "package.json")) {
+    @{private = $true; type = "module"} | ConvertTo-Json | Set-Content "package.json"
+}
+$installOutput = cmd /c "npm install $tgzName --no-package-lock --legacy-peer-deps --ignore-scripts 2>&1"
+if ($LASTEXITCODE -ne 0) { Pop-Location; Pop-Location; die "npm install from .tgz failed: $installOutput" }
+
+# Install @opencode-ai/plugin (peer dep, pure JS, always succeeds)
+$null = cmd /c "npm install @opencode-ai/plugin --no-save 2>&1"
+
+Pop-Location
+
 $pluginDir = "$RUNTIME_DIR\node_modules\$PLUGIN_NAME"
 if (-not (Test-Path -LiteralPath "$pluginDir\dist")) {
-    die "Precompiled bundle not found. Run '$PSCommandPath compile' first."
+    Pop-Location; fail_msg "$pluginDir"; die "Failed to install plugin — dist/ not found"
 }
-
-step "Installing $PLUGIN_NAME on this machine..."
-info "Plugin bundle found at $pluginDir"
+ok "$pluginDir (installed from $tgzName via npm)"
 
 step "Making CLI available on PATH..."
 New-Item -ItemType Directory -Path $CLI_BIN_DIR -Force | Out-Null
@@ -207,7 +170,7 @@ if ($pathUpdated) { info "Added $CLI_BIN_DIR to your user PATH" }
 step "Verifying installation..."
 $verified = $true
 
-if (Test-Path -LiteralPath "$pluginDir\dist") { ok "Runtime plugin" } else { fail_msg "Runtime plugin"; $verified = $false }
+if (Test-Path -LiteralPath "$pluginDir\dist") { ok "Runtime plugin (installed via npm)" } else { fail_msg "Runtime plugin"; $verified = $false }
 if (Test-Path -LiteralPath "$CLI_BIN_DIR\opencode-rag.ps1") { ok "CLI wrapper" } else { fail_msg "CLI wrapper"; $verified = $false }
 
 # --- CLI smoke test ---
@@ -219,6 +182,8 @@ if ($LASTEXITCODE -eq 0 -and $cliOutput -match "opencode-rag") {
 } else {
   fail_msg "CLI smoke test"; $verified = $false
 }
+
+Pop-Location
 
 # --- done ---
 

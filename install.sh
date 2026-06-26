@@ -71,88 +71,45 @@ if [[ "${1:-}" = "uninstall" ]]; then
   exit 0
 fi
 
-# --- compile ---
-
-if [[ "${1:-}" = "compile" ]]; then
-  cd "$REPO_ROOT"
-
-  step "Building $PLUGIN_NAME..."
-  npm run build
-
-  step "Stripping dev dependencies and installing production deps..."
-  npm install --omit=dev --legacy-peer-deps --ignore-scripts --no-package-lock 2>&1 || die "npm install --omit=dev failed"
-
-  step "Ensuring @opencode-ai/plugin is available..."
-  npm install @opencode-ai/plugin --no-save --no-package-lock --legacy-peer-deps --silent 2>&1 || die "npm install @opencode-ai/plugin failed"
-
-  step "Packing $PLUGIN_NAME..."
-  version=$(get_plugin_version)
-  tgz_name="$PLUGIN_NAME-$version.tgz"
-  tgz_path="$REPO_ROOT/$tgz_name"
-  rm -f "$tgz_path"
-  pack_output=$(npm pack --pack-destination "$REPO_ROOT" 2>&1)
-  if [[ $? -ne 0 ]]; then die "npm pack failed: $pack_output"; fi
-
-    step "Preparing runtime directory ($RUNTIME_DIR)..."
-    mkdir -p "$RUNTIME_DIR/node_modules"
-
-    # Extract plugin (dist/ + wasm/ + package.json) from .tgz
-    plugin_dir="$RUNTIME_DIR/node_modules/$PLUGIN_NAME"
-    rm -rf "$plugin_dir"
-    tar -xzf "$tgz_path" -C "$RUNTIME_DIR/node_modules"
-    mv "$RUNTIME_DIR/node_modules/package" "$plugin_dir"
-
-    # Copy all production deps (with precompiled native modules) to runtime
-    if [[ -d "$plugin_dir/dist" ]]; then
-      deps_target="$RUNTIME_DIR/node_modules"
-      if [[ -d "$deps_target/commander" ]]; then
-        info "Runtime deps already exist — skipping copy"
-      else
-        info "Copying production dependencies to runtime..."
-        for item in "$REPO_ROOT/node_modules"/*/; do
-          base=$(basename "$item")
-          [[ "$base" = "$PLUGIN_NAME" || "$base" = ".bin" ]] && continue
-          cp -r "$item" "$deps_target/" 2>/dev/null || true
-        done
-        # @-scoped packages: copy everything (dirs + files) recursively
-        for scope_dir in "$REPO_ROOT/node_modules/@"*/; do
-          [[ -d "$scope_dir" ]] || continue
-          scope_name="@$(basename "$scope_dir")"
-          mkdir -p "$deps_target/$scope_name"
-          cp -r "$scope_dir"/* "$deps_target/$scope_name/" 2>/dev/null || true
-        done
-        info "Dependencies copied."
-      fi
-    else
-    fail "$plugin_dir"; die "Failed to extract plugin — dist/ not found"
-  fi
-
-  # Verify runtime is self-contained
-  if [[ -f "$RUNTIME_DIR/node_modules/commander/package.json" ]] && \
-     [[ -f "$RUNTIME_DIR/node_modules/@opencode-ai/plugin/package.json" ]]; then
-    ok "Precompiled bundle ready at $RUNTIME_DIR"
-  else
-    fail "Precompiled bundle"; die "Runtime deps incomplete — check node_modules/"
-  fi
-
-  # Clean up the .tgz from repo root
-  rm -f "$tgz_path"
-
-  exit 0
-fi
-
 # --- install ---
 
 cd "$REPO_ROOT"
 
-# Check that the precompiled bundle exists at the runtime dir
-plugin_dir="$RUNTIME_DIR/node_modules/$PLUGIN_NAME"
-if [[ ! -d "$plugin_dir/dist" ]]; then
-  die "Precompiled bundle not found. Run '$0 compile' first."
+step "Building $PLUGIN_NAME..."
+npm run build
+
+step "Installing $PLUGIN_NAME into global runtime ($RUNTIME_DIR)..."
+mkdir -p "$RUNTIME_DIR"
+
+# Pack plugin (dist/ + wasm/ + package.json, ~13 MB, no node_modules)
+version=$(get_plugin_version)
+tgz_name="$PLUGIN_NAME-$version.tgz"
+tgz_path="$REPO_ROOT/$tgz_name"
+rm -f "$tgz_path"
+npm pack --pack-destination "$REPO_ROOT" 2>/dev/null
+if [[ $? -ne 0 ]]; then die "npm pack failed"; fi
+
+# Move .tgz to runtime dir
+mv "$tgz_path" "$RUNTIME_DIR/"
+tgz_path="$RUNTIME_DIR/$tgz_name"
+
+# Install from .tgz — resolves ALL dependencies (commander, picocolors, canvas,
+# sharp, lancedb, etc.) with prebuilt binaries via npm. This is the ONE install.
+if [[ ! -f "$RUNTIME_DIR/package.json" ]]; then
+  printf '{"private":true,"type":"module"}\n' > "$RUNTIME_DIR/package.json"
+fi
+if ! (cd "$RUNTIME_DIR" && npm install "./$tgz_name" --no-package-lock --legacy-peer-deps --ignore-scripts 2>/dev/null); then
+  die "npm install from .tgz failed"
 fi
 
-step "Installing $PLUGIN_NAME on this machine..."
-info "Plugin bundle found at $plugin_dir"
+# Install @opencode-ai/plugin (peer dep, pure JS, always succeeds)
+(cd "$RUNTIME_DIR" && npm install @opencode-ai/plugin --no-save 2>/dev/null || true)
+
+plugin_dir="$RUNTIME_DIR/node_modules/$PLUGIN_NAME"
+if [[ ! -d "$plugin_dir/dist" ]]; then
+  fail "$plugin_dir"; die "Failed to install plugin — dist/ not found"
+fi
+ok "$plugin_dir (installed from $tgz_name via npm)"
 
 step "Making CLI available on PATH..."
 mkdir -p "$CLI_BIN_DIR"
@@ -169,7 +126,7 @@ step "Verifying installation..."
 verified=true
 
 if [[ -d "$plugin_dir/dist" ]]; then
-  ok "Runtime plugin"
+  ok "Runtime plugin (installed via npm)"
 else
   fail "Runtime plugin"; verified=false
 fi
