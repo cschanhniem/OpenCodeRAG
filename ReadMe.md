@@ -128,15 +128,10 @@ When using OpenCode, the plugin enhances your agent with three discovery mechani
 ### 1. Skill-Based Discovery (Recommended)
 `opencode-rag init` creates `.opencode/skills/opencode-rag/SKILL.md` - an OpenCode skill that teaches agents the tool workflow. Agents load it on demand via the `skill` tool, keeping token overhead minimal.
 
-### 2. Auto-Injection (Background Context)
-After every message you send, the plugin searches your vector-indexed codebase:
-- **`contentType: "file_paths"` (default):** A lightweight list of relevant files is appended (e.g., `src/plugin.ts (typescript, lines 10-42, relevance 0.92)`). Agents must call `search_semantic` or `find_usages` to retrieve actual code — nudging proactive tool usage.
-- **`contentType: "chunks"`:** High-confidence code chunks (score ≥ 0.85) are injected directly into your prompt, giving the agent instant context without a tool-call round-trip.
-
-### 3. System Prompt Guidance (Conditional)
+### 2. System Prompt Guidance (Conditional)
 When chunks are indexed, a brief tool list is prepended to the system prompt so agents know the tools exist. This is skipped when no chunks are indexed to save tokens.
 
-### 4. On-Demand RAG Context (Ctrl+Enter / Ctrl+Alt+Enter)
+### 3. On-Demand RAG Context (Ctrl+Enter / Ctrl+Alt+Enter)
 Press **Ctrl+Enter** in the terminal prompt to retrieve and append a relevant file list to your current prompt. Press **Ctrl+Alt+Enter** to append full code chunks instead. The query is taken from your typed text - if the prompt is empty, a toast reminds you to type first. Results are appended directly to the prompt as formatted code blocks with file paths, line ranges, and relevance scores. No dialogs are opened. Keybindings are configurable in the settings menu (Ctrl+Shift+R).
 
 ---

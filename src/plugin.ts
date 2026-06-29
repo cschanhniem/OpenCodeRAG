@@ -24,7 +24,7 @@ import {
   createDescribeImageTool,
 } from "./opencode/tools.js";
 import { resolveApiKey } from "./core/resolve-api-key.js";
-import { consumePendingRagInjection, peekPendingRagInjection } from "./core/rag-injection-flag.js";
+import { consumePendingRagInjection } from "./core/rag-injection-flag.js";
 import { loadDocProgress, markSubdirectoryDocumented } from "./core/doc-progress.js";
 import { loadManifest } from "./core/manifest.js";
 import { createSessionLogger, type SessionLogger } from "./eval/session-logger.js";
@@ -229,10 +229,7 @@ function formatContext(
   return parts.join("\n");
 }
 
-/**
- * Format auto-injected context results, trimming to a token budget.
- * Results are sorted by relevance and included up to maxChunks.
- */
+/** Format retrieved code chunks for injection into a user message (used by hotkey "chunks" mode). */
 function formatAutoInjectContext(
   results: SearchResult[],
   worktree: string,
@@ -767,94 +764,6 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
         output.system.unshift(docMode.systemPrompt);
       }
     },
-    async "experimental.chat.messages.transform"(_input, output) {
-      const pendingInjection = consumePendingRagInjection(options.storePath);
-      if (!pendingInjection) return;
-
-      appendDebugLog(options.logFilePath, {
-        scope: "experimental.chat.messages.transform",
-        message: `pending injection: ${pendingInjection} (msgCount=${output.messages.length})`,
-      });
-
-      let userText = "";
-      let aiText = "";
-      for (let i = output.messages.length - 1; i >= 0; i--) {
-        const entry = output.messages[i]!;
-        if (entry.info.role === "user") {
-          userText = entry.parts
-            .filter((p) => p.type === "text")
-            .map((p) => (p as Record<string, unknown>).text as string)
-            .filter((t) => typeof t === "string" && t.length > 0)
-            .join(" ");
-
-          const prevEntry = output.messages[i - 1];
-          if (prevEntry?.info?.role === "assistant") {
-            aiText = prevEntry.parts
-              .filter((p) => p.type === "text")
-              .map((p) => (p as Record<string, unknown>).text as string)
-              .filter((t) => typeof t === "string" && t.length > 0)
-              .join("\n");
-          }
-          break;
-        }
-      }
-
-      if (!userText) return;
-
-      let retrievalQuery = userText;
-      if (aiText) {
-        retrievalQuery += `\n\nPrevious AI response context:\n${aiText}`;
-      }
-
-      const count = await store.count();
-      if (count === 0) return;
-
-      const effectiveCfg = getEffectiveCfg();
-      const hybridCfg = effectiveCfg.retrieval.hybridSearch;
-      const retrievalStart = Date.now();
-      const results = await dependencies.retrieve(retrievalQuery, embedder, store, {
-        topK: effectiveCfg.retrieval.topK,
-        minScore: 0,
-        keywordIndex,
-        keywordWeight: hybridCfg?.keywordWeight,
-        queryPrefix: effectiveCfg.embedding.queryPrefix,
-      });
-      const retrievalTimeMs = Date.now() - retrievalStart;
-
-      if (results.length === 0) return;
-
-      let ragContext: string;
-      if (pendingInjection === "files") {
-        ragContext = formatFileList(results, options.worktree, effectiveCfg.retrieval.topK);
-      } else {
-        ragContext = formatAutoInjectContext(
-          results,
-          options.worktree,
-          effectiveCfg.openCode.autoInject?.maxTokens ?? 3000,
-          effectiveCfg.retrieval.topK
-        );
-      }
-
-      if (!ragContext) return;
-
-      for (let i = output.messages.length - 1; i >= 0; i--) {
-        const entry = output.messages[i]!;
-        if (entry.info.role === "user") {
-          for (const part of entry.parts) {
-            if (part.type === "text") {
-              (part as Record<string, unknown>).text = `${(part as Record<string, unknown>).text as string}\n\n${ragContext}`;
-              break;
-            }
-          }
-          break;
-        }
-      }
-
-      appendDebugLog(options.logFilePath, {
-        scope: "experimental.chat.messages.transform",
-        message: `injected ${pendingInjection} context (results=${results.length}, retrieval=${retrievalTimeMs}ms)`,
-      });
-    },
     async "chat.message"(input, output) {
       try {
         appendDebugLog(options.logFilePath, {
@@ -962,77 +871,6 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
           return;
         }
 
-        const count = await store.count();
-        if (count === 0) return;
-
-        const effectiveCfg = getEffectiveCfg();
-        const hybridCfg = effectiveCfg.retrieval.hybridSearch;
-        const retrievalStart = Date.now();
-        const results = await dependencies.retrieve(text, embedder, store, {
-          topK: effectiveCfg.retrieval.topK,
-          minScore: effectiveCfg.retrieval.minScore,
-          keywordIndex,
-          keywordWeight: hybridCfg?.keywordWeight,
-          queryPrefix: effectiveCfg.embedding.queryPrefix,
-        });
-        const retrievalTimeMs = Date.now() - retrievalStart;
-
-        if (results.length === 0) {
-          sessionLogger.onRagContext(input.sessionID, input.messageID, {
-            chunkCount: 0,
-            uniqueFiles: 0,
-            contextTokens: 0,
-            topScore: 0,
-            retrievalTimeMs,
-          });
-          return;
-        }
-
-        if (text.trim().split(/\s+/).length <= 1) {
-          const spaceCount = (text.match(/ /g) ?? []).length;
-          appendDebugLog(options.logFilePath, {
-            scope: "chat.message",
-            message: `single-word prompt detected, suppressed auto-injection (spaceCount=${spaceCount})`,
-          });
-          return;
-        }
-
-        const autoInjectCfg = effectiveCfg.openCode.autoInject;
-        let suggestionList: string | undefined;
-        let injectedChunks: SearchResult[] = [];
-
-        if (autoInjectCfg?.enabled !== false) {
-          const minScore = autoInjectCfg?.minScore ?? 0.85;
-          const maxChunks = autoInjectCfg?.maxChunks ?? 5;
-          const maxTokens = autoInjectCfg?.maxTokens ?? 3000;
-          const contentType = autoInjectCfg?.contentType ?? "file_paths";
-          const highConfidence = results.filter((r) => r.score >= minScore);
-
-          if (highConfidence.length > 0) {
-            injectedChunks = highConfidence.slice(0, maxChunks);
-            suggestionList = contentType === "chunks"
-              ? formatAutoInjectContext(highConfidence, options.worktree, maxTokens, maxChunks)
-              : formatFileList(highConfidence, options.worktree, effectiveCfg.retrieval.topK);
-          }
-        }
-
-        sessionLogger.onRagContext(input.sessionID, input.messageID, {
-          chunkCount: injectedChunks.length,
-          uniqueFiles: new Set(injectedChunks.map((r) => r.chunk.metadata.filePath)).size,
-          contextTokens: suggestionList ? countTokens(suggestionList) : 0,
-          topScore: injectedChunks[0]?.score ?? 0,
-          retrievalTimeMs,
-        });
-
-        if (!suggestionList) return;
-
-        const parts = output?.parts ?? (output?.message as Record<string, unknown>)?.parts;
-        if (Array.isArray(parts) && parts.length > 0) {
-          const first = parts[0] as Record<string, unknown>;
-          if (typeof first.text === "string") {
-            parts[0] = { ...first, text: `${first.text}\n\n${suggestionList}` } as typeof parts[0];
-          }
-        }
       } catch (err) {
         appendDebugLog(options.logFilePath, {
           scope: "chat.message",

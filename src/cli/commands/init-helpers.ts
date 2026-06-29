@@ -411,13 +411,6 @@ export function generateDefaultConfigJson(): string {
           intervalMs: DEFAULT_CONFIG.openCode.autoIndex!.intervalMs,
           watcher: DEFAULT_CONFIG.openCode.autoIndex!.watcher,
         },
-        autoInject: {
-          enabled: DEFAULT_CONFIG.openCode.autoInject!.enabled,
-          minScore: DEFAULT_CONFIG.openCode.autoInject!.minScore,
-          maxChunks: DEFAULT_CONFIG.openCode.autoInject!.maxChunks,
-          maxTokens: DEFAULT_CONFIG.openCode.autoInject!.maxTokens,
-          contentType: DEFAULT_CONFIG.openCode.autoInject!.contentType,
-        },
       },
       imageDescription: {
         enabled: DEFAULT_CONFIG.imageDescription!.enabled,

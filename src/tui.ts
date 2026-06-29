@@ -438,8 +438,6 @@ function buildSettingCategories(
   const openCodeRo = (ro.openCode ?? {}) as Record<string, unknown>;
   const aiCfg = (openCodeCfg.autoIndex ?? {}) as Record<string, unknown>;
   const aiRo = (openCodeRo.autoIndex ?? {}) as Record<string, unknown>;
-  const ajCfg = (openCodeCfg.autoInject ?? {}) as Record<string, unknown>;
-  const ajRo = (openCodeRo.autoInject ?? {}) as Record<string, unknown>;
 
   const descCfg = (cfg.description ?? {}) as Record<string, unknown>;
   const descRo = (ro.description ?? {}) as Record<string, unknown>;
@@ -519,41 +517,6 @@ function buildSettingCategories(
             { title: "git (poll)", value: "git", description: "Poll `git diff-index HEAD` for working-tree changes" },
           ],
           currentValue: (aiRo.watcher as string) ?? (aiCfg.watcher as string) ?? "chokidar",
-        },
-      ],
-    },
-    {
-      id: "autoinject",
-      label: "Auto-Inject",
-      description: "Configure automatic context injection",
-      entries: [
-        {
-          path: ["openCode", "autoInject", "enabled"],
-          label: "Auto-inject context",
-          type: "boolean",
-          currentValue: (ajRo.enabled as boolean) ?? (ajCfg.enabled as boolean) ?? true,
-        },
-        {
-          path: ["openCode", "autoInject", "minScore"],
-          label: "Inject min score",
-          type: "number",
-          currentValue: (ajRo.minScore as number) ?? (ajCfg.minScore as number) ?? 0.85,
-        },
-        {
-          path: ["openCode", "autoInject", "maxChunks"],
-          label: "Inject max chunks",
-          type: "number",
-          currentValue: (ajRo.maxChunks as number) ?? (ajCfg.maxChunks as number) ?? 5,
-        },
-        {
-          path: ["openCode", "autoInject", "contentType"],
-          label: "Inject content type",
-          type: "string",
-          currentValue: (ajRo.contentType as string) ?? (ajCfg.contentType as string) ?? "file_paths",
-          options: [
-            { title: "File paths", value: "file_paths" },
-            { title: "Code chunks", value: "chunks" },
-          ],
         },
       ],
     },

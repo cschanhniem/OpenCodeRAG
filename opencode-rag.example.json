@@ -59,13 +59,6 @@
       "enabled": false,
       "debounceMs": 2000,
       "intervalMs": 300000
-    },
-    "autoInject": {
-      "enabled": false,
-      "minScore": 0.75,
-      "maxChunks": 10,
-      "maxTokens": 3000,
-      "contentType": "file_paths"
     }
   },
   "imageDescription": {

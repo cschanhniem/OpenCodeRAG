@@ -141,10 +141,10 @@ describe("saveRuntimeOverride", () => {
 
   it("handles deep nested paths", () => {
     saveRuntimeOverride(tmpDir, ["openCode", "autoIndex", "enabled"], false);
-    saveRuntimeOverride(tmpDir, ["openCode", "autoInject", "minScore"], 0.8);
+    saveRuntimeOverride(tmpDir, ["openCode", "autoIndex", "debounceMs"], 5000);
     const result = loadRuntimeOverrides(tmpDir);
     assert.equal(result.openCode?.autoIndex?.enabled, false);
-    assert.equal(result.openCode?.autoInject?.minScore, 0.8);
+    assert.equal(result.openCode?.autoIndex?.debounceMs, 5000);
   });
 });
 
@@ -202,26 +202,6 @@ describe("applyRuntimeOverrides", () => {
       label: "autoIndex.watcher",
       overrides: { openCode: { autoIndex: { watcher: "git" } } },
       assert: (r) => assert.equal(r.openCode.autoIndex?.watcher, "git"),
-    },
-    {
-      label: "autoInject.enabled",
-      overrides: { openCode: { autoInject: { enabled: false } } },
-      assert: (r) => assert.equal(r.openCode.autoInject?.enabled, false),
-    },
-    {
-      label: "autoInject.minScore",
-      overrides: { openCode: { autoInject: { minScore: 0.9 } } },
-      assert: (r) => assert.equal(r.openCode.autoInject?.minScore, 0.9),
-    },
-    {
-      label: "autoInject.maxChunks",
-      overrides: { openCode: { autoInject: { maxChunks: 5 } } },
-      assert: (r) => assert.equal(r.openCode.autoInject?.maxChunks, 5),
-    },
-    {
-      label: "autoInject.contentType",
-      overrides: { openCode: { autoInject: { contentType: "chunks" } } },
-      assert: (r) => assert.equal(r.openCode.autoInject?.contentType, "chunks"),
     },
     {
       label: "description.enabled",
@@ -290,12 +270,12 @@ describe("applyRuntimeOverrides", () => {
   it("applies multiple overrides simultaneously", () => {
     const result = applyRuntimeOverrides(DEFAULT_CONFIG, {
       retrieval: { topK: 15, minScore: 0.6 },
-      openCode: { autoInject: { enabled: false } },
+      openCode: { autoIndex: { enabled: false } },
     });
     assert.equal(result.retrieval.topK, 15);
     assert.equal(result.retrieval.minScore, 0.6);
-    assert.equal(result.openCode.autoInject?.enabled, false);
-    assert.equal(result.openCode.autoInject?.maxChunks, 10);
+    assert.equal(result.openCode.autoIndex?.enabled, false);
+    assert.equal(result.openCode.autoIndex?.debounceMs, 2000);
   });
 
   it("does not mutate the original config", () => {

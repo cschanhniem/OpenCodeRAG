@@ -266,30 +266,4 @@ Even when RAG costs tokens, it provides **qualitative benefits**:
 
 At typical API rates ($2-15/1M input tokens), even a few thousand tokens of overhead per session is negligible. Focus on the **accuracy and quality** benefits of RAG, not just token savings.
 
-## Configuration
-
-To tune RAG injection behavior, update `opencode-rag.json`:
-
-```json
-{
-  "openCode": {
-    "autoInject": {
-      "enabled": true,
-      "minScore": 0.65,
-      "maxChunks": 5,
-      "maxTokens": 3000,
-      "contentType": "chunks"
-    }
-  }
-}
-```
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `enabled` | `true` | Enable/disable auto-injection |
-| `minScore` | `0.85` | Minimum relevance score to trigger injection |
-| `maxChunks` | `5` | Maximum chunks/files to inject |
-| `maxTokens` | `3000` | Token budget for injected context |
-| `contentType` | `"file_paths"` | `"chunks"` for code, `"file_paths"` for suggestions only |
-
 See [Configuration documentation](configuration.md) for all options.

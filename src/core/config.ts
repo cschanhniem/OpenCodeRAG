@@ -43,25 +43,8 @@ export interface AutoIndexConfig {
 /** Behavior when a read tool query returns no results. */
 export type ReadNoResultsBehavior = "hint" | "empty" | "error";
 
-/** Format for auto-injected context content. */
-export type AutoInjectContentType = "chunks" | "file_paths";
-
 /** Supported file-change watcher backends. */
 export type WatcherBackend = "chokidar" | "git";
-
-/** Configuration for automatically injecting relevant context into OpenCode chat messages. */
-export interface AutoInjectConfig {
-  /** Whether auto-injection is enabled. */
-  enabled: boolean;
-  /** Minimum relevance score for a chunk to be auto-injected. */
-  minScore: number;
-  /** Maximum number of chunks to inject per message. */
-  maxChunks: number;
-  /** Maximum total tokens for auto-injected content. */
-  maxTokens: number;
-  /** Whether to inject full chunk content or just file paths. */
-  contentType: AutoInjectContentType;
-}
 
 /** Configuration for LLM-powered chunk description generation. */
 export interface DescriptionConfig {
@@ -254,8 +237,6 @@ export interface RagConfig {
     maxContextChunks: number;
     /** Auto-indexing behavior on file changes. */
     autoIndex?: AutoIndexConfig;
-    /** Auto-injection of relevant chunks into chat messages. */
-    autoInject?: AutoInjectConfig;
     /** Whether to override the built-in read tool with RAG-enhanced version. */
     readOverride?: boolean;
     /** Maximum characters returned by the overridden read tool. */
@@ -431,13 +412,6 @@ export const DEFAULT_CONFIG: RagConfig = {
       debounceMs: 2000,
       intervalMs: 300000,
       watcher: "chokidar",
-    },
-    autoInject: {
-      enabled: true,
-      minScore: 0.75,
-      maxChunks: 10,
-      maxTokens: 3000,
-      contentType: "file_paths",
     },
   },
   imageDescription: {
@@ -716,10 +690,6 @@ export function loadConfig(filePath: string, validate: boolean = true): RagConfi
           ...base.autoIndex,
           ...(safeObj<AutoIndexConfig>(user.autoIndex) ?? {}),
         } as AutoIndexConfig,
-        autoInject: {
-          ...base.autoInject,
-          ...(safeObj<AutoInjectConfig>(user.autoInject) ?? {}),
-        } as AutoInjectConfig,
       };
       return merged;
     })(),

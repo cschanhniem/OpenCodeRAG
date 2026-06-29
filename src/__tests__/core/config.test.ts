@@ -68,22 +68,6 @@ describe("loadConfig", () => {
       },
     },
     {
-      name: "autoInject settings",
-      json: { openCode: { autoInject: { minScore: 0.5, maxChunks: 5 } } },
-      assert: (c) => {
-        assert.equal(c.openCode.autoInject?.enabled, true);
-        assert.equal(c.openCode.autoInject?.minScore, 0.5);
-        assert.equal(c.openCode.autoInject?.maxChunks, 5);
-        assert.equal(c.openCode.autoInject?.maxTokens, 3000);
-        assert.equal(c.openCode.autoInject?.contentType, "file_paths");
-      },
-    },
-    {
-      name: "disable autoInject",
-      json: { openCode: { autoInject: { enabled: false } } },
-      assert: (c) => assert.equal(c.openCode.autoInject?.enabled, false),
-    },
-    {
       name: "vectorStore path",
       json: { vectorStore: { path: "/custom/path" } },
       assert: (c) => assert.equal(c.vectorStore.path, "/custom/path"),
@@ -151,14 +135,6 @@ describe("DEFAULT_CONFIG", () => {
 
   it("has default logFilePath", () => {
     assert.equal(DEFAULT_CONFIG.logging.logFilePath, "./.opencode/opencode-rag.log");
-  });
-
-  it("has autoInject enabled by default with sensible defaults", () => {
-    assert.equal(DEFAULT_CONFIG.openCode.autoInject?.enabled, true);
-    assert.equal(DEFAULT_CONFIG.openCode.autoInject?.minScore, 0.75);
-    assert.equal(DEFAULT_CONFIG.openCode.autoInject?.maxChunks, 10);
-    assert.equal(DEFAULT_CONFIG.openCode.autoInject?.maxTokens, 3000);
-    assert.equal(DEFAULT_CONFIG.openCode.autoInject?.contentType, "file_paths");
   });
 });
 

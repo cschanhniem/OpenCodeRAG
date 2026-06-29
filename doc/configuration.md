@@ -247,13 +247,6 @@ Controls the OpenCode plugin integration.
       "enabled": false,
       "debounceMs": 2000,
       "intervalMs": 300000
-    },
-    "autoInject": {
-      "enabled": true,
-      "minScore": 0.85,
-      "maxChunks": 5,
-      "maxTokens": 3000,
-      "contentType": "file_paths"
     }
   }
 }
@@ -269,11 +262,6 @@ Controls the OpenCode plugin integration.
 | `autoIndex.enabled` | `false` | Auto-index changed files in background |
 | `autoIndex.debounceMs` | `2000` | Debounce delay for file change events |
 | `autoIndex.intervalMs` | `300000` | Periodic full-index interval (5 min) |
-| `autoInject.enabled` | `false` | Auto-inject context on chat messages |
-| `autoInject.minScore` | `0.85` | Minimum score for auto-injection |
-| `autoInject.maxChunks` | `5` | Max auto-injected chunks |
-| `autoInject.maxTokens` | `3000` | Token budget for auto-injected context |
-| `autoInject.contentType` | `"file_paths"` | What to inject: `"file_paths"` (lightweight paths + scores) or `"chunks"` (full code) |
 
 ### `autoUpdate`
 

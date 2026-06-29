@@ -25,7 +25,7 @@ Both should be `"function"`.
 **Possible causes:**
 1. Workspace not indexed yet — run `opencode-rag index`
 2. Embedding call failing — check if the raw socket path is being used correctly (see proxy section)
-3. Auto-injection score threshold too high — check `openCode.autoInject.minScore` (default 0.85)
+3. No matching code found — refine your query or run `opencode-rag index` to (re)index the workspace
 4. Index is stale — run `opencode-rag index --force` for a full rebuild
 
 ### Embedding Timeouts

@@ -27,7 +27,7 @@ import {
   projectTokenSavings,
 } from "../../eval/token-analysis.js";
 import { handleEvalAnalysis, handleEvalTokenCompare, handleEvalProjectSavings } from "../../web/api.js";
-import type { EmbeddingProvider, SearchResult, VectorStore } from "../../core/interfaces.js";
+import type { VectorStore } from "../../core/interfaces.js";
 import type { SessionEvent } from "../../eval/types.js";
 
 function makeTmpDir(): string {
@@ -44,38 +44,6 @@ function makeConfig(overrides: Partial<RagConfig> = {}): RagConfig {
     openCode: { ...DEFAULT_CONFIG.openCode, ...overrides.openCode },
     chunkers: overrides.chunkers ?? DEFAULT_CONFIG.chunkers,
   };
-}
-
-function makeResult(
-  id: string,
-  filePath: string,
-  startLine: number,
-  endLine: number,
-  language: string,
-  content: string,
-  score: number,
-  description?: string
-): SearchResult {
-  return {
-    score,
-    chunk: {
-      id,
-      content,
-      description,
-      metadata: { filePath, startLine, endLine, language },
-    },
-  };
-}
-
-function makeMockDependencies(results: SearchResult[]) {
-  const retrieve = async (
-    _query: string,
-    _embedder: EmbeddingProvider,
-    _store: VectorStore,
-    _options?: { topK?: number }
-  ): Promise<SearchResult[]> => results;
-
-  return { dependencies: { retrieve } };
 }
 
 const dummyStore: VectorStore = {
@@ -110,59 +78,6 @@ describe("estimateContextTokens", () => {
 });
 
 // ── Auto-injection token measurement ────────────────────────────
-
-describe("auto-injection token measurement", () => {
-  let tmpDir: string;
-
-  beforeEach(() => {
-    tmpDir = makeTmpDir();
-  });
-
-  afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true });
-  });
-
-  it("respects maxTokens budget — evicts chunks to fit", async () => {
-    // Create large chunks that exceed maxTokens
-    const largeContent = "x".repeat(4000); // ~1000 tokens
-    const results = [
-      makeResult("c1", "/p/a.ts", 1, 100, "typescript", largeContent, 0.95),
-      makeResult("c2", "/p/b.ts", 1, 100, "typescript", largeContent, 0.90),
-      makeResult("c3", "/p/c.ts", 1, 100, "typescript", largeContent, 0.85),
-    ];
-
-    const { dependencies } = makeMockDependencies(results);
-    const hooks = createRagHooks({
-      cfg: makeConfig({
-        openCode: {
-          enabled: true,
-          maxContextChunks: 5,
-          autoInject: { enabled: true, minScore: 0.5, maxChunks: 3, maxTokens: 500, contentType: "chunks" as const }, // tight budget
-        },
-      }),
-      storePath: "memory://",
-      logFilePath: path.join(tmpDir, "opencode-rag.log"),
-      store: dummyStore,
-      dependencies,
-      worktree: "/p",
-    });
-
-    const chatHook = hooks["chat.message"];
-    const output = {
-      message: { id: "m1", role: "user", sessionID: "s1", parts: [{ type: "text", text: "test the chunks", id: "p1", messageID: "m1", sessionID: "s1" }] },
-      parts: [{ type: "text", text: "test the chunks", id: "p1", messageID: "m1", sessionID: "s1" }],
-    };
-    await chatHook?.({ sessionID: "s1", messageID: "m1" } as never, output as never);
-
-    const injected = (output.parts[0] as Record<string, unknown>).text as string;
-    // Should have some injection but trimmed to fit budget
-    assert.match(injected, /Auto-retrieved code context/);
-    // Not all 3 chunks should be present
-    const chunkCount = (injected.match(/score: /g) ?? []).length;
-    assert.ok(chunkCount <= 3, `Expected ≤3 chunks, got ${chunkCount}`);
-    // chunkCount verified above
-  });
-});
 
 // ── Session event comparison tests ──────────────────────────────
 
