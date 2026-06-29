@@ -2,6 +2,7 @@ import type { EmbeddingProvider, VectorStore, KeywordIndex, SearchResult } from 
 import type { RagConfig } from "../core/config.js";
 import { SUPPORTED_IMAGE_EXTENSIONS, type ImageVisionProvider } from "../chunker/image.js";
 import { retrieve, type RetrieveOptions } from "../retriever/retriever.js";
+import { optimizeContext, DEFAULT_CONTEXT_OPTIMIZATION } from "../retriever/context-optimizer.js";
 import { Parser } from "web-tree-sitter";
 import { initParser, loadLanguage, walkTree, type AstNode } from "../chunker/grammar.js";
 import { readFileSync } from "node:fs";
@@ -205,11 +206,14 @@ export async function handleSearchSemantic(
     queryPrefix: cfg.embedding.queryPrefix,
   };
 
-  const results = await retrieveFn_(query, embedder, store, retrieveOpts);
+  const rawResults = await retrieveFn_(query, embedder, store, retrieveOpts);
 
-  if (results.length === 0) {
+  if (rawResults.length === 0) {
     return { chunks: [], formatted: `No indexed code matched query: "${params.query}". Try different terms or broaden the search.` };
   }
+
+  const optCfg = cfg.retrieval.contextOptimization ?? DEFAULT_CONTEXT_OPTIMIZATION;
+  const results = optimizeContext(rawResults, { topK, config: optCfg });
 
   const formatted = results.map((r) => {
     const m = r.chunk.metadata;

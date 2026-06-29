@@ -21,7 +21,15 @@ User Query
               │
          Slice to topK
               │
-         Return SearchResult[]
+    ╔════════════════════════════════════════════╗
+    ║  Context Window Optimization (post-retrieval) ║
+    ║                                              ║
+    ║  1. Merge adjacent chunks (same-file)        ║
+    ║  2. Jaccard similarity dedup (same-file)     ║
+    ║  3. File-level diversity cap (greedy)        ║
+    ╚════════════════════════════════════════════╝
+              │
+         Return OptimizedSearchResult[]
 ```
 
 ## Hybrid Search (Keyword + Vector)
@@ -109,12 +117,42 @@ The plugin maintains a **session-level retrieval cache** that avoids re-embeddin
 
 Preparing for `processAutocompleteRequest`: The architecture is designed to support autocomplete-time retrieval, allowing relevant code context to be injected at cursor position. This is planned for a future release.
 
+## Context Window Optimization
+
+After retrieval, the results are passed through a three-phase optimization pipeline (`src/retriever/context-optimizer.ts`) to improve the quality of the context window:
+
+### Phase 1: Adjacent Merge
+Consecutive chunks from the same file that are within the `adjacentGapThreshold` line gap are merged into a single chunk. The merged chunk concatenates their content, takes the higher score, and records the original chunk IDs in `optimized.mergedFrom`.
+
+### Phase 2: Similarity Dedup
+Same-file chunks with Jaccard similarity exceeding `similarityThreshold` are deduplicated — the lower-scored chunk is removed and its ID is tracked in `optimized.dedupedFrom`. This avoids redundant near-identical code appearing in results. Dedup is same-file only; cross-file duplicates are kept.
+
+### Phase 3: File Diversity Cap
+A greedy selection picks the best-scoring chunks while enforcing at most `maxPerFile` chunks per file. Files that contributed more than `maxPerFile` items to the pre-cap pool are marked with `optimized.fileCapped: true`. If the per-file cap exhausts the available items before reaching `topK`, fewer results are returned.
+
+### Optimized Result Metadata
+
+Results are wrapped as `OptimizedSearchResult` which extends `SearchResult` with an optional `optimized` field:
+
+| Field | Type | Description |
+|---|---|---|
+| `optimized.mergedFrom` | `string[]` | Original chunk IDs merged into this result |
+| `optimized.dedupedFrom` | `string[]` | Chunk IDs removed as duplicates of this result |
+| `optimized.fileCapped` | `boolean` | Whether the source file exceeded `maxPerFile` |
+
+### Configuration
+
+See [Configuration: `retrieval.contextOptimization`](configuration.md#retrieval) for all available knobs.
+
+### Disabling
+
+Set `retrieval.contextOptimization.enabled: false` in `opencode-rag.json` to return raw `retrieve()` results unchanged.
+
 ## Future Improvements
 
 | Feature | Status | Description |
 |---|---|---|
 | LLM-based re-ranking | Planned | Cross-encoder after vector search for precision |
 | Query rewriting | Planned | Multi-variant query expansion |
-| Context optimization | Planned | Dedup, merge adjacent chunks, diversity ranking |
 | Retrieval explainability | Planned | Debug surfaces for why chunks were returned |
 | Cross-file graph | Planned | Dependency-aware search via import/call graphs |

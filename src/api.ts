@@ -1,6 +1,7 @@
 import { resolveRagContext } from "./core/bootstrap.js";
 import { retrieve } from "./retriever/retriever.js";
 import type { RetrieveOptions } from "./retriever/retriever.js";
+import { optimizeContext, DEFAULT_CONTEXT_OPTIMIZATION } from "./retriever/context-optimizer.js";
 import { runIndexPass, type IndexRunStats } from "./indexer.js";
 import { scanWorkspaceFiles, type WorkspaceFile } from "./content/reader.js";
 import type { SearchResult } from "./core/interfaces.js";
@@ -82,14 +83,18 @@ export async function search(
     configPath: options.configPath,
   });
 
-  return retrieve(query, ctx.embedder, ctx.store, {
-    topK: options.topK ?? ctx.config.retrieval.topK,
+  const topK = options.topK ?? ctx.config.retrieval.topK;
+  const rawResults = await retrieve(query, ctx.embedder, ctx.store, {
+    topK,
     minScore: options.minScore ?? ctx.config.retrieval.minScore,
     keywordIndex: ctx.keywordIndex,
     keywordWeight: options.keywordWeight ?? ctx.config.retrieval.hybridSearch?.keywordWeight ?? 0.4,
     queryPrefix: ctx.config.embedding.queryPrefix,
     explain: options.explain,
   } satisfies RetrieveOptions);
+
+  const optCfg = ctx.config.retrieval.contextOptimization ?? DEFAULT_CONTEXT_OPTIMIZATION;
+  return optimizeContext(rawResults, { topK, config: optCfg });
 }
 
 /**

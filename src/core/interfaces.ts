@@ -50,6 +50,19 @@ export interface SearchResult {
   explanation?: SearchExplanation;
 }
 
+/** A search result enriched with metadata from context window optimization (adjacent merge, similarity dedup, file cap). */
+export interface OptimizedSearchResult extends SearchResult {
+  /** Metadata about optimizations applied to this result. */
+  optimized?: {
+    /** IDs of original chunks that were merged into this result. */
+    mergedFrom?: string[];
+    /** IDs of chunks that were removed due to high similarity in favor of this one. */
+    dedupedFrom?: string[];
+    /** Whether this chunk was kept despite its file exceeding the per-file cap. */
+    fileCapped?: boolean;
+  };
+}
+
 /** Splits a source file into semantic chunks based on AST structure or content heuristics. */
 export interface Chunker {
   /** Human-readable language name (e.g. "TypeScript", "Python"). */

@@ -121,6 +121,13 @@ Controls how queries are matched against the index.
     "hybridSearch": {
       "enabled": true,
       "keywordWeight": 0.4
+    },
+    "contextOptimization": {
+      "enabled": true,
+      "maxPerFile": 3,
+      "mergeAdjacent": true,
+      "adjacentGapThreshold": 5,
+      "similarityThreshold": 0.8
     }
   }
 }
@@ -132,6 +139,11 @@ Controls how queries are matched against the index.
 | `minScore` | `0.5` | Minimum relevance score (0–1) |
 | `hybridSearch.enabled` | `true` | Enable combined TF×IDF + vector search |
 | `hybridSearch.keywordWeight` | `0.4` | Weight for keyword score in fusion: `(1-kw)*vScore + kw*kScore` |
+| `contextOptimization.enabled` | `true` | Enable post-retrieval optimization pipeline |
+| `contextOptimization.maxPerFile` | `3` | Max chunks per file in final result (0 = unlimited) |
+| `contextOptimization.mergeAdjacent` | `true` | Merge consecutive same-file chunks separated by ≤ gap |
+| `contextOptimization.adjacentGapThreshold` | `5` | Max line gap for adjacent merge (lines between end and next start) |
+| `contextOptimization.similarityThreshold` | `0.8` | Jaccard similarity threshold (0–1) for same-file dedup |
 
 ### `description`
 

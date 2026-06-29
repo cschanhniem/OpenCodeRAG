@@ -155,6 +155,20 @@ export interface AutoUpdateConfig {
   enabled: boolean;
 }
 
+/** Configuration for post-retrieval context window optimization (adjacent merge, similarity dedup, file diversity cap). */
+export interface ContextOptimizationConfig {
+  /** Whether context window optimization is enabled. */
+  enabled: boolean;
+  /** Maximum number of chunks to keep per file (0 = unlimited). */
+  maxPerFile: number;
+  /** Whether to merge adjacent chunks from the same file. */
+  mergeAdjacent: boolean;
+  /** Maximum line gap between adjacent chunks that can still be merged. */
+  adjacentGapThreshold: number;
+  /** Jaccard similarity threshold (0-1) for same-file dedup. */
+  similarityThreshold: number;
+}
+
 /** Complete configuration for the OpenCodeRAG pipeline. */
 export interface RagConfig {
   /** Embedding provider settings (model, endpoint, prefixes). */
@@ -219,6 +233,8 @@ export interface RagConfig {
       /** Weight for keyword scores in fusion (0 = vector only, 1 = keyword only). */
       keywordWeight: number;
     };
+    /** Context window optimization settings for post-retrieval quality filtering. */
+    contextOptimization?: ContextOptimizationConfig;
   };
   /** OpenCode plugin integration settings. */
   openCode: {
@@ -387,6 +403,13 @@ export const DEFAULT_CONFIG: RagConfig = {
     hybridSearch: {
       enabled: true,
       keywordWeight: 0.4,
+    },
+    contextOptimization: {
+      enabled: true,
+      maxPerFile: 3,
+      mergeAdjacent: true,
+      adjacentGapThreshold: 5,
+      similarityThreshold: 0.8,
     },
   },
   openCode: {
@@ -561,6 +584,15 @@ export function validateConfig(config: RagConfig): ConfigValidationResult {
 
   if (config.openCode.maxContextChunks <= 0) {
     warnings.push("openCode.maxContextChunks must be > 0");
+  }
+
+  if (config.retrieval.contextOptimization) {
+    const co = config.retrieval.contextOptimization;
+    if (co.maxPerFile < 0) warnings.push("retrieval.contextOptimization.maxPerFile must be >= 0");
+    if (co.adjacentGapThreshold < 0) warnings.push("retrieval.contextOptimization.adjacentGapThreshold must be >= 0");
+    if (co.similarityThreshold < 0 || co.similarityThreshold > 1) {
+      warnings.push("retrieval.contextOptimization.similarityThreshold must be between 0 and 1");
+    }
   }
 
   if (!["debug", "info", "error", "none"].includes(config.logging.level)) {

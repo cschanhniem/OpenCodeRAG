@@ -6,7 +6,8 @@ import type { Command } from "commander";
 import path from "node:path";
 import pc from "picocolors";
 import { retrieve } from "../../retriever/retriever.js";
-import { c, resolveCliContext, cleanupContext, logCliError, logCliInfo, formatDuration, dedupeResults } from "../format.js";
+import { c, resolveCliContext, cleanupContext, logCliError, logCliInfo, formatDuration } from "../format.js";
+import { optimizeContext, DEFAULT_CONTEXT_OPTIMIZATION } from "../../retriever/context-optimizer.js";
 import type { CliOptions } from "../types.js";
 
 /**
@@ -58,7 +59,8 @@ export function registerQueryCommand(program: Command): void {
           queryPrefix: config.embedding.queryPrefix,
           explain: options.explain ?? false,
         });
-        const results = dedupeResults(rawResults);
+        const optCfg = config.retrieval.contextOptimization ?? DEFAULT_CONTEXT_OPTIMIZATION;
+        const results = optimizeContext(rawResults, { topK, config: optCfg });
 
         if (results.length === 0) {
           logCliInfo(logFilePath, "query", c.warn("No results found."));

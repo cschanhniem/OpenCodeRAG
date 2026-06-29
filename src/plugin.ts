@@ -6,6 +6,7 @@ import { createEmbedder } from "./embedder/factory.js";
 import { createDescriptionProvider } from "./describer/factory.js";
 import { createVectorStore } from "./vectorstore/factory.js";
 import { retrieve } from "./retriever/retriever.js";
+import { optimizeContext, DEFAULT_CONTEXT_OPTIMIZATION } from "./retriever/context-optimizer.js";
 import { loadChunkersFromConfig } from "./chunker/loader.js";
 import { appendDebugLog } from "./core/fileLogger.js";
 import { loadRuntimeOverrides, applyRuntimeOverrides } from "./core/runtime-overrides.js";
@@ -294,31 +295,6 @@ function buildRetrievalQuery(hints: RetrievalQueryHints): string {
 }
 
 /**
- * Remove duplicate results based on file path + line range + content.
- * Keeps the first occurrence of each unique result.
- */
-function dedupeResults(results: SearchResult[]): SearchResult[] {
-  const seen = new Set<string>();
-  const deduped: SearchResult[] = [];
-
-  for (const result of results) {
-    const chunk = result.chunk;
-    const key = [
-      chunk.metadata.filePath,
-      chunk.metadata.startLine,
-      chunk.metadata.endLine,
-      chunk.content,
-    ].join(":");
-
-    if (seen.has(key)) continue;
-    seen.add(key);
-    deduped.push(result);
-  }
-
-  return deduped;
-}
-
-/**
  * Perform a retrieval query against the vector store with the given parameters.
  * Returns an empty array for blank queries.
  */
@@ -339,7 +315,8 @@ async function retrieveContext(
 }
 
 /**
- * Load results from one or two queries (primary + optional extra), deduplicate,
+ * Load results from one or two queries (primary + optional extra), optimize
+ * them via context optimization (adjacent merge, similarity dedup, file cap),
  * sort by descending score, and limit to maxContextChunks from config.
  */
 async function loadRetrievedResults(
@@ -361,7 +338,8 @@ async function loadRetrievedResults(
     ? await retrieveContext(extraQuery, embedder, store, topK, retrieveFn, minScore, keywordIndex, kw, queryPrefix, explain)
     : [];
 
-  return dedupeResults([...primaryResults, ...extraResults])
+  const optCfg = cfg.retrieval.contextOptimization ?? DEFAULT_CONTEXT_OPTIMIZATION;
+  return optimizeContext([...primaryResults, ...extraResults], { topK, config: optCfg })
     .sort((a, b) => b.score - a.score)
     .slice(0, cfg.openCode.maxContextChunks);
 }
