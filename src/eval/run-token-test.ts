@@ -1,4 +1,7 @@
 /**
+ * @fileoverview Integration test that runs real RAG queries against an indexed codebase and produces a token usage report.
+ */
+/**
  * Integration test: Run real RAG pipeline against indexed codebase
  * and produce a token usage report.
  *

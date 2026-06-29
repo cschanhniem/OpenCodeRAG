@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Tree-sitter based HTML chunker splitting by script and style element boundaries.
+ */
 import { TreeSitterChunker } from "./base.js";
 
 /**

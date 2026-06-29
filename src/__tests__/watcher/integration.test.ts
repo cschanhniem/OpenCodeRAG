@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { DEFAULT_CONFIG, type RagConfig } from "../../core/config.js";
-import { LanceDBStore } from "../../vectorstore/lancedb.js";
+import { LanceDbStore } from "../../vectorstore/lancedb.js";
 import type { EmbeddingProvider } from "../../core/interfaces.js";
 import { createBackgroundIndexer } from "../../watcher.js";
 
@@ -50,14 +50,14 @@ describe("background indexer integration", () => {
   let workspaceDir: string;
   let storeDir: string;
   let logFilePath: string;
-  let store: LanceDBStore;
+  let store: LanceDbStore;
   const embedder = new TestEmbedder();
 
   before(async () => {
     workspaceDir = await makeTempDir("watcher-workspace");
     storeDir = await makeTempDir("watcher-store");
     logFilePath = path.join(workspaceDir, "test.log");
-    store = new LanceDBStore(storeDir, 4);
+    store = new LanceDbStore(storeDir, 4);
   });
 
   after(async () => {

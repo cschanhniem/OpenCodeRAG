@@ -1,4 +1,7 @@
 /**
+ * @fileoverview Init command for configuring a workspace with OpenCodeRAG (directory structure, plugin files, config, health checks).
+ */
+/**
  * `init` command — configures a workspace for OpenCodeRAG.
  *
  * Creates the `.opencode/` directory structure, plugin entry files,

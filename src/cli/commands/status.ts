@@ -1,4 +1,7 @@
 /**
+ * @fileoverview Status command showing index statistics, store health, manifest status, and configuration summary.
+ */
+/**
  * `status` command — shows index statistics, store health, and configuration summary.
  */
 

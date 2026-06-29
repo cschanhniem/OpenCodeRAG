@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Shared CLI option interfaces used by all command modules.
+ */
 /** Shared CLI option interfaces used by all command modules. */
 
 /** Standard CLI options shared by most commands (index, query, clear, etc.). */

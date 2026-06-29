@@ -1,6 +1,9 @@
+/**
+ * @fileoverview Factory function to create the configured VectorStore instance (LanceDB or in-memory).
+ */
 import type { VectorStore } from "../core/interfaces.js";
 import type { RagConfig } from "../core/config.js";
-import { LanceDBStore } from "./lancedb.js";
+import { LanceDbStore } from "./lancedb.js";
 import { InMemoryVectorStore } from "./memory.js";
 
 /**
@@ -24,7 +27,7 @@ export function createVectorStore(
   const provider = config.vectorStore.provider ?? "lancedb";
 
   if (provider === "lancedb") {
-    return new LanceDBStore(storePath, dimension);
+    return new LanceDbStore(storePath, dimension);
   }
 
   if (provider === "memory") {

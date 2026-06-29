@@ -1,3 +1,6 @@
+/**
+ * @fileoverview JSONL-based session event storage, retrieval, summarization, and comparison for evaluation.
+ */
 import { appendFileSync, readFileSync, mkdirSync, readdirSync, unlinkSync, existsSync } from "node:fs";
 import path from "node:path";
 import type { SessionEvent, SessionSummary, ComparisonResult } from "./types.js";

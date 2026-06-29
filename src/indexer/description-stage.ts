@@ -1,5 +1,9 @@
+/**
+ * @fileoverview Generates AI and fallback descriptions for code chunks.
+ */
 import type { Chunk, DescriptionProvider } from "../core/interfaces.js";
 
+/** Result of a description generation run, including per-chunk descriptions and any failures. */
 export interface DescriptionResult {
   descriptionMap: Map<string, string>;
   failures: Array<{ chunkId: string; error: string }>;
@@ -10,6 +14,21 @@ interface Logger {
   debug(message: string): void;
 }
 
+/**
+ * Generate AI or fallback descriptions for a set of code chunks.
+ *
+ * Chunks that already have a description (e.g. from docstrings) are skipped.
+ * Oversized chunks exceeding `maxContentChars` receive a fallback description
+ * instead of being sent to the LLM.  Remaining chunks are sent in batch to
+ * the description provider, with individual fallback on batch failure.
+ *
+ * @param chunks - Chunks to describe.
+ * @param descriptionProvider - Provider that generates AI descriptions.
+ * @param logger - Optional logger for diagnostic messages.
+ * @param maxContentChars - Optional maximum content length for LLM submission;
+ *   chunks longer than this get a fallback description.
+ * @returns A map of chunk ID to description and a list of failures.
+ */
 export async function generateDescriptions(
   chunks: Chunk[],
   descriptionProvider: DescriptionProvider,
@@ -99,6 +118,13 @@ export async function generateDescriptions(
   return { descriptionMap, failures };
 }
 
+/**
+ * Build a simple fallback description from a chunk's file location metadata.
+ * Used when AI description generation is unavailable or fails.
+ *
+ * @param chunk - The chunk to describe.
+ * @returns A description string like `"lines 10-25, typescript"`.
+ */
 export function buildFallbackDescription(chunk: Chunk): string {
   return `lines ${chunk.metadata.startLine}-${chunk.metadata.endLine}, ${chunk.metadata.language}`;
 }

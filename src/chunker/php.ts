@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Tree-sitter based PHP chunker splitting by function and method declarations.
+ */
 import { TreeSitterChunker } from "./base.js";
 
 /**

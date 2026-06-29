@@ -10,7 +10,7 @@
  */
 
 import path from "node:path";
-import { LanceDBStore } from "../src/vectorstore/lancedb.js";
+import { LanceDbStore } from "../src/vectorstore/lancedb.js";
 import { loadManifest, saveManifest } from "../src/core/manifest.js";
 import type { Chunk } from "../src/core/interfaces.js";
 
@@ -55,7 +55,7 @@ async function main(): Promise<void> {
   console.log(`Deduplicating chunks in: ${dbPath}`);
   if (dryRun) console.log("(dry run — no changes will be made)\n");
 
-  const store = new LanceDBStore(dbPath);
+  const store = new LanceDbStore(dbPath);
   const totalBefore = await store.count();
   console.log(`Total chunks before: ${totalBefore}`);
 

@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Chunker registry, extension-to-chunker mapping, and file chunking orchestration.
+ */
 import type { Chunker, Chunk } from "../core/interfaces.js";
 import { TreeSitterChunker } from "./base.js";
 import { typescriptChunker } from "./typescript.js";
@@ -83,6 +86,14 @@ for (const chunker of chunkers) {
   }
 }
 
+/**
+ * Register a pluggable chunker for one or more file extensions.
+ * If an extension already has a chunker, the new one is silently skipped.
+ *
+ * @param chunker - The chunker instance to register.
+ * @param extensions - File extensions to associate with this chunker.
+ *   Defaults to the chunker's own `fileExtensions` property.
+ */
 export function registerChunker(
   chunker: Chunker,
   extensions?: string[]
@@ -103,6 +114,13 @@ export function registerChunker(
   }
 }
 
+/**
+ * Look up the chunker registered for a given file path by extension.
+ * Falls back to the fallback chunker when no extension match is found.
+ *
+ * @param filePath - Path to the file to chunk.
+ * @returns A chunker instance for the file's extension.
+ */
 export function getChunker(filePath: string): Chunker {
   const dotIdx = filePath.lastIndexOf(".");
   const ext = dotIdx >= 0 ? filePath.slice(dotIdx).toLowerCase() : "";
@@ -185,6 +203,17 @@ function splitOversized(chunks: Chunk[], filePath: string): Chunk[] {
   return result;
 }
 
+/**
+ * Chunk a file by looking up its registered chunker, applying node-type
+ * overrides if provided, and splitting oversized chunks to stay within
+ * size limits. Falls back to the fallback chunker on empty results.
+ *
+ * @param filePath - Path to the file to chunk.
+ * @param content - The full text content of the file.
+ * @param nodeTypesOverrides - Optional language-specific node type overrides
+ *   for tree-sitter based chunkers.
+ * @returns An array of chunks for the file.
+ */
 export async function chunkFile(
   filePath: string,
   content: string,

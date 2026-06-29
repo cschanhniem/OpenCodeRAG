@@ -12,7 +12,7 @@ import {
   runIndexPass,
 } from "../../indexer.js";
 import type { Chunk, DescriptionProvider, EmbeddingProvider } from "../../core/interfaces.js";
-import { LanceDBStore } from "../../vectorstore/lancedb.js";
+import { LanceDbStore } from "../../vectorstore/lancedb.js";
 
 class TestEmbedder implements EmbeddingProvider {
   readonly name = "test";
@@ -46,14 +46,14 @@ function testConfig(): RagConfig {
 describe("indexer", () => {
   let workspaceDir: string;
   let storeDir: string;
-  let store: LanceDBStore;
+  let store: LanceDbStore;
   const embedder = new TestEmbedder();
 
   beforeEach(async () => {
     workspaceDir = await makeTempDir("indexer-workspace");
     storeDir = await makeTempDir("indexer-store");
     // Use in-memory store for speed; storePath still needs a real dir for manifest
-    store = new LanceDBStore("memory://", 4);
+    store = new LanceDbStore("memory://", 4);
   });
 
   it("indexes new files and records them in the manifest", async () => {

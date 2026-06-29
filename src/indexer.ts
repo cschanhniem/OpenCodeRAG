@@ -1,3 +1,8 @@
+/**
+ * @fileoverview Re-exports indexer pipeline types and functions. Provides
+ * runIndexPass, createWatchPassScheduler, createWatchIgnore, and scanWorkspace.
+ */
+
 export type { IndexRunStats, IndexStatusSummary } from "./indexer/stats.js";
 export { createIndexStats } from "./indexer/stats.js";
 export type { WorkspaceFile } from "./content/reader.js";

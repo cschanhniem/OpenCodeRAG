@@ -1,5 +1,18 @@
+/**
+ * @fileoverview Shared utilities for building description provider user messages and implementing sleep delays.
+ */
 import type { Chunk } from "../core/interfaces.js";
 
+/**
+ * Build a formatted user message string from a code chunk for LLM description requests.
+ *
+ * Includes file path, language, line range, and the chunk content wrapped in a markdown code block.
+ * Truncates content to maxContentChars if specified.
+ *
+ * @param chunk - The code chunk to describe
+ * @param maxContentChars - Optional maximum number of characters to include from the chunk content
+ * @returns Formatted message string ready to send to an LLM
+ */
 export function buildUserMessage(chunk: Chunk, maxContentChars?: number): string {
   const parts: string[] = [];
 
@@ -24,6 +37,7 @@ export function buildUserMessage(chunk: Chunk, maxContentChars?: number): string
   return parts.join("\n");
 }
 
+/** Promise-based delay for use with async/await. */
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }

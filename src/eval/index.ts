@@ -1,4 +1,7 @@
 /**
+ * @fileoverview Public API barrel exports for the evaluation framework (session logging, token counting, analysis).
+ */
+/**
  * Evaluation framework — session logging, token counting, and analysis.
  *
  * Provides event capture via the OpenCode plugin hook, JSONL storage,

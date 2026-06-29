@@ -1,7 +1,10 @@
+/**
+ * @fileoverview REST API handler for the OpenCodeRAG Web UI with search, file, chunk, eval, and token analysis endpoints.
+ */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readFileSync } from "node:fs";
 import { extname, resolve as resolvePathModule } from "node:path";
-import { LanceDBStore } from "../vectorstore/lancedb.js";
+import { LanceDbStore } from "../vectorstore/lancedb.js";
 import { KeywordIndex } from "../retriever/keyword-index.js";
 import { listSessions, getSession, deleteSession, compareSessions, validateSessionID } from "../eval/storage.js";
 import { analyzeTokenUsage, compareTokenAnalyses, projectTokenSavings } from "../eval/token-analysis.js";
@@ -58,7 +61,7 @@ function sendJson(res: ServerResponse, response: ApiResponse): void {
  * @param cwd          - Optional workspace root for resolving file paths.
  * @returns An async handler that returns `true` when a route matched or `false` otherwise.
  */
-export function createApiHandler(store: LanceDBStore, keywordIndex: KeywordIndex, storePath: string, cwd?: string) {
+export function createApiHandler(store: LanceDbStore, keywordIndex: KeywordIndex, storePath: string, cwd?: string) {
   return async (req: IncomingMessage, res: ServerResponse): Promise<boolean> => {
     const url = req.url ?? "/";
     const method = req.method ?? "GET";
@@ -159,7 +162,7 @@ export function createApiHandler(store: LanceDBStore, keywordIndex: KeywordIndex
 }
 
 /** Respond with total chunk/file counts and a breakdown by programming language. */
-async function handleStats(store: LanceDBStore): Promise<ApiResponse> {
+async function handleStats(store: LanceDbStore): Promise<ApiResponse> {
   const totalChunks = await store.count();
   const files = await store.listFiles();
 
@@ -183,7 +186,7 @@ async function handleStats(store: LanceDBStore): Promise<ApiResponse> {
 }
 
 /** Respond with the list of all indexed files from the store. */
-async function handleFiles(store: LanceDBStore): Promise<ApiResponse> {
+async function handleFiles(store: LanceDbStore): Promise<ApiResponse> {
   const files = await store.listFiles();
   return { status: 200, body: files };
 }
@@ -194,7 +197,7 @@ async function handleFiles(store: LanceDBStore): Promise<ApiResponse> {
  * Query params: `offset` (default 0), `limit` (default 50), `lang`, `file`.
  */
 async function handleChunks(
-  store: LanceDBStore,
+  store: LanceDbStore,
   params: URLSearchParams
 ): Promise<ApiResponse> {
   const offset = parseInt(params.get("offset") ?? "0", 10);
@@ -225,7 +228,7 @@ async function handleChunks(
 
 /** Respond with a single chunk identified by its ID, or 404 if not found. */
 async function handleChunkById(
-  store: LanceDBStore,
+  store: LanceDbStore,
   id: string
 ): Promise<ApiResponse> {
   const chunks = await store.getChunks(0, 100000);
@@ -273,7 +276,7 @@ async function handleSearch(
 
 /** Fetch multiple chunks by their comma-separated IDs (`ids` query param) for side-by-side comparison. */
 async function handleCompare(
-  store: LanceDBStore,
+  store: LanceDbStore,
   params: URLSearchParams
 ): Promise<ApiResponse> {
   const idsParam = params.get("ids") ?? "";

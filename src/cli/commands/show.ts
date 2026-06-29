@@ -1,4 +1,7 @@
 /**
+ * @fileoverview Show command displaying all chunks for a specific indexed file with line ranges and content.
+ */
+/**
  * `show` command — displays chunks for a specific indexed file.
  */
 

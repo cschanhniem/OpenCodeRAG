@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Text extraction and paragraph-based chunker for Word (.docx) documents using mammoth.
+ */
 import type { Chunker, Chunk } from "../core/interfaces.js";
 import { uuid } from "./uuid.js";
 

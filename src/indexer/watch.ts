@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Debounced file-watching scheduler and path-ignore predicate for incremental re-indexing.
+ */
 import path from "node:path";
 import { manifestPathFor } from "../core/manifest.js";
 import type { RagConfig } from "../core/config.js";

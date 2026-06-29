@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Tree-sitter based C# chunker splitting by method, interface, struct, record, and enum declarations.
+ */
 import { TreeSitterChunker } from "./base.js";
 
 /**

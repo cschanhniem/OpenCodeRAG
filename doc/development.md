@@ -69,7 +69,7 @@ import { Chunk } from "./core/interfaces.js";
 Module boundaries are defined by interfaces in `core/interfaces.ts`. Concrete implementations implement them:
 
 ```typescript
-class LanceDBStore implements VectorStore { ... }
+class LanceDbStore implements VectorStore { ... }
 class OllamaEmbedder implements EmbeddingProvider { ... }
 class TypeScriptChunker extends TreeSitterChunker { ... }
 ```
@@ -82,7 +82,7 @@ Dispatch is handled through factories:
 - `createDescriptionProvider(config)`
 
 ### Adapter Pattern
-`LanceDBStore` implements `VectorStore`; provider classes implement `EmbeddingProvider`.
+`LanceDbStore` implements `VectorStore`; provider classes implement `EmbeddingProvider`.
 
 ### Error Resilience
 Plugin and CLI catch errors silently where appropriate. Type errors are surfaced via TypeScript.

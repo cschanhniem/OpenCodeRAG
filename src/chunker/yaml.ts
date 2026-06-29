@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Tree-sitter based YAML chunker splitting by block mapping pairs and block sequence items.
+ */
 import { TreeSitterChunker } from "./base.js";
 
 /**

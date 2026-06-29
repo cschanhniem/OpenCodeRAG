@@ -1,3 +1,8 @@
+/**
+ * @fileoverview Registry of known LLM/embedding provider defaults — base URLs, env var names,
+ * capability flags, and utility functions for provider lookup.
+ */
+
 /** Default configuration parameters for a supported LLM/embedding provider. */
 export interface ProviderDefaults {
   /** Default base URL for API requests. */

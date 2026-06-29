@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Tree-sitter based SQL chunker splitting by each top-level statement.
+ */
 import { TreeSitterChunker } from "./base.js";
 
 /**

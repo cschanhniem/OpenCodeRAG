@@ -1,4 +1,7 @@
 /**
+ * @fileoverview Token usage analysis for comparing RAG-on vs RAG-off sessions with per-query breakdowns and savings projections.
+ */
+/**
  * Token usage analysis for comparing RAG-on vs RAG-off sessions.
  *
  * Provides functions to:

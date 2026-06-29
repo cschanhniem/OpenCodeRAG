@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Code-block based chunker for Razor view files splitting by @code and @functions blocks.
+ */
 import type { Chunker, Chunk } from "../core/interfaces.js";
 import { uuid } from "./uuid.js";
 

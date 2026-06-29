@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Provider health checks (embedding, description, image description) and Ollama model pull utility.
+ */
 import type { RagConfig } from "../core/config.js";
 import type { ProxyConfig } from "../core/config.js";
 import { postJson } from "./http.js";

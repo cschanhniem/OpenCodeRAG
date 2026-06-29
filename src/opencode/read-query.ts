@@ -1,4 +1,8 @@
 /**
+ * @fileoverview Builds deterministic retrieval queries for the read tool from file path, line range, and user intent.
+ */
+
+/**
  * Build a retrieval query string for the read tool.
  *
  * Combines user intent (optional query/reason) with file path

@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Google Gemini description provider for generating natural-language descriptions of code chunks.
+ */
 import type { Chunk, DescriptionProvider } from "../core/interfaces.js";
 import type { DescriptionConfig } from "../core/config.js";
 import { postJson } from "../embedder/http.js";
@@ -19,6 +22,11 @@ interface GeminiResponse {
 
 const RETRYABLE_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
 
+/**
+ * Description provider that uses Google Gemini's generateContent API to describe code chunks.
+ *
+ * @param config - Configuration for the Gemini provider, including base URL, model, API key, and retry settings.
+ */
 export class GeminiDescriptionProvider implements DescriptionProvider {
   private readonly config: DescriptionConfig;
 

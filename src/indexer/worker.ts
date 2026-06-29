@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Per-file preparation, chunking, embedding, and storage within the indexing pipeline.
+ */
 import path from "node:path";
 import { chunkFile } from "../chunker/factory.js";
 import { uuid } from "../chunker/uuid.js";

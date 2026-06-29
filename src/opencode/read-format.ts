@@ -1,3 +1,7 @@
+/**
+ * @fileoverview Formats RAG retrieval output, hybrid file-content output, file fallbacks, and related-file suggestions for the read tool.
+ */
+
 import type { SearchResult } from "../core/interfaces.js";
 
 /**

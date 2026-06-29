@@ -1,4 +1,7 @@
 /**
+ * @fileoverview Helper functions for the init command — file generation, config building, dependency linking, and gitignore merging.
+ */
+/**
  * Helper functions for the `init` command — file generation, config building,
  * dependency installation, and gitignore merging.
  */
@@ -344,7 +347,6 @@ export async function installPluginFromGlobal(
   mkdirSync(path.dirname(workspaceTarget), { recursive: true });
   createJunction(globalPluginDir, workspaceTarget);
 
-  // Verify the plugin entry resolves through the junction
   const cliEntry = path.join(workspaceTarget, "dist", "cli.js");
   if (!existsSync(cliEntry)) {
     // Junction may not work (e.g. cross-drive on Windows) — fall back to copy
@@ -355,7 +357,6 @@ export async function installPluginFromGlobal(
     cpSync(globalPluginDir, workspaceTarget, { recursive: true });
   }
 
-  // Verify @opencode-ai/plugin is resolvable from the global runtime
   const pluginSdkPkg = path.join(runtimeDir, "node_modules", "@opencode-ai", "plugin", "package.json");
   if (!existsSync(pluginSdkPkg)) {
     throw new Error(

@@ -1,13 +1,14 @@
 /**
- * Low-level building blocks — chunkers, embedders, vector stores, and retrieval primitives.
- * @module
+ * @fileoverview Main package entry point. Re-exports all public API symbols:
+ * low-level building blocks (chunkers, embedders, vector stores, retrieval),
+ * high-level convenience API (search, index, getContext), and plugin entry.
  */
 
 export { chunkFile, getChunker, registerChunker } from "./chunker/factory.js";
 export { createEmbedder, embedBatch } from "./embedder/factory.js";
 export { createDescriptionProvider } from "./describer/factory.js";
 export { createVectorStore } from "./vectorstore/factory.js";
-export { LanceDBStore } from "./vectorstore/lancedb.js";
+export { LanceDbStore } from "./vectorstore/lancedb.js";
 export { InMemoryVectorStore } from "./vectorstore/memory.js";
 export { retrieve } from "./retriever/retriever.js";
 export { optimizeContext, DEFAULT_CONTEXT_OPTIMIZATION } from "./retriever/context-optimizer.js";

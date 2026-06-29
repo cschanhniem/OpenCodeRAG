@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
 import type { Chunk } from "../../core/interfaces.js";
 import type { DescriptionConfig } from "../../core/config.js";
-import { LLMDescriptionProvider } from "../../describer/describer.js";
+import { LlmDescriptionProvider } from "../../describer/describer.js";
 
 import { createDescriptionProvider } from "../../describer/factory.js";
 
@@ -66,7 +66,7 @@ function startMockServer(
   });
 }
 
-describe("LLMDescriptionProvider", () => {
+describe("LlmDescriptionProvider", () => {
   it("generates description using Ollama API format", async () => {
     const { baseUrl, close } = await startMockServer((body) => {
       assert.equal(body.model, "test-model");
@@ -87,7 +87,7 @@ describe("LLMDescriptionProvider", () => {
     });
 
     try {
-      const provider = new LLMDescriptionProvider(
+      const provider = new LlmDescriptionProvider(
         makeConfig({ baseUrl: `${baseUrl}/api` })
       );
       const description = await provider.generateDescription(makeChunk());
@@ -112,7 +112,7 @@ describe("LLMDescriptionProvider", () => {
     });
 
     try {
-      const provider = new LLMDescriptionProvider(
+      const provider = new LlmDescriptionProvider(
         makeConfig({
           provider: "openai",
           model: "openai-model",
@@ -137,7 +137,7 @@ describe("LLMDescriptionProvider", () => {
     });
 
     try {
-      const provider = new LLMDescriptionProvider(
+      const provider = new LlmDescriptionProvider(
         makeConfig({ baseUrl: `${baseUrl}/api` })
       );
       await provider.generateDescription(
@@ -174,7 +174,7 @@ describe("LLMDescriptionProvider", () => {
     });
 
     try {
-      const provider = new LLMDescriptionProvider(
+      const provider = new LlmDescriptionProvider(
         makeConfig({
           baseUrl: `${baseUrl}/api`,
           systemPrompt: "You are a Python expert. Describe this code briefly.",
@@ -201,7 +201,7 @@ describe("LLMDescriptionProvider", () => {
     });
 
     try {
-      const provider = new LLMDescriptionProvider(
+      const provider = new LlmDescriptionProvider(
         makeConfig({
           provider: "openai",
           baseUrl: `${baseUrl}/v1`,
@@ -222,7 +222,7 @@ describe("LLMDescriptionProvider", () => {
     }));
 
     try {
-      const provider = new LLMDescriptionProvider(
+      const provider = new LlmDescriptionProvider(
         makeConfig({ baseUrl: `${baseUrl}/api` })
       );
       await assert.rejects(
@@ -244,7 +244,7 @@ describe("LLMDescriptionProvider", () => {
     }));
 
     try {
-      const provider = new LLMDescriptionProvider(
+      const provider = new LlmDescriptionProvider(
         makeConfig({ baseUrl: `${baseUrl}/api` })
       );
       await assert.rejects(
@@ -268,7 +268,7 @@ describe("LLMDescriptionProvider", () => {
     });
 
     try {
-      const provider = new LLMDescriptionProvider(
+      const provider = new LlmDescriptionProvider(
         makeConfig({ baseUrl: `${baseUrl}/api` })
       );
       const desc = await provider.generateDescription(makeChunk());
@@ -285,7 +285,7 @@ describe("LLMDescriptionProvider", () => {
     }));
 
     try {
-      const provider = new LLMDescriptionProvider(
+      const provider = new LlmDescriptionProvider(
         makeConfig({
           provider: "openai",
           baseUrl: `${baseUrl}/v1`,
@@ -299,7 +299,7 @@ describe("LLMDescriptionProvider", () => {
   });
 });
 
-describe("LLMDescriptionProvider.generateBatchDescriptions", () => {
+describe("LlmDescriptionProvider.generateBatchDescriptions", () => {
   it("returns single-element map when chunks.length === 1", async () => {
     const { baseUrl, close } = await startMockServer((_body) => {
       return {
@@ -309,7 +309,7 @@ describe("LLMDescriptionProvider.generateBatchDescriptions", () => {
     });
 
     try {
-      const provider = new LLMDescriptionProvider(
+      const provider = new LlmDescriptionProvider(
         makeConfig({ baseUrl: `${baseUrl}/api` })
       );
       const chunk = makeChunk({ id: "c1" });
@@ -339,7 +339,7 @@ describe("LLMDescriptionProvider.generateBatchDescriptions", () => {
     });
 
     try {
-      const provider = new LLMDescriptionProvider(
+      const provider = new LlmDescriptionProvider(
         makeConfig({ baseUrl: `${baseUrl}/api` })
       );
       const chunks = [
@@ -368,7 +368,7 @@ describe("LLMDescriptionProvider.generateBatchDescriptions", () => {
     });
 
     try {
-      const provider = new LLMDescriptionProvider(
+      const provider = new LlmDescriptionProvider(
         makeConfig({ baseUrl: `${baseUrl}/api` })
       );
       const chunks = [
@@ -387,7 +387,7 @@ describe("LLMDescriptionProvider.generateBatchDescriptions", () => {
 });
 
 describe("createDescriptionProvider", () => {
-  it("returns an LLMDescriptionProvider instance", () => {
+  it("returns an LlmDescriptionProvider instance", () => {
     const provider = createDescriptionProvider(makeConfig());
     assert.ok(provider);
     assert.equal(typeof provider.generateDescription, "function");
@@ -395,7 +395,7 @@ describe("createDescriptionProvider", () => {
   });
 });
 
-describe("LLMDescriptionProvider retry logic", () => {
+describe("LlmDescriptionProvider retry logic", () => {
   it("retries on 404 and succeeds on second attempt", async () => {
     let callCount = 0;
     const { baseUrl, close } = await startMockServer(() => {
@@ -407,7 +407,7 @@ describe("LLMDescriptionProvider retry logic", () => {
     });
 
     try {
-      const provider = new LLMDescriptionProvider(
+      const provider = new LlmDescriptionProvider(
         makeConfig({ baseUrl: `${baseUrl}/api`, retryMax: 2, retryBaseDelayMs: 10 })
       );
       const desc = await provider.generateDescription(makeChunk());
@@ -429,7 +429,7 @@ describe("LLMDescriptionProvider retry logic", () => {
     });
 
     try {
-      const provider = new LLMDescriptionProvider(
+      const provider = new LlmDescriptionProvider(
         makeConfig({ baseUrl: `${baseUrl}/api`, retryMax: 3, retryBaseDelayMs: 10 })
       );
       const desc = await provider.generateDescription(makeChunk());
@@ -448,7 +448,7 @@ describe("LLMDescriptionProvider retry logic", () => {
     });
 
     try {
-      const provider = new LLMDescriptionProvider(
+      const provider = new LlmDescriptionProvider(
         makeConfig({ baseUrl: `${baseUrl}/api`, retryMax: 3, retryBaseDelayMs: 10 })
       );
       await assert.rejects(
@@ -472,7 +472,7 @@ describe("LLMDescriptionProvider retry logic", () => {
     });
 
     try {
-      const provider = new LLMDescriptionProvider(
+      const provider = new LlmDescriptionProvider(
         makeConfig({ baseUrl: `${baseUrl}/api`, retryMax: 3, retryBaseDelayMs: 10 })
       );
       await assert.rejects(
@@ -496,7 +496,7 @@ describe("LLMDescriptionProvider retry logic", () => {
     });
 
     try {
-      const provider = new LLMDescriptionProvider(
+      const provider = new LlmDescriptionProvider(
         makeConfig({ baseUrl: `${baseUrl}/api`, retryMax: 2, retryBaseDelayMs: 10 })
       );
       await assert.rejects(
@@ -523,7 +523,7 @@ describe("LLMDescriptionProvider retry logic", () => {
     });
 
     try {
-      const provider = new LLMDescriptionProvider(
+      const provider = new LlmDescriptionProvider(
         makeConfig({ baseUrl: `${baseUrl}/api`, retryMax: 2, retryBaseDelayMs: 10 })
       );
       const desc = await provider.generateDescription(makeChunk());

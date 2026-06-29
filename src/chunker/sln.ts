@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Project and global section based chunker for Visual Studio solution files.
+ */
 import type { Chunker, Chunk } from "../core/interfaces.js";
 import { uuid } from "./uuid.js";
 

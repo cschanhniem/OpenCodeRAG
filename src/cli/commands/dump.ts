@@ -1,4 +1,7 @@
 /**
+ * @fileoverview Dump command for paginated output of all indexed chunks from the vector store.
+ */
+/**
  * `dump` command — dumps all indexed chunks with pagination support.
  */
 

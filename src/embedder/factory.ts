@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Factory for creating embedding providers and utility for batch-embedding texts with concurrency control.
+ */
 import type { EmbeddingProvider } from "../core/interfaces.js";
 import type { RagConfig } from "../core/config.js";
 import { isOpenAiCompatible } from "../core/provider-defaults.js";

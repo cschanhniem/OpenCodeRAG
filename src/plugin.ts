@@ -1,3 +1,9 @@
+/**
+ * @fileoverview OpenCode plugin integration for OpenCodeRAG. Registers semantic search,
+ * file skeleton, find usages, and describe image tools; hooks into chat messages for
+ * automatic context injection and documentation mode.
+ */
+
 import type { Plugin, PluginInput, Hooks, ToolDefinition } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin/tool";
 import type { EmbeddingProvider, DescriptionProvider, KeywordIndex, VectorStore, SearchResult } from "./core/interfaces.js";

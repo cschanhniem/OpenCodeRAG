@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Tree-sitter based TOML chunker splitting by tables, table arrays, and top-level pairs.
+ */
 import { TreeSitterChunker } from "./base.js";
 
 /**

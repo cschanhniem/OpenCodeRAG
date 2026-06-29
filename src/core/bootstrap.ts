@@ -1,3 +1,8 @@
+/**
+ * @fileoverview Bootstraps the full RAG pipeline context: loads config, resolves API keys,
+ * creates embedder, vector store, keyword index, and description provider.
+ */
+
 import path from "node:path";
 import { loadConfig, findConfigFile, DEFAULT_CONFIG, type RagConfig } from "./config.js";
 import { resolveApiKey } from "./resolve-api-key.js";

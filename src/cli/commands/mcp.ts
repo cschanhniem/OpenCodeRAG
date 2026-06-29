@@ -1,4 +1,7 @@
 /**
+ * @fileoverview MCP command to start a Model Context Protocol server for semantic code retrieval via stdio transport.
+ */
+/**
  * `mcp` command — starts an MCP server for semantic code retrieval via stdio transport.
  */
 

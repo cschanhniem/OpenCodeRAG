@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Image file chunking via vision provider integration (Ollama, OpenAI, Anthropic, Gemini).
+ */
 import type { Chunker, Chunk } from "../core/interfaces.js";
 import type { ImageDescriptionConfig, ProxyConfig } from "../core/config.js";
 import { postJson } from "../embedder/http.js";
@@ -54,9 +57,9 @@ export interface ImageVisionProvider {
  * Supports retries with exponential backoff for retryable HTTP status codes.
  */
 class OllamaImageVisionProvider implements ImageVisionProvider {
-  private baseUrl: string;
-  private model: string;
-  private timeoutMs: number;
+  private readonly baseUrl: string;
+  private readonly model: string;
+  private readonly timeoutMs: number;
   private think: boolean;
   private numCtx?: number;
   private proxy?: ProxyConfig;
@@ -130,10 +133,10 @@ class OllamaImageVisionProvider implements ImageVisionProvider {
  * Supports retries with exponential backoff for retryable HTTP status codes.
  */
 class OpenAIImageVisionProvider implements ImageVisionProvider {
-  private baseUrl: string;
-  private model: string;
-  private apiKey: string;
-  private timeoutMs: number;
+  private readonly baseUrl: string;
+  private readonly model: string;
+  private readonly apiKey: string;
+  private readonly timeoutMs: number;
   private proxy?: ProxyConfig;
 
   constructor(config: ImageDescriptionConfig) {
@@ -210,10 +213,10 @@ class OpenAIImageVisionProvider implements ImageVisionProvider {
  * Requires an API key. Supports retries with exponential backoff.
  */
 class AnthropicImageVisionProvider implements ImageVisionProvider {
-  private baseUrl: string;
-  private model: string;
-  private apiKey: string;
-  private timeoutMs: number;
+  private readonly baseUrl: string;
+  private readonly model: string;
+  private readonly apiKey: string;
+  private readonly timeoutMs: number;
   private proxy?: ProxyConfig;
 
   constructor(config: ImageDescriptionConfig) {
@@ -293,10 +296,10 @@ class AnthropicImageVisionProvider implements ImageVisionProvider {
  * Supports retries with exponential backoff for retryable HTTP status codes.
  */
 class GeminiImageVisionProvider implements ImageVisionProvider {
-  private baseUrl: string;
-  private model: string;
-  private apiKey?: string;
-  private timeoutMs: number;
+  private readonly baseUrl: string;
+  private readonly model: string;
+  private readonly apiKey?: string;
+  private readonly timeoutMs: number;
   private proxy?: ProxyConfig;
 
   constructor(config: ImageDescriptionConfig) {

@@ -1,3 +1,8 @@
+/**
+ * @fileoverview OpenCode TUI (Terminal UI) plugin: renders a sidebar with RAG status,
+ * settings dialog for editing config values, and model selection picker.
+ */
+
 import type { TuiPluginModule, TuiDialogSelectProps, TuiDialogPromptProps, TuiToast, TuiState } from "@opencode-ai/plugin/tui";
 import type { JSX } from "@opentui/solid";
 import { createElement, insert, setProp } from "@opentui/solid";
@@ -367,7 +372,6 @@ function saveConfigValue(configPath: string, path: string[], value: unknown): vo
     target[path[path.length - 1]!] = value;
     writeFileSync(configPath, JSON.stringify(data, null, 2), "utf-8");
   } catch {
-    // silently ignore write errors
   }
 }
 

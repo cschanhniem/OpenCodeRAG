@@ -1,3 +1,8 @@
+/**
+ * @fileoverview Configuration types and defaults for OpenCodeRAG. Defines RagConfig,
+ * all sub-config interfaces, DEFAULT_CONFIG, validateConfig, and loadConfig.
+ */
+
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { env } from "node:process";

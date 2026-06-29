@@ -1,3 +1,8 @@
+/**
+ * @fileoverview High-level public API for OpenCodeRAG: search, indexWorkspace, getContext,
+ * scanWorkspace, and related types.
+ */
+
 import { resolveRagContext } from "./core/bootstrap.js";
 import { retrieve } from "./retriever/retriever.js";
 import type { RetrieveOptions } from "./retriever/retriever.js";

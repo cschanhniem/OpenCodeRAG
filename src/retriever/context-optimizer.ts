@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Post-retrieval optimization: adjacent merging, similarity dedup, and file-level diversity capping.
+ */
 import { tokenize } from "./keyword-index.js";
 import type { Chunk, OptimizedSearchResult, SearchResult } from "../core/interfaces.js";
 
@@ -23,7 +26,15 @@ export interface ContextOptimizationOptions {
   config: ContextOptimizationConfig;
 }
 
-/** Default context optimization configuration values. */
+/**
+ * Default context optimization configuration values.
+ *
+ * - enabled: true
+ * - maxPerFile: 3
+ * - mergeAdjacent: true
+ * - adjacentGapThreshold: 5
+ * - similarityThreshold: 0.8
+ */
 export const DEFAULT_CONTEXT_OPTIMIZATION: ContextOptimizationConfig = {
   enabled: true,
   maxPerFile: 3,
@@ -167,12 +178,12 @@ function dedupeSimilar(
  * and file-level diversity capping. The optimization is O(N log N) with no
  * additional LLM calls.
  *
- * Pipeline: merge adjacent → dedup similar (same-file) → file-level cap →
- * backfill from reserve → sort + slice to topK.
+ * Pipeline: merge adjacent -> dedup similar (same-file) -> file-level cap ->
+ * backfill from reserve -> sort + slice to topK.
  *
- * @param results - Raw search results from retrieve().
- * @param options - Optimization parameters including target topK and config.
- * @returns Optimized results wrapped as OptimizedSearchResult[].
+ * @param results - Raw search results from retrieve()
+ * @param options - Optimization parameters including target topK and config
+ * @returns Optimized results wrapped as OptimizedSearchResult[]
  */
 export function optimizeContext(
   results: SearchResult[],

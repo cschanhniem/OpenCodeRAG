@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Persistent LanceDB-backed vector store with corruption recovery and atomic swap support.
+ */
 import * as lancedb from "@lancedb/lancedb";
 import type { Connection, Table, Version } from "@lancedb/lancedb";
 import fs from "node:fs/promises";
@@ -40,7 +43,6 @@ export async function swapStoreDirectories(tempPath: string, realPath: string): 
   } catch {
     // realPath may not exist yet (first-time build)
   }
-  // Move temp → real
   try {
     await fs.rename(tempPath, realPath);
   } catch (err) {
@@ -69,9 +71,9 @@ interface ChunkRow {
  * and chunk metadata queries. Supports automatic corruption recovery by falling
  * back to prior table versions or dropping and rebuilding the table.
  */
-export class LanceDBStore implements VectorStore {
+export class LanceDbStore implements VectorStore {
   private dbPath: string;
-  private vectorDimension: number;
+  private readonly vectorDimension: number;
   private db: Connection | null = null;
   private table: Table | null = null;
   private tableInit: Promise<Table> | null = null;
@@ -141,7 +143,6 @@ export class LanceDBStore implements VectorStore {
           }
         }
       } catch {
-        // best-effort row count
       }
       await db.dropTable(TABLE_NAME).catch(() => {});
       this.table = null;

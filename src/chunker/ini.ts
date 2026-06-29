@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Tree-sitter based INI chunker splitting by section headers.
+ */
 import { TreeSitterChunker } from "./base.js";
 
 /**

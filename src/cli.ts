@@ -1,9 +1,6 @@
 /**
- * Backwards-compatibility shim — re-exports the public API from the new
- * `cli/` module tree so existing tests and external consumers that import
- * from `../cli.js` continue to work unchanged.
- *
- * The actual CLI entry point is now `cli/index.ts` (compiled to `dist/cli/index.js`).
+ * @fileoverview Backwards-compatibility shim re-exporting the CLI runner from
+ * cli/index.ts so existing imports from ../cli.js continue to work.
  */
 
 /** Main CLI runner and auto-launch detection. */

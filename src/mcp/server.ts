@@ -1,3 +1,6 @@
+/**
+ * @fileoverview MCP server setup exposing search_semantic, get_file_skeleton, find_usages, and describe_image tools.
+ */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod/v4";

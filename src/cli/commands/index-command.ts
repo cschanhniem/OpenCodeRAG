@@ -1,4 +1,7 @@
 /**
+ * @fileoverview Index command for incremental or full workspace file indexing into the vector database with watch mode support.
+ */
+/**
  * `index` command — indexes workspace files into the vector database.
  *
  * Supports incremental indexing (only changed files), full rebuilds (`--force`),
@@ -109,7 +112,7 @@ export function registerIndexCommand(program: Command): void {
             keywordIndex,
             descriptionProvider,
             progress,
-            force: Boolean(options.force && !watchTriggered),
+            force: !!(options.force && !watchTriggered),
             abortSignal,
             dimension,
             logger: {

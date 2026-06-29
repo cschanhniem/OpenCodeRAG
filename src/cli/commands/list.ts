@@ -1,4 +1,7 @@
 /**
+ * @fileoverview List command displaying all indexed files with their chunk counts and languages.
+ */
+/**
  * `list` command — displays all indexed files with their chunk counts.
  */
 

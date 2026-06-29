@@ -1,3 +1,7 @@
+/**
+ * @fileoverview Walks the workspace directory tree and dispatches file reading and content extraction for indexing.
+ */
+
 import fs from "node:fs/promises";
 import path from "node:path";
 import pLimit from "p-limit";
@@ -14,6 +18,7 @@ import * as docExtractor from "./doc.js";
 import * as excelExtractor from "./excel.js";
 import * as imageExtractor from "./image.js";
 
+/** Metadata and extracted content for a single workspace file discovered during scanning. */
 export interface WorkspaceFile {
   filePath: string;
   normalizedPath: string;
@@ -33,6 +38,10 @@ interface Logger {
   debug(message: string): void;
 }
 
+/**
+ * Recursively walk a directory tree and collect paths matching the given extension set,
+ * respecting exclusion lists and configurable limits for max directories and results.
+ */
 export async function walkFiles(
   dir: string,
   extensions: Set<string>,
@@ -116,6 +125,11 @@ async function dispatchExtraction(
   }
 }
 
+/**
+ * Scan the workspace directory for indexable files, reading content or dispatching
+ * binary extraction (PDF, DOCX, DOC, Excel, images). Respects the file manifest
+ * for incremental re-indexing by skipping unchanged files.
+ */
 export async function scanWorkspaceFiles(
   cwd: string,
   config: RagConfig,

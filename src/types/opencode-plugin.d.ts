@@ -1,3 +1,6 @@
+/**
+ * @fileoverview TypeScript type declarations for the OpenCode plugin API (hooks, plugin factory, and lifecycle interfaces).
+ */
 declare module "@opencode-ai/plugin" {
   import type { Event, createOpencodeClient, Project, Model, Provider, Permission, UserMessage, Message, Part, Config as SDKConfig } from "@opencode-ai/sdk";
   import type { Provider as ProviderV2, Model as ModelV2, Auth } from "@opencode-ai/sdk/v2";

@@ -1,3 +1,8 @@
+/**
+ * @fileoverview Core type definitions for the OpenCodeRAG pipeline: Chunk, SearchResult,
+ * Chunker, EmbeddingProvider, VectorStore, KeywordIndex, and related interfaces.
+ */
+
 /** A semantic fragment of a file produced by a {@link Chunker}. */
 export interface Chunk {
   id: string;

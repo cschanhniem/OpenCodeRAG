@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Placeholder sidebar component for the OpenCodeRAG TUI plugin.
+ */
 import type { TuiTheme } from "@opencode-ai/plugin/tui";
 import type { JSX } from "@opentui/solid";
 

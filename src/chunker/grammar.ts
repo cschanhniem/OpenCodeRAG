@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Tree-sitter WASM grammar loading, caching, and AST walking with doc comment extraction.
+ */
 import { Parser, Language, Node } from "web-tree-sitter";
 import { readFileSync, existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";

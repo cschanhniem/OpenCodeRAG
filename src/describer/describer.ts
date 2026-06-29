@@ -1,3 +1,6 @@
+/**
+ * @fileoverview OpenAI-compatible LLM description provider for generating natural-language descriptions of code chunks.
+ */
 import type { Chunk, DescriptionProvider } from "../core/interfaces.js";
 import type { DescriptionConfig } from "../core/config.js";
 import { postJson } from "../embedder/http.js";
@@ -23,7 +26,7 @@ const RETRYABLE_STATUSES = new Set([404, 408, 429, 500, 502, 503, 504]);
  * Supports Bearer-token authentication, optional proxy, and retry with exponential backoff.
  * For Ollama, uses the `/api/chat` endpoint and sends additional options like `num_ctx` and `think`.
  */
-export class LLMDescriptionProvider implements DescriptionProvider {
+export class LlmDescriptionProvider implements DescriptionProvider {
   private readonly config: DescriptionConfig;
 
   /**

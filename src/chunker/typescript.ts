@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Tree-sitter based TypeScript/TSX chunker splitting by function, method, interface, and type declarations.
+ */
 import { TreeSitterChunker } from "./base.js";
 
 /**

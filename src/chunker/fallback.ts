@@ -1,8 +1,12 @@
+/**
+ * @fileoverview Fallback line-based text chunker for unsupported file types.
+ */
 import type { Chunker, Chunk } from "../core/interfaces.js";
 import { uuid } from "./uuid.js";
 
 const DEFAULT_MAX_LINES = 100;
 
+/** Line-based text chunker for unsupported file types. */
 export class FallbackChunker implements Chunker {
   readonly language = "text";
 

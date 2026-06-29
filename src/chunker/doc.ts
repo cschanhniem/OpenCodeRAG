@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Text extraction and paragraph-based chunker for legacy Word (.doc) documents using word-extractor.
+ */
 import type { Chunker, Chunk } from "../core/interfaces.js";
 import { uuid } from "./uuid.js";
 

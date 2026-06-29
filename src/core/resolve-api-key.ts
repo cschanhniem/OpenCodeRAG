@@ -1,3 +1,8 @@
+/**
+ * @fileoverview Auto-resolves API keys for embedding, description, and image description providers
+ * from config, environment variables, or OpenCode provider configuration.
+ */
+
 import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import type { RagConfig } from "./config.js";

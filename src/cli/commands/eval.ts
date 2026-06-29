@@ -1,4 +1,7 @@
 /**
+ * @fileoverview Eval commands for listing, analyzing, and comparing evaluation sessions with token usage breakdowns.
+ */
+/**
  * `eval:sessions`, `eval:analyze`, `eval:compare` commands —
  * evaluation session listing, per-session token analysis, and cross-session comparison.
  */

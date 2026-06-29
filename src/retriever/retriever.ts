@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Performs hybrid vector-keyword retrieval with configurable scoring and explanation.
+ */
 import type { EmbeddingProvider, KeywordIndex, VectorStore, SearchResult, SearchExplanation } from "../core/interfaces.js";
 
 /** Multiplier applied to topK when fetching raw results from vector/keyword stores.
@@ -5,6 +8,7 @@ import type { EmbeddingProvider, KeywordIndex, VectorStore, SearchResult, Search
  *  we slice back to the requested topK. */
 const FETCH_OVERFETCH_FACTOR = 3;
 
+/** Options controlling the retrieval behavior. */
 export interface RetrieveOptions {
   topK?: number;
   minScore?: number;
@@ -14,6 +18,19 @@ export interface RetrieveOptions {
   explain?: boolean;
 }
 
+/**
+ * Perform hybrid vector-keyword retrieval with configurable scoring.
+ *
+ * Embeds the query via the provided embedder, searches the vector store, and optionally
+ * fuses results with keyword index hits. Results are scored, filtered by minScore, and
+ * sliced to topK.
+ *
+ * @param query - The search query string
+ * @param embedder - Embedding provider for vectorizing the query
+ * @param store - Vector store to search
+ * @param options - Optional retrieval parameters (topK, minScore, keywordIndex, keywordWeight, queryPrefix, explain)
+ * @returns Array of search results sorted by descending score
+ */
 export async function retrieve(
   query: string,
   embedder: EmbeddingProvider,

@@ -1,4 +1,7 @@
 /**
+ * @fileoverview CLI entry point creating the Commander program, wiring all command modules, and handling auto-run detection.
+ */
+/**
  * CLI entry point — creates the Commander program, wires all command modules,
  * and handles auto-run detection for symlinked binaries.
  *

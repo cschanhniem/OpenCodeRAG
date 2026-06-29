@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Anthropic Messages API description provider for generating natural-language descriptions of code chunks.
+ */
 import type { Chunk, DescriptionProvider } from "../core/interfaces.js";
 import type { DescriptionConfig } from "../core/config.js";
 import { postJson } from "../embedder/http.js";

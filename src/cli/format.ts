@@ -1,4 +1,7 @@
 /**
+ * @fileoverview CLI formatting helpers, color palette, logging utilities, context resolution, and result formatting.
+ */
+/**
  * CLI formatting helpers — color palette, logging utilities, context resolution,
  * and result formatting functions shared across all CLI command modules.
  */

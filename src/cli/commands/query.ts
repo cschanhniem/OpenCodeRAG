@@ -1,4 +1,7 @@
 /**
+ * @fileoverview Query command for hybrid vector and keyword search against the indexed codebase.
+ */
+/**
  * `query` command — searches the indexed codebase with semantic and keyword retrieval.
  */
 

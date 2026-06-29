@@ -1,3 +1,8 @@
+/**
+ * @fileoverview Live-configuration overrides that take precedence over the on-disk config file.
+ * Supports per-key overrides stored as JSON, loaded at runtime.
+ */
+
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { RagConfig, AutoInjectContentType } from "./config.js";

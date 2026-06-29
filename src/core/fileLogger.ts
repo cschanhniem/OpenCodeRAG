@@ -1,3 +1,8 @@
+/**
+ * @fileoverview Structured file logging with severity levels, scoped entries, and error formatting.
+ * Silently ignores writes when logging is disabled.
+ */
+
 import { appendFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 

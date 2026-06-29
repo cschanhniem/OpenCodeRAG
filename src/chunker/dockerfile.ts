@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Tree-sitter based Dockerfile chunker splitting by each build instruction type.
+ */
 import { TreeSitterChunker } from "./base.js";
 
 /**

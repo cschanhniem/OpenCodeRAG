@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Tracks and summarizes index run statistics and health status.
+ */
 /** Aggregate statistics collected during a single index pass. */
 export interface IndexRunStats {
   /** Total number of files discovered in the workspace. */

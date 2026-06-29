@@ -1,3 +1,9 @@
+/**
+ * @fileoverview Background file watcher (chokidar-based) that auto-re-indexes
+ * the workspace when files change. Detects vector store corruption and performs
+ * automatic rebuild.
+ */
+
 import chokidar from "chokidar";
 import path from "node:path";
 import { writeFileSync, unlinkSync, existsSync } from "node:fs";

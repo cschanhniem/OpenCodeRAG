@@ -1,4 +1,7 @@
 /**
+ * @fileoverview Token counting with tiktoken BPE (cl100k_base) and character-based heuristic fallback.
+ */
+/**
  * Token counting with tiktoken BPE + fallback heuristic.
  *
  * Uses js-tiktoken (cl100k_base encoding) for BPE-accurate counts.

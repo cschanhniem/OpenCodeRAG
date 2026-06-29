@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Tree-sitter based Java chunker splitting by method, interface, and enum declarations.
+ */
 import { TreeSitterChunker } from "./base.js";
 
 /**

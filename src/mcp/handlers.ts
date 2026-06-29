@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Handler implementations for all MCP tools: semantic search, file skeleton, symbol usage lookup, and image description.
+ */
 import type { EmbeddingProvider, VectorStore, KeywordIndex, SearchResult } from "../core/interfaces.js";
 import type { RagConfig } from "../core/config.js";
 import { SUPPORTED_IMAGE_EXTENSIONS, type ImageVisionProvider } from "../chunker/image.js";

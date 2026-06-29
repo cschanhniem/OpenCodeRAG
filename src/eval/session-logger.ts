@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Creates a SessionLogger that captures OpenCode plugin events and RAG context as JSONL.
+ */
 import type { SessionEvent, TokenUsage } from "./types.js";
 import { appendSessionEvent } from "./storage.js";
 

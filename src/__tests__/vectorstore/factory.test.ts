@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { createVectorStore } from "../../vectorstore/factory.js";
-import { LanceDBStore } from "../../vectorstore/lancedb.js";
+import { LanceDbStore } from "../../vectorstore/lancedb.js";
 import { InMemoryVectorStore } from "../../vectorstore/memory.js";
 import { DEFAULT_CONFIG, type RagConfig } from "../../core/config.js";
 
@@ -16,14 +16,14 @@ function makeConfig(overrides?: Partial<RagConfig["vectorStore"]>): RagConfig {
 }
 
 describe("createVectorStore", () => {
-  it("returns LanceDBStore when provider is 'lancedb'", () => {
+  it("returns LanceDbStore when provider is 'lancedb'", () => {
     const store = createVectorStore(makeConfig({ provider: "lancedb" }), "memory://", 384);
-    assert.ok(store instanceof LanceDBStore);
+    assert.ok(store instanceof LanceDbStore);
   });
 
-  it("returns LanceDBStore when provider is omitted (defaults to lancedb)", () => {
+  it("returns LanceDbStore when provider is omitted (defaults to lancedb)", () => {
     const store = createVectorStore(makeConfig({}), "memory://", 384);
-    assert.ok(store instanceof LanceDBStore);
+    assert.ok(store instanceof LanceDbStore);
   });
 
   it("returns InMemoryVectorStore when provider is 'memory'", () => {

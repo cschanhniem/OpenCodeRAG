@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Tree-sitter based Kotlin chunker splitting by function, object, and property declarations.
+ */
 import { TreeSitterChunker } from "./base.js";
 
 /**

@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Tree-sitter based XML chunker splitting by top-level XML elements.
+ */
 import { TreeSitterChunker } from "./base.js";
 
 /**

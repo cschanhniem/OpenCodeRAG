@@ -1,3 +1,8 @@
+/**
+ * @fileoverview Persists a flag across plugin restarts indicating that RAG context
+ * should be injected on the next chat message (chunks or file paths).
+ */
+
 import { writeFileSync, readFileSync, unlinkSync, existsSync } from "node:fs";
 import { join } from "node:path";
 

@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Tree-sitter based JSON chunker splitting by each top-level key-value pair.
+ */
 import { TreeSitterChunker } from "./base.js";
 
 /**

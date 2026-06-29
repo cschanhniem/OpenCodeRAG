@@ -1,4 +1,7 @@
 /**
+ * @fileoverview Package and file-system utility helpers used by CLI command modules.
+ */
+/**
  * Package and file-system utility helpers used by CLI command modules.
  */
 

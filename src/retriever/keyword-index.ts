@@ -1,3 +1,6 @@
+/**
+ * @fileoverview In-memory inverted keyword index with stemming, tokenization, and optional serialization.
+ */
 import type { Chunk, SearchResult } from "../core/interfaces.js";
 
 const INDEX_VERSION = 2;
@@ -35,6 +38,12 @@ function stem(word: string): string {
   return word;
 }
 
+/**
+ * Tokenize text into normalized tokens including stems, camelCase parts, and snake_case parts.
+ *
+ * @param text - The text to tokenize
+ * @returns Array of unique normalized tokens
+ */
 export function tokenize(text: string): string[] {
   const tokens = new Set<string>();
 
@@ -73,6 +82,11 @@ function indexPathFor(storePath: string): string {
   return storePath.replace(/\\/g, "/").replace(/\/+$/, "") + "/keyword-index.json";
 }
 
+/**
+ * In-memory inverted keyword index with stemming, TF-IDF scoring, and optional JSON serialization.
+ *
+ * @param storePath - Optional path to the vector store directory used for loading/saving the serialized index
+ */
 export class KeywordIndex {
   private invertedIndex = new Map<string, Map<string, number>>();
   private chunkMap = new Map<string, Chunk>();

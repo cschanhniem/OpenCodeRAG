@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Tree-sitter based Markdown chunker splitting by section headings.
+ */
 import { TreeSitterChunker } from "./base.js";
 
 /**

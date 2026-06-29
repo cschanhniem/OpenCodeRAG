@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Standalone MCP server CLI entry point with SIGINT/SIGTERM graceful shutdown handling.
+ */
 import process from "node:process";
 import { createMcpServer } from "./server.js";
 

@@ -1,3 +1,8 @@
+/**
+ * @fileoverview Version check and self-update functionality. Checks GitHub releases
+ * API for new versions and applies updates via git pull + npm build.
+ */
+
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";

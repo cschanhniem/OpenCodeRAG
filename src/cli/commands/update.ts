@@ -1,4 +1,7 @@
 /**
+ * @fileoverview Update command for checking and installing OpenCodeRAG updates from GitHub.
+ */
+/**
  * `update` command — checks for and installs OpenCodeRAG updates from GitHub.
  */
 
