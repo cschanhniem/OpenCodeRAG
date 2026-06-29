@@ -434,6 +434,7 @@ export function generateDefaultConfigJson(): string {
         think: DEFAULT_CONFIG.description!.think,
         numCtx: DEFAULT_CONFIG.description!.numCtx,
         timeoutMs: DEFAULT_CONFIG.description!.timeoutMs,
+        maxContentChars: DEFAULT_CONFIG.description!.maxContentChars,
       },
       mcp: {
         enabled: DEFAULT_CONFIG.mcp!.enabled,
