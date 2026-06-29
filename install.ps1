@@ -199,13 +199,14 @@ if ($runtimeReady) {
         ok "node_modules"
     }
 
-    # Install from .tgz — resolves ALL dependencies (commander, picocolors, canvas,
-    # sharp, lancedb, etc.) with prebuilt binaries via npm. This is the ONE install.
+    # Install from .tgz — resolves all required dependencies (commander, picocolors,
+    # sharp, lancedb, etc.) with prebuilt binaries via npm. Optional native deps
+    # (canvas) are skipped via --ignore-optional since it requires GTK on Windows.
     Push-Location $RUNTIME_DIR
     if (-not (Test-Path "package.json")) {
         @{private = $true; type = "module"} | ConvertTo-Json | Set-Content "package.json"
     }
-    $installOutput = cmd /c "npm install $tgzName --no-package-lock --legacy-peer-deps 2>&1"
+    $installOutput = cmd /c "npm install $tgzName --no-package-lock --legacy-peer-deps --ignore-optional 2>&1"
     if ($LASTEXITCODE -ne 0) { Pop-Location; Pop-Location; die "npm install from .tgz failed: $installOutput" }
 
     # Install @opencode-ai/plugin (peer dep, pure JS, always succeeds)
