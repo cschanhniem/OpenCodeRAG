@@ -52,6 +52,16 @@ export interface RunIndexPassOptions {
   abortSignal?: AbortSignal;
   /** Embedding vector dimension — needed when creating a temporary store for atomic rebuilds. */
   dimension?: number;
+  /**
+   * Caller-provided list of changed file paths (absolute). When set, only these
+   * files are scanned — full directory walk is skipped.
+   */
+  filterPaths?: string[];
+  /**
+   * Caller-provided list of deleted file paths (absolute). When set, these
+   * entries are removed from the index without comparing against the scanned set.
+   */
+  deletedPaths?: string[];
 }
 
 /** Minimal logger interface for indexing pipeline diagnostics. */

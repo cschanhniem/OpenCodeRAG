@@ -510,6 +510,16 @@ function buildSettingCategories(
           type: "number",
           currentValue: (aiRo.debounceMs as number) ?? (aiCfg.debounceMs as number) ?? 2000,
         },
+        {
+          path: ["openCode", "autoIndex", "watcher"],
+          label: "Watcher backend",
+          type: "string",
+          options: [
+            { title: "chokidar (FS events)", value: "chokidar", description: "Detect file changes via filesystem events (default)" },
+            { title: "git (poll)", value: "git", description: "Poll `git diff-index HEAD` for working-tree changes" },
+          ],
+          currentValue: (aiRo.watcher as string) ?? (aiCfg.watcher as string) ?? "chokidar",
+        },
       ],
     },
     {

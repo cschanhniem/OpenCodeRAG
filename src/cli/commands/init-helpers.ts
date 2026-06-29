@@ -409,6 +409,7 @@ export function generateDefaultConfigJson(): string {
           enabled: DEFAULT_CONFIG.openCode.autoIndex!.enabled,
           debounceMs: DEFAULT_CONFIG.openCode.autoIndex!.debounceMs,
           intervalMs: DEFAULT_CONFIG.openCode.autoIndex!.intervalMs,
+          watcher: DEFAULT_CONFIG.openCode.autoIndex!.watcher,
         },
         autoInject: {
           enabled: DEFAULT_CONFIG.openCode.autoInject!.enabled,

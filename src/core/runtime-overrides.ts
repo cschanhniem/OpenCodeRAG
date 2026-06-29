@@ -22,6 +22,7 @@ export interface RuntimeOverrides {
     autoIndex?: {
       enabled?: boolean;
       debounceMs?: number;
+      watcher?: string;
     };
     autoInject?: {
       enabled?: boolean;
@@ -112,9 +113,10 @@ export function applyRuntimeOverrides(
 
   if (overrides.openCode) {
     if (overrides.openCode.autoIndex) {
-      if (!merged.openCode.autoIndex) merged.openCode.autoIndex = { enabled: true, debounceMs: 2000, intervalMs: 300000 };
+      if (!merged.openCode.autoIndex) merged.openCode.autoIndex = { enabled: true, debounceMs: 2000, intervalMs: 300000, watcher: "chokidar" };
       if (overrides.openCode.autoIndex.enabled !== undefined) merged.openCode.autoIndex.enabled = overrides.openCode.autoIndex.enabled;
       if (overrides.openCode.autoIndex.debounceMs !== undefined) merged.openCode.autoIndex.debounceMs = overrides.openCode.autoIndex.debounceMs;
+      if (overrides.openCode.autoIndex.watcher !== undefined) merged.openCode.autoIndex.watcher = overrides.openCode.autoIndex.watcher as "chokidar" | "git";
     }
     if (overrides.openCode.autoInject) {
       if (!merged.openCode.autoInject) merged.openCode.autoInject = { enabled: true, minScore: 0.75, maxChunks: 10, maxTokens: 3000, contentType: "file_paths" };

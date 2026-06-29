@@ -34,8 +34,10 @@ export interface AutoIndexConfig {
   enabled: boolean;
   /** Debounce delay in ms after a file change before triggering an index pass. */
   debounceMs: number;
-  /** Periodic full index interval in ms. */
+  /** Periodic full index interval in ms (only used by git backend). */
   intervalMs: number;
+  /** Change-detection backend: "chokidar" (FS events, default) or "git" (poll-based). */
+  watcher?: WatcherBackend;
 }
 
 /** Behavior when a read tool query returns no results. */
@@ -43,6 +45,9 @@ export type ReadNoResultsBehavior = "hint" | "empty" | "error";
 
 /** Format for auto-injected context content. */
 export type AutoInjectContentType = "chunks" | "file_paths";
+
+/** Supported file-change watcher backends. */
+export type WatcherBackend = "chokidar" | "git";
 
 /** Configuration for automatically injecting relevant context into OpenCode chat messages. */
 export interface AutoInjectConfig {
@@ -425,6 +430,7 @@ export const DEFAULT_CONFIG: RagConfig = {
       enabled: false,
       debounceMs: 2000,
       intervalMs: 300000,
+      watcher: "chokidar",
     },
     autoInject: {
       enabled: true,
@@ -589,6 +595,10 @@ export function validateConfig(config: RagConfig): ConfigValidationResult {
 
   if (config.openCode.maxContextChunks <= 0) {
     warnings.push("openCode.maxContextChunks must be > 0");
+  }
+
+  if (config.openCode.autoIndex?.watcher && !["chokidar", "git"].includes(config.openCode.autoIndex.watcher)) {
+    warnings.push(`openCode.autoIndex.watcher "${config.openCode.autoIndex.watcher}" — expected "chokidar" or "git"`);
   }
 
   if (config.retrieval.contextOptimization) {

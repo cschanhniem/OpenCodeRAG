@@ -24,7 +24,7 @@ import {
   createDescribeImageTool,
 } from "./opencode/tools.js";
 import { resolveApiKey } from "./core/resolve-api-key.js";
-import { consumePendingRagInjection } from "./core/rag-injection-flag.js";
+import { consumePendingRagInjection, peekPendingRagInjection } from "./core/rag-injection-flag.js";
 import { loadDocProgress, markSubdirectoryDocumented } from "./core/doc-progress.js";
 import { loadManifest } from "./core/manifest.js";
 import { createSessionLogger, type SessionLogger } from "./eval/session-logger.js";

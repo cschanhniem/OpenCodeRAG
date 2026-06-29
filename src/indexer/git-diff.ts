@@ -99,3 +99,48 @@ export function getUntrackedFiles(cwd: string): string[] {
     return [];
   }
 }
+
+/** Result of comparing the working tree against HEAD. */
+export interface WorkingTreeChanges {
+  /** Modified/renamed tracked files (unstaged + staged but not committed). */
+  changedFiles: string[];
+  /** Deleted tracked files (relative to repo root). */
+  deletedFiles: string[];
+  /** Untracked files respecting .gitignore (relative to repo root). */
+  untrackedFiles: string[];
+}
+
+/**
+ * Detect uncommitted working-tree changes by comparing against HEAD.
+ * Uses `git diff-index` for tracked file modifications, `git diff --diff-filter=D`
+ * for deleted files, and `git ls-files --others` for untracked files.
+ *
+ * @param cwd - A path inside the repository.
+ * @returns Working-tree changes, or `null` if not a git repo.
+ */
+export function getWorkingTreeChanges(cwd: string): WorkingTreeChanges | null {
+  try {
+    const modifiedRaw = execSync(
+      "git diff-index --name-only -M HEAD",
+      { cwd, encoding: "utf-8", timeout: 10000, stdio: ["ignore", "pipe", "ignore"] },
+    ).trim();
+
+    const deletedRaw = execSync(
+      "git diff --name-only --diff-filter=D HEAD",
+      { cwd, encoding: "utf-8", timeout: 10000, stdio: ["ignore", "pipe", "ignore"] },
+    ).trim();
+
+    const untrackedRaw = execSync(
+      "git ls-files --others --exclude-standard",
+      { cwd, encoding: "utf-8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"] },
+    ).trim();
+
+    const changedFiles = modifiedRaw.length > 0 ? modifiedRaw.split("\n") : [];
+    const deletedFiles = deletedRaw.length > 0 ? deletedRaw.split("\n") : [];
+    const untrackedFiles = untrackedRaw.length > 0 ? untrackedRaw.split("\n") : [];
+
+    return { changedFiles, deletedFiles, untrackedFiles };
+  } catch {
+    return null;
+  }
+}

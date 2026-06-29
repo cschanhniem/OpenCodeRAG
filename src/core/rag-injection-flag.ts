@@ -16,6 +16,17 @@ export function setPendingRagInjection(storePath: string, type: RagInjectionType
   writeFileSync(join(storePath, FLAG_FILE), type, "utf-8");
 }
 
+/** Check if a pending injection flag exists without consuming it. */
+export function peekPendingRagInjection(storePath: string): RagInjectionType | undefined {
+  const flagPath = join(storePath, FLAG_FILE);
+  if (!existsSync(flagPath)) return undefined;
+  try {
+    return readFileSync(flagPath, "utf-8") as RagInjectionType;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Read and remove the pending injection flag. Returns the injection type or undefined if none pending. */
 export function consumePendingRagInjection(storePath: string): RagInjectionType | undefined {
   const flagPath = join(storePath, FLAG_FILE);

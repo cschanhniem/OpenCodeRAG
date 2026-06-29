@@ -295,6 +295,45 @@ describe("indexer", () => {
     assert.equal(runs, 2);
   });
 
+  it("accumulates paths across multiple notifyChange calls", async () => {
+    const receivedPaths: string[][] = [];
+    const scheduler = createWatchPassScheduler(
+      async (paths?: string[]) => {
+        receivedPaths.push(paths ?? []);
+      },
+      () => { assert.fail("unexpected error"); },
+      10,
+    );
+
+    scheduler.notifyChange(["a.ts", "b.ts"]);
+    scheduler.notifyChange(["b.ts", "c.ts"]); // b.ts is duplicate
+    await delay(50);
+
+    assert.equal(receivedPaths.length, 1);
+    const paths = receivedPaths[0]!.sort();
+    assert.deepStrictEqual(paths, ["a.ts", "b.ts", "c.ts"]);
+
+    scheduler.close();
+  });
+
+  it("accumulates paths and passes undefined when no paths given", async () => {
+    const receivedPaths: (string[] | undefined)[] = [];
+    const scheduler = createWatchPassScheduler(
+      async (paths?: string[]) => { receivedPaths.push(paths); },
+      () => { assert.fail("unexpected error"); },
+      10,
+    );
+
+    scheduler.notifyChange(["x.ts"]);
+    scheduler.notifyChange(); // full pass request overrides
+    await delay(50);
+
+    assert.equal(receivedPaths.length, 1);
+    assert.equal(receivedPaths[0], undefined); // full pass = no filter paths
+
+    scheduler.close();
+  });
+
   describe("description provider integration", () => {
     it("generates descriptions and embeds description + content together", async () => {
       await writeFile(path.join(workspaceDir, "src", "a.ts"), "function alpha() { return 1; }\n");

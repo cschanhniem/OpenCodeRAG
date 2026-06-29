@@ -199,6 +199,11 @@ describe("applyRuntimeOverrides", () => {
       assert: (r) => assert.equal(r.openCode.autoIndex?.debounceMs, 5000),
     },
     {
+      label: "autoIndex.watcher",
+      overrides: { openCode: { autoIndex: { watcher: "git" } } },
+      assert: (r) => assert.equal(r.openCode.autoIndex?.watcher, "git"),
+    },
+    {
       label: "autoInject.enabled",
       overrides: { openCode: { autoInject: { enabled: false } } },
       assert: (r) => assert.equal(r.openCode.autoInject?.enabled, false),
