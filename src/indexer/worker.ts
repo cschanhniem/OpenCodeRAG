@@ -370,6 +370,7 @@ export async function processFile(
     embedding: { documentPrefix?: string };
     indexing: { embedBatchSize: number; embedConcurrency?: number };
     chunking?: { nodeTypes?: Record<string, string[]> };
+    description?: { maxContentChars?: number };
   },
   store: VectorStore,
   keywordIndex: KeywordIndex | undefined,
