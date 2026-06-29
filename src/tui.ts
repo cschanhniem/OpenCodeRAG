@@ -982,13 +982,16 @@ const plugin: TuiPluginModule & { id: string } = {
     try {
       const fileListKey = tuiConfig?.fileListKeybinding ?? "ctrl+enter";
       api.keymap.registerLayer({
+        priority: 1000,
         bindings: [{ key: fileListKey, cmd: "opencode-rag:show-file-list" }],
         commands: [
           {
             name: "opencode-rag:show-file-list",
             run: () => {
-              if (flagStorePath) setPendingRagInjection(flagStorePath, "files");
-              api.keymap.dispatchCommand("prompt.submit");
+              if (flagStorePath) {
+                setPendingRagInjection(flagStorePath, "files");
+                setTimeout(() => { api.keymap.dispatchCommand("prompt.submit"); }, 0);
+              }
               return undefined;
             },
           },
@@ -1002,13 +1005,16 @@ const plugin: TuiPluginModule & { id: string } = {
     try {
       const chunksKey = tuiConfig?.chunksKeybinding ?? "ctrl+alt+enter";
       api.keymap.registerLayer({
+        priority: 1000,
         bindings: [{ key: chunksKey, cmd: "opencode-rag:add-chunks" }],
         commands: [
           {
             name: "opencode-rag:add-chunks",
             run: () => {
-              if (flagStorePath) setPendingRagInjection(flagStorePath, "chunks");
-              api.keymap.dispatchCommand("prompt.submit");
+              if (flagStorePath) {
+                setPendingRagInjection(flagStorePath, "chunks");
+                setTimeout(() => { api.keymap.dispatchCommand("prompt.submit"); }, 0);
+              }
               return undefined;
             },
           },

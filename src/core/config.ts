@@ -427,7 +427,7 @@ export const DEFAULT_CONFIG: RagConfig = {
       intervalMs: 300000,
     },
     autoInject: {
-      enabled: false,
+      enabled: true,
       minScore: 0.75,
       maxChunks: 10,
       maxTokens: 3000,
@@ -440,7 +440,7 @@ export const DEFAULT_CONFIG: RagConfig = {
     model: "minicpm-v4.6:latest",
     baseUrl: "http://127.0.0.1:11434/api",
     timeoutMs: 60000,
-    prompt: "Describe this image precisely and concisely: what it shows, any text content, layout, colors, objects, and purpose. Maximum 40 words. Start with \"Image of ...\" and always mention that this is an image file.",
+    prompt: "Describe this image 10-20 comma-separated keywords.",
     think: false,
     numCtx: 2048,
     resizeMaxDimension: 1024,
@@ -454,8 +454,8 @@ export const DEFAULT_CONFIG: RagConfig = {
     numCtx: 4096,
     timeoutMs: 60000,
     systemPrompt:
-      "Describe code precise and concise in 2 sentences. Maximum 20 words. Focus on functionality and purpose.",
-    batchConcurrency: 6,
+      "Describe this code in 10-20 comma-separated keywords.",
+    batchConcurrency: 1,
     retryMax: 3,
     retryBaseDelayMs: 1000,
     maxContentChars: 4000,

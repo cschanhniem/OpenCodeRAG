@@ -532,7 +532,7 @@ describe("ragPlugin", () => {
     const { dependencies } = makeDependencies(results, 2);
     const hooks = createRagHooks({
       cfg: makeConfig({
-        openCode: { enabled: true, maxContextChunks: 5 },
+        openCode: { enabled: true, maxContextChunks: 5, autoInject: { enabled: true, minScore: 0.75, maxChunks: 10, maxTokens: 3000, contentType: "file_paths" as const } },
       }),
       storePath: "memory://",
       logFilePath: path.join(tmpdir(), "opencode-rag.log"),

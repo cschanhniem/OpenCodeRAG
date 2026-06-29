@@ -148,14 +148,14 @@ if ($args[0] -eq "uninstall") {
 Push-Location $REPO_ROOT
 
 $pluginDir = "$RUNTIME_DIR\node_modules\$PLUGIN_NAME"
-$pkgJsonFile = Join-Path $REPO_ROOT "package.json"
 $versionFile = Join-Path $RUNTIME_DIR ".bundle-version"
 
-# Rebuild if the bundle marker doesn't exist or if package.json (source) is newer
-$pkgTime = (Get-Item $pkgJsonFile).LastWriteTime
+# Rebuild if the bundle marker doesn't exist or if any dist file is newer (source code changed)
+$distFiles = @(Get-ChildItem -LiteralPath "$REPO_ROOT\dist" -Recurse -File -ErrorAction SilentlyContinue)
+$newestDist = if ($distFiles.Count -gt 0) { ($distFiles | Sort-Object LastWriteTime -Descending)[0].LastWriteTime } else { [datetime]"1970-01-01" }
 $bundleTime = (Get-Item $versionFile -ErrorAction SilentlyContinue).LastWriteTime
 if (-not $bundleTime) { $bundleTime = [datetime]"1970-01-01" }
-$sourceChanged = $pkgTime -gt $bundleTime
+$sourceChanged = ($newestDist -gt $bundleTime) -or ($distFiles.Count -gt 0 -and $bundleTime -eq [datetime]"1970-01-01")
 
 $runtimeReady = (Test-Path -LiteralPath "$pluginDir\dist\cli.js") -and
                 (Test-Path -LiteralPath "$RUNTIME_DIR\node_modules\commander") -and
