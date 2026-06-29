@@ -107,7 +107,7 @@
     "chunksKeybinding": "ctrl+alt+enter"
   },
   "logging": {
-    "level": "info",
+    "level": "none",
     "logFilePath": "./.opencode/opencode-rag.log"
   }
 }
