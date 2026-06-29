@@ -767,14 +767,16 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
     },
     async "chat.message"(input, output) {
       try {
+        const hasMsgParts = !!((output?.message as Record<string, unknown>)?.parts);
+        const samePartsRef = (output?.message as Record<string, unknown>)?.parts === output?.parts;
         appendDebugLog(options.logFilePath, {
           scope: "chat.message",
-          message: `hook invoked (hasOutput=${!!output}, hasMessage=${!!output?.message}, hasParts=${!!output?.parts})`,
+          message: `hook invoked (hasOutput=${!!output}, hasMessage=${!!output?.message}, hasParts=${!!output?.parts}, hasMsgParts=${hasMsgParts}, sameRef=${samePartsRef})`,
         });
         const text = extractUserMessageText(input, output);
         appendDebugLog(options.logFilePath, {
           scope: "chat.message",
-          message: `extracted text length=${text.length}`,
+          message: `extracted text="${text}" (length=${text.length})`,
         });
         if (text.length === 0) return;
 
@@ -924,7 +926,6 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
                   messageID,
                   type: "text",
                   text: ragContext,
-                  synthetic: true,
                   metadata: {
                     source: "opencode-rag",
                     injectionType: pendingInjection,
@@ -936,10 +937,10 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
 
                 parts.push(ragPart);
 
-                const msgParts = (output?.message as Record<string, unknown>)?.parts;
-                if (Array.isArray(msgParts) && msgParts !== parts) {
-                  msgParts.push(ragPart);
-                }
+                appendDebugLog(options.logFilePath, {
+                  scope: "chat.message",
+                  message: `pushed RAG part (id=${ragPart.id}, parts.length=${parts.length})`,
+                });
               }
             }
           }
@@ -947,6 +948,15 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
           appendDebugLog(options.logFilePath, {
             scope: "chat.message",
             message: `injected ${pendingInjection} context (results=${results.length}, retrieval=${retrievalTimeMs}ms)`,
+          });
+
+          const postPartsArr = output?.parts;
+          const postMsgPartsArr = (output?.message as Record<string, unknown>)?.parts;
+          const postPartsText = Array.isArray(postPartsArr) ? (postPartsArr[0] as Record<string, unknown>)?.text : undefined;
+          const postMsgPartsText = Array.isArray(postMsgPartsArr) ? (postMsgPartsArr[0] as Record<string, unknown>)?.text : undefined;
+          appendDebugLog(options.logFilePath, {
+            scope: "chat.message",
+            message: `post-injection parts[0].text="${typeof postPartsText === 'string' ? postPartsText.substring(0, 80) : 'n/a'}" msgParts[0].text="${typeof postMsgPartsText === 'string' ? postMsgPartsText.substring(0, 80) : 'n/a'}"`,
           });
           return;
         }
