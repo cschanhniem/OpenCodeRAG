@@ -25,6 +25,7 @@ import {
 } from "./opencode/tools.js";
 import { resolveApiKey } from "./core/resolve-api-key.js";
 import { consumePendingRagInjection } from "./core/rag-injection-flag.js";
+import { uuid } from "./chunker/uuid.js";
 import { loadDocProgress, markSubdirectoryDocumented } from "./core/doc-progress.js";
 import { loadManifest } from "./core/manifest.js";
 import { createSessionLogger, type SessionLogger } from "./eval/session-logger.js";
@@ -911,8 +912,33 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
               const parts = output?.parts ?? (output?.message as Record<string, unknown>)?.parts;
               if (Array.isArray(parts) && parts.length > 0) {
                 const first = parts[0] as Record<string, unknown>;
-                if (typeof first.text === "string") {
-                  parts[0] = { ...first, text: `${first.text}\n\n${ragContext}` } as typeof parts[0];
+                const messageID = (first?.messageID as string)
+                  ?? ((output?.message as Record<string, unknown>)?.id as string)
+                  ?? input.messageID
+                  ?? `msg-${Date.now()}`;
+                const sessionID = (first?.sessionID as string) ?? input.sessionID;
+
+                const ragPart = {
+                  id: `prt_${uuid()}`,
+                  sessionID,
+                  messageID,
+                  type: "text",
+                  text: ragContext,
+                  synthetic: true,
+                  metadata: {
+                    source: "opencode-rag",
+                    injectionType: pendingInjection,
+                    retrievalTimeMs,
+                    resultCount: results.length,
+                    timestamp: Date.now(),
+                  },
+                } as typeof parts[number];
+
+                parts.push(ragPart);
+
+                const msgParts = (output?.message as Record<string, unknown>)?.parts;
+                if (Array.isArray(msgParts) && msgParts !== parts) {
+                  msgParts.push(ragPart);
                 }
               }
             }
