@@ -84,7 +84,7 @@ OpenCodeRAG can index image files (PNG, JPEG, WebP, etc.) by sending them to a v
 
 ## MCP Server
 
-OpenCodeRAG ships a stdio-based [MCP (Model Context Protocol)](https://spec.modelcontextprotocol.io/) server that exposes semantic code tools to any MCP-compatible client (Claude Desktop, OpenCode, Cursor, etc.).
+OpenCodeRAG ships a CLI-based [MCP (Model Context Protocol)](https://spec.modelcontextprotocol.io/) server that exposes semantic code tools to any MCP-compatible client (Claude Desktop, OpenCode, Cursor, etc.).
 
 ```bash
 opencode-rag mcp
