@@ -85,6 +85,8 @@ export interface DescriptionConfig {
   think?: boolean;
   /** Context window size for the LLM. */
   numCtx?: number;
+  /** Maximum content characters sent to the LLM. Chunks exceeding this use fallback descriptions. */
+  maxContentChars?: number;
 }
 
 /** Configuration for vision-model-based image description generation. */
@@ -428,6 +430,7 @@ export const DEFAULT_CONFIG: RagConfig = {
     batchConcurrency: 6,
     retryMax: 3,
     retryBaseDelayMs: 1000,
+    maxContentChars: 4000,
   },
   documentationMode: {
     enabled: false,

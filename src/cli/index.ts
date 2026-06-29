@@ -11,6 +11,7 @@ import { Command } from "commander";
 import { realpathSync } from "node:fs";
 import { basename, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { getPackageMetadata } from "./helpers.js";
 import {
   registerIndexCommand,
   registerQueryCommand,
@@ -36,11 +37,13 @@ import {
  * module initialization. The program is parsed either on auto-run detection or
  * when {@link runCli} is called programmatically.
  */
+const pkg = getPackageMetadata();
 const program = new Command();
 
 program
   .name("opencode-rag")
-  .description("Local-first RAG semantic code search");
+  .description(`Local-first RAG semantic code search v${pkg.version}`)
+  .version(pkg.version);
 
 registerIndexCommand(program);
 registerQueryCommand(program);

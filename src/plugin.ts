@@ -23,7 +23,7 @@ import { loadManifest } from "./core/manifest.js";
 import { createSessionLogger, type SessionLogger } from "./eval/session-logger.js";
 import { countTokens } from "./eval/token-counter.js";
 import { checkForUpdate, type UpdateInfo } from "./updater.js";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, unlinkSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn, execSync } from "node:child_process";
@@ -1361,6 +1361,14 @@ export const ragPlugin: Plugin = async (
     });
 
     backgroundIndexers.set(input.directory, indexer);
+  } else {
+    // Clean up stale watcher status from a previous session (e.g. after a crash
+    // while the watcher was running). Without this the TUI would keep showing
+    // "Watcher running…" even though auto-index is disabled.
+    const statusPath = path.join(storePath, "watcher-status.json");
+    if (existsSync(statusPath)) {
+      try { unlinkSync(statusPath); } catch { /* ignore */ }
+    }
   }
 
   // Auto-start MCP server if enabled (skip in temp dirs / test environments)

@@ -1,6 +1,6 @@
 import type { Chunk } from "../core/interfaces.js";
 
-export function buildUserMessage(chunk: Chunk): string {
+export function buildUserMessage(chunk: Chunk, maxContentChars?: number): string {
   const parts: string[] = [];
 
   if (chunk.metadata.filePath) {
@@ -12,7 +12,13 @@ export function buildUserMessage(chunk: Chunk): string {
   parts.push(`Lines: ${chunk.metadata.startLine}-${chunk.metadata.endLine}`);
   parts.push("");
   parts.push("```" + (chunk.metadata.language || ""));
-  parts.push(chunk.content);
+
+  let content = chunk.content;
+  if (maxContentChars && content.length > maxContentChars) {
+    content = content.slice(0, maxContentChars) + "\n... [truncated]";
+  }
+
+  parts.push(content);
   parts.push("```");
 
   return parts.join("\n");

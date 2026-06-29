@@ -14,6 +14,7 @@ export async function generateDescriptions(
   chunks: Chunk[],
   descriptionProvider: DescriptionProvider,
   logger?: Logger,
+  maxContentChars?: number,
 ): Promise<DescriptionResult> {
   const descriptionMap = new Map<string, string>();
   const failures: Array<{ chunkId: string; error: string }> = [];
@@ -26,17 +27,30 @@ export async function generateDescriptions(
     (c) => c.metadata.contentType !== "image" && !c.description,
   );
 
+  const oversizedChunks = maxContentChars
+    ? nonImageChunks.filter((c) => c.content.length > maxContentChars)
+    : [];
+  const llmChunks = maxContentChars
+    ? nonImageChunks.filter((c) => c.content.length <= maxContentChars)
+    : nonImageChunks;
+
+  for (const chunk of oversizedChunks) {
+    chunk.description = buildFallbackDescription(chunk);
+    descriptionMap.set(chunk.id, chunk.description);
+    logger?.debug(`  description [${chunk.id}] (oversized fallback): ${chunk.description}`);
+  }
+
   const preDocumentedCount = chunks.filter((c) => c.description).length;
   if (preDocumentedCount > 0) {
     logger?.debug(`  Skipping LLM descriptions for ${preDocumentedCount} already-documented chunks`);
   }
 
   let batchMap: Map<string, string> | null = null;
-  if (nonImageChunks.length > 1) {
-    logger?.debug(`  Generating batch descriptions for ${nonImageChunks.length} chunks...`);
+  if (llmChunks.length > 1) {
+    logger?.debug(`  Generating batch descriptions for ${llmChunks.length} chunks...`);
     try {
       batchMap = await descriptionProvider.generateBatchDescriptions(
-        nonImageChunks,
+        llmChunks,
         (msg: string) => logger?.debug(msg),
       );
       logger?.debug(`  Batch descriptions received for ${batchMap.size} chunks`);

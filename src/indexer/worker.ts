@@ -140,6 +140,7 @@ export async function prepareFile(
   config: {
     embedding: { documentPrefix?: string };
     chunking?: { nodeTypes?: Record<string, string[]> };
+    description?: { maxContentChars?: number };
   },
   keywordIndex: KeywordIndex | undefined,
   descriptionProvider: DescriptionProvider | undefined,
@@ -257,7 +258,7 @@ export async function prepareFile(
   let descriptionFailed = false;
 
   if (descriptionProvider) {
-    const { descriptionMap, failures } = await generateDescriptions(chunks, descriptionProvider, logger);
+    const { descriptionMap, failures } = await generateDescriptions(chunks, descriptionProvider, logger, config.description?.maxContentChars);
     descriptionFailed = failures.length > 0;
     for (const chunk of chunks) {
       const batchDesc = descriptionMap.get(chunk.id);

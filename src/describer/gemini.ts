@@ -30,7 +30,7 @@ export class GeminiDescriptionProvider implements DescriptionProvider {
     const contents: GeminiContent[] = [
       {
         role: "user",
-        parts: [{ text: buildUserMessage(chunk) }],
+        parts: [{ text: buildUserMessage(chunk, this.config.maxContentChars) }],
       },
     ];
 
@@ -49,7 +49,7 @@ export class GeminiDescriptionProvider implements DescriptionProvider {
     await Promise.all(
       chunks.map((chunk) =>
         limit(async () => {
-          const userMsg = buildUserMessage(chunk);
+          const userMsg = buildUserMessage(chunk, this.config.maxContentChars);
           (logDebug ?? console.debug)(`[describer] REQUEST chunk ${chunk.id} (${chunk.metadata.filePath}:${chunk.metadata.startLine}):\n${userMsg}`);
           try {
             const desc = await this.generateDescription(chunk);

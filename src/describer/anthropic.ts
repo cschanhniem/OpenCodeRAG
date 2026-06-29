@@ -35,7 +35,7 @@ export class AnthropicDescriptionProvider implements DescriptionProvider {
   /** @inheritdoc */
   async generateDescription(chunk: Chunk): Promise<string> {
     const messages: AnthropicMessage[] = [
-      { role: "user", content: buildUserMessage(chunk) },
+      { role: "user", content: buildUserMessage(chunk, this.config.maxContentChars) },
     ];
 
     return this.chatRequest(messages, this.config.timeoutMs ?? 60000);
@@ -54,7 +54,7 @@ export class AnthropicDescriptionProvider implements DescriptionProvider {
     await Promise.all(
       chunks.map((chunk) =>
         limit(async () => {
-          const userMsg = buildUserMessage(chunk);
+          const userMsg = buildUserMessage(chunk, this.config.maxContentChars);
           (logDebug ?? console.debug)(`[describer] REQUEST chunk ${chunk.id} (${chunk.metadata.filePath}:${chunk.metadata.startLine}):\n${userMsg}`);
           try {
             const desc = await this.generateDescription(chunk);

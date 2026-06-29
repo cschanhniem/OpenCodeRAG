@@ -73,7 +73,7 @@ function loadWatcherStatus(storePath: string): WatcherState {
       lastRunAt: typeof raw.lastRunAt === "number" ? raw.lastRunAt : undefined,
     };
   } catch {
-    return { running: false, lastRunAt: undefined };
+    return { running: false, lastRunAt: undefined, disabled: true };
   }
 }
 

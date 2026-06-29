@@ -17,6 +17,7 @@ import { createVectorStore } from "../vectorstore/factory.js";
 import { swapStoreDirectories } from "../vectorstore/lancedb.js";
 import { createIndexStats, type IndexRunStats, type IndexStatusSummary } from "./stats.js";
 import { prepareFile, buildTextsToEmbed, storeFileChunks, type WorkerResult } from "./worker.js";
+import { buildFallbackDescription } from "./description-stage.js";
 import { getCurrentCommit, getChangedFilesSince, getUntrackedFiles, getRepoRoot } from "./git-diff.js";
 
 export type { WatchPassScheduler } from "./watch.js";
@@ -330,12 +331,22 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
     const deferredPreps = prepared.filter((p) => p.chunks && p.chunks.length > 0 && p.relPath !== undefined);
     if (deferredPreps.length > 0) {
       const allChunks: Chunk[] = [];
+      const oversizedChunks: Chunk[] = [];
+      const maxContentChars = options.config.description?.maxContentChars;
       for (const prep of deferredPreps) {
         for (const chunk of prep.chunks!) {
           if (chunk.metadata.contentType !== "image") {
-            allChunks.push(chunk);
+            if (maxContentChars && chunk.content.length > maxContentChars) {
+              oversizedChunks.push(chunk);
+            } else {
+              allChunks.push(chunk);
+            }
           }
         }
+      }
+
+      for (const chunk of oversizedChunks) {
+        chunk.description = buildFallbackDescription(chunk);
       }
 
       // Advance progress to Description stage before descriptions start
