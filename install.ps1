@@ -73,6 +73,34 @@ function remove_from_config {
     }
 }
 
+function warn_if_opencode_running {
+    $procs = @(Get-Process -Name "opencode" -ErrorAction SilentlyContinue)
+    if ($procs.Count -eq 0) { return }
+    Write-Host ""
+    Write-Host "WARNING: OpenCode is currently running ($($procs.Count) process(es))." -ForegroundColor Yellow
+    foreach ($p in $procs) {
+        Write-Host "  PID $($p.Id) - started $($p.StartTime.ToString('yyyy-MM-dd HH:mm:ss'))" -ForegroundColor Yellow
+    }
+    Write-Host ""
+    Write-Host "  OpenCode may have native modules (sharp/libvips) locked, " -ForegroundColor Yellow -NoNewline
+    Write-Host "which will cause npm install to fail with EBUSY." -ForegroundColor Yellow
+    Write-Host ""
+    $choice = $host.UI.PromptForChoice(
+        "OpenCode is still running",
+        "Terminate all OpenCode processes before installing? Unsaved work may be lost.",
+        @(
+            [System.Management.Automation.Host.ChoiceDescription]::new("&Kill processes", "Terminate all OpenCode instances and continue")
+            [System.Management.Automation.Host.ChoiceDescription]::new("&Cancel install", "Abort — close OpenCode manually, then re-run")
+        ),
+        1
+    )
+    if ($choice -eq 1) { die "Installation aborted. Close all OpenCode instances and re-run install.ps1" }
+    info "Terminating OpenCode process(es)..."
+    $procs | Stop-Process -Force
+    Start-Sleep -Seconds 2
+    info "OpenCode terminated."
+}
+
 # --- preflight checks ---
 
 if (-not (Get-Command npm -ErrorAction SilentlyContinue)) { die "npm is required but was not found in PATH" }
@@ -155,6 +183,21 @@ if ($runtimeReady) {
 
     # Move .tgz to runtime dir
     Move-Item -LiteralPath $tgzPath -Destination $RUNTIME_DIR -Force
+
+    # Warn about running OpenCode (native module locking) and clean stale modules
+    warn_if_opencode_running
+    if (Test-Path -LiteralPath "$RUNTIME_DIR\node_modules") {
+        info "Removing stale node_modules to prevent DLL lock conflicts..."
+        Remove-Item -LiteralPath "$RUNTIME_DIR\node_modules" -Recurse -Force -ErrorAction SilentlyContinue
+        if (Test-Path -LiteralPath "$RUNTIME_DIR\node_modules") {
+            Start-Sleep -Seconds 2
+            Remove-Item -LiteralPath "$RUNTIME_DIR\node_modules" -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        if (Test-Path -LiteralPath "$RUNTIME_DIR\node_modules") {
+            die "Could not remove stale node_modules even after terminating OpenCode. Close any process locking $RUNTIME_DIR\node_modules and re-run."
+        }
+        ok "node_modules"
+    }
 
     # Install from .tgz — resolves ALL dependencies (commander, picocolors, canvas,
     # sharp, lancedb, etc.) with prebuilt binaries via npm. This is the ONE install.

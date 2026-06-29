@@ -46,6 +46,30 @@ remove_stale_plugin_from_config() {
   $removed
 }
 
+warn_if_opencode_running() {
+  local pids
+  pids=$(pgrep -x opencode 2>/dev/null || true)
+  [[ -z "$pids" ]] && return 0
+  printf '\n'
+  printf 'WARNING: OpenCode is currently running (PID(s): %s).\n' "$(echo "$pids" | tr '\n' ' ')" >&2
+  printf '  OpenCode may have native modules (sharp/libvips) locked,\n' >&2
+  printf '  which will cause npm install to fail with EBUSY.\n' >&2
+  printf '\n'
+  printf 'Terminate all OpenCode processes before installing? [y/N] '
+  read -r answer
+  case "$answer" in
+    [yY]|[yY][eE][sS])
+      info "Terminating OpenCode process(es)..."
+      kill -9 $pids 2>/dev/null || true
+      sleep 2
+      info "OpenCode terminated."
+      ;;
+    *)
+      die "Installation aborted. Close all OpenCode instances and re-run install.sh"
+      ;;
+  esac
+}
+
 # --- preflight ---
 
 command -v npm >/dev/null 2>&1 || die "npm is required but was not found in PATH"
@@ -108,6 +132,21 @@ else
   # Move .tgz to runtime dir
   mv "$tgz_path" "$RUNTIME_DIR/"
   tgz_path="$RUNTIME_DIR/$tgz_name"
+
+  # Warn about running OpenCode (native module locking) and clean stale modules
+  warn_if_opencode_running
+  if [[ -d "$RUNTIME_DIR/node_modules" ]]; then
+    info "Removing stale node_modules to prevent DLL lock conflicts..."
+    rm -rf "$RUNTIME_DIR/node_modules" 2>/dev/null || true
+    if [[ -d "$RUNTIME_DIR/node_modules" ]]; then
+      sleep 2
+      rm -rf "$RUNTIME_DIR/node_modules" 2>/dev/null || true
+    fi
+    if [[ -d "$RUNTIME_DIR/node_modules" ]]; then
+      die "Could not remove stale node_modules even after terminating OpenCode. Close any process locking $RUNTIME_DIR/node_modules and re-run."
+    fi
+    ok "node_modules"
+  fi
 
   # Install from .tgz — resolves ALL dependencies (commander, picocolors, canvas,
   # sharp, lancedb, etc.) with prebuilt binaries via npm. This is the ONE install.
