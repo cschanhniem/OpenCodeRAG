@@ -246,7 +246,8 @@ Controls the OpenCode plugin integration.
     "autoIndex": {
       "enabled": false,
       "debounceMs": 2000,
-      "intervalMs": 300000
+      "intervalMs": 300000,
+      "watcher": "chokidar"
     }
   }
 }
@@ -261,7 +262,8 @@ Controls the OpenCode plugin integration.
 | `readRelatedFilesMax` | `5` | Max related file suggestions per read |
 | `autoIndex.enabled` | `false` | Auto-index changed files in background |
 | `autoIndex.debounceMs` | `2000` | Debounce delay for file change events |
-| `autoIndex.intervalMs` | `300000` | Periodic full-index interval (5 min) |
+| `autoIndex.intervalMs` | `300000` | Periodic full-index interval, only used by git backend (ignored with chokidar) |
+| `autoIndex.watcher` | `"chokidar"` | File-change detection backend: `"chokidar"` (real-time FS events) or `"git"` (poll-based diff) |
 
 ### `autoUpdate`
 

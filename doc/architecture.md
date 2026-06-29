@@ -137,7 +137,7 @@ See [doc/chunking.md](chunking.md) for the full language matrix.
 |---|---|
 | `src/plugin.ts` | Main plugin: context tool, `chat.message` hook, auto-injection, read override |
 | `src/indexer.ts` | `runIndexPass()`, `scanWorkspace()`, `createWatchPassScheduler()`, `createWatchIgnore()` |
-| `src/watcher.ts` | `createBackgroundIndexer()` — chokidar watcher + debounced scheduler + periodic timer |
+| `src/watcher.ts` | `createBackgroundIndexer()` — chokidar watcher + debounced scheduler + periodic timer (git backend only) |
 
 ### Web UI (`src/web/`)
 

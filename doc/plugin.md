@@ -186,12 +186,12 @@ See [Evaluation documentation](evaluation.md) for CLI commands, analysis interpr
             │                             │
     ragPlugin()                    BackgroundIndexer
             │                             │
-    createRagHooks()                chokidar watcher
-            │                             │
+    createRagHooks()                file watcher
+            │                        (chokidar/git)
     ┌───────┼───────────┐         debounced scheduler
     │       │           │                 │
   Tool   chat.message  read          periodic timer
-  hook    hook        override
+  hook    hook        override        (git only)
 ```
 
 ## Plugin Export Pattern
@@ -237,9 +237,11 @@ export default plugin;
 
 The plugin spawns one `BackgroundIndexer` per workspace directory (via `src/watcher.ts`):
 
-- **chokidar watcher**: Monitors file changes in the workspace
+- **File watcher**: Monitors file changes in the workspace (backend configurable via `autoIndex.watcher`)
+  - **chokidar** (default): Real-time filesystem events, minimal overhead
+  - **git**: Poll-based diff against last indexed commit
 - **Debounced scheduler**: Waits `autoIndex.debounceMs` (2000ms) after changes before re-indexing (disabled by default; enable via `autoIndex.enabled`)
-- **Periodic timer**: Runs a full pass every `autoIndex.intervalMs` (default 5 min)
+- **Periodic timer**: Only for `git` backend — runs a full pass every `autoIndex.intervalMs` (default 5 min). Not used with `chokidar` (real FS events are sufficient)
 - **Error recovery**: Detects LanceDB corruption and triggers auto-rebuild
 - **Status file**: Writes `watcher-status.json` to the store path for observability
 

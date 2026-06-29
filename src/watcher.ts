@@ -84,7 +84,7 @@ export function createBackgroundIndexer(options: CreateBackgroundIndexerOptions)
     writeWatcherStatus(storePath, { running: false, lastRunAt: undefined, ...partial });
   };
 
-  const runPass = async (): Promise<void> => {
+  const runPass = async (filterPaths?: string[]): Promise<void> => {
     updateStatus({ running: true, lastRunAt: Date.now() });
     try {
       await runIndexPass({
@@ -95,6 +95,7 @@ export function createBackgroundIndexer(options: CreateBackgroundIndexerOptions)
         embedder,
         keywordIndex,
         descriptionProvider,
+        filterPaths,
         logger: {
           info: (message) => appendDebugLog(logFilePath, { scope: "autoIndex", message }, logLevel),
           warn: (message) => appendDebugLog(logFilePath, { scope: "autoIndex", message }, logLevel),
@@ -147,7 +148,7 @@ export function createBackgroundIndexer(options: CreateBackgroundIndexerOptions)
     persistent: true,
   });
 
-  const handleChange = () => scheduler.notifyChange();
+  const handleChange = (filePath?: string) => scheduler.notifyChange(filePath ? [filePath] : undefined);
   watcher.on("add", handleChange);
   watcher.on("change", handleChange);
   watcher.on("unlink", handleChange);
@@ -161,13 +162,17 @@ export function createBackgroundIndexer(options: CreateBackgroundIndexerOptions)
     }, logLevel);
   });
 
-  const periodicTimer = setInterval(() => {
-    scheduler.notifyChange();
-  }, autoIndexCfg.intervalMs);
+  // Periodic timer: only needed for git backend (chokidar gets real FS events)
+  const watcherBackend = autoIndexCfg.watcher ?? "chokidar";
+  const periodicTimer = watcherBackend === "git"
+    ? setInterval(() => {
+        scheduler.notifyChange();
+      }, autoIndexCfg.intervalMs)
+    : undefined;
 
   return {
     async close(): Promise<void> {
-      clearInterval(periodicTimer);
+      if (periodicTimer) clearInterval(periodicTimer);
       scheduler.close();
       await scheduler.waitForIdle();
       await watcher.close();
