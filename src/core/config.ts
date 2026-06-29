@@ -427,7 +427,7 @@ export const DEFAULT_CONFIG: RagConfig = {
       intervalMs: 300000,
     },
     autoInject: {
-      enabled: true,
+      enabled: false,
       minScore: 0.75,
       maxChunks: 10,
       maxTokens: 3000,

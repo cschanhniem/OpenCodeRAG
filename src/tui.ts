@@ -245,7 +245,7 @@ function renderSidebar(
       text({ fg: theme.textMuted }, [timeLine]),
       text({ fg: watcher.running ? theme.accent : theme.textMuted }, [watcherLine]),
       text({ fg: theme.textMuted }, ["Ctrl+Shift+R → Settings"]),
-      text({ fg: theme.textMuted }, [`${formatKeybinding(fileListKey)} → Add Files`]),
+      text({ fg: theme.textMuted }, [`${formatKeybinding(fileListKey)} → Add File List`]),
       text({ fg: theme.textMuted }, [`${formatKeybinding(chunksKey)} → Add Chunks`]),
       ...(tokenStats && tokenStats.queries > 0 ? [
         text({ fg: theme.textMuted }, [""]),
