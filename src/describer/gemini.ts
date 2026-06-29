@@ -64,7 +64,7 @@ export class GeminiDescriptionProvider implements DescriptionProvider {
             result.set(chunk.id, desc);
             (logDebug ?? console.debug)(`[describer] RESPONSE chunk ${chunk.id}: ${desc}`);
           } catch (err) {
-            console.warn(`[describer] Failed to describe chunk ${chunk.id} (${chunk.metadata.filePath}:${chunk.metadata.startLine}): ${err instanceof Error ? err.message : String(err)}`);
+            console.log(`[describer] Failed to describe chunk ${chunk.id} (${chunk.metadata.filePath}:${chunk.metadata.startLine}): ${err instanceof Error ? err.message : String(err)}`);
           }
           completed++;
           if (completed % 25 === 0 || completed === total) {

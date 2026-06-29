@@ -871,6 +871,60 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
           return;
         }
 
+        // Handle hotkey-triggered RAG injection (Ctrl+Enter / Ctrl+Alt+Enter)
+        const pendingInjection = consumePendingRagInjection(options.storePath);
+        if (pendingInjection) {
+          appendDebugLog(options.logFilePath, {
+            scope: "chat.message",
+            message: `pending injection: ${pendingInjection}`,
+          });
+
+          const count = await store.count();
+          if (count === 0) return;
+
+          const effectiveCfg = getEffectiveCfg();
+          const hybridCfg = effectiveCfg.retrieval.hybridSearch;
+          const retrievalStart = Date.now();
+          const results = await dependencies.retrieve(text, embedder, store, {
+            topK: effectiveCfg.retrieval.topK,
+            minScore: 0,
+            keywordIndex,
+            keywordWeight: hybridCfg?.keywordWeight,
+            queryPrefix: effectiveCfg.embedding.queryPrefix,
+          });
+          const retrievalTimeMs = Date.now() - retrievalStart;
+
+          if (results.length > 0) {
+            let ragContext: string;
+            if (pendingInjection === "files") {
+              ragContext = formatFileList(results, options.worktree, effectiveCfg.retrieval.topK);
+            } else {
+              ragContext = formatAutoInjectContext(
+                results,
+                options.worktree,
+                3000,
+                effectiveCfg.retrieval.topK
+              );
+            }
+
+            if (ragContext) {
+              const parts = output?.parts ?? (output?.message as Record<string, unknown>)?.parts;
+              if (Array.isArray(parts) && parts.length > 0) {
+                const first = parts[0] as Record<string, unknown>;
+                if (typeof first.text === "string") {
+                  parts[0] = { ...first, text: `${first.text}\n\n${ragContext}` } as typeof parts[0];
+                }
+              }
+            }
+          }
+
+          appendDebugLog(options.logFilePath, {
+            scope: "chat.message",
+            message: `injected ${pendingInjection} context (results=${results.length}, retrieval=${retrievalTimeMs}ms)`,
+          });
+          return;
+        }
+
       } catch (err) {
         appendDebugLog(options.logFilePath, {
           scope: "chat.message",
