@@ -168,6 +168,7 @@ Controls LLM-based description generation for code chunks.
 | `batchConcurrency` | `3` | Number of LLM batch description requests sent in parallel. Higher values speed up description generation but increase LLM pressure |
 | `retryMax` | `3` | Retry attempts on failure |
 | `retryBaseDelayMs` | `1000` | Base delay for exponential backoff |
+| `maxContentChars` | `4000` | Maximum content characters sent to the LLM. Chunks exceeding this limit receive fallback descriptions (line range + language) instead of LLM-generated descriptions. Prevents timeouts on large/minified files. |
 
 When enabled, the embedded text is `filePath + "\n\n" + description + "\n\n" + code content`. Even when disabled, descriptions include the line range and language (e.g., `lines 10-42, typescript`). On LLM failure, falls back to embedding filePath + raw content. Files where description generation failed are flagged in the manifest (`descriptionFailed: true`) and automatically retried on the next `opencode-rag index` run.
 
