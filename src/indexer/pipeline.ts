@@ -368,7 +368,7 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
 
       if (allChunks.length > 0) {
         try {
-          const batchResult = await options.descriptionProvider!.generateBatchDescriptions(allChunks, (msg: string) => logger.debug(msg));
+          const batchResult = await options.descriptionProvider!.generateBatchDescriptions(allChunks, logger);
           for (const chunk of allChunks) {
             const desc = batchResult.get(chunk.id);
             if (desc && desc.trim().length > 0) {

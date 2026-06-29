@@ -1,7 +1,7 @@
 /**
  * @fileoverview Google Gemini description provider for generating natural-language descriptions of code chunks.
  */
-import type { Chunk, DescriptionProvider } from "../core/interfaces.js";
+import type { Chunk, DescriptionProvider, DescriptionLogger } from "../core/interfaces.js";
 import type { DescriptionConfig } from "../core/config.js";
 import { postJson } from "../embedder/http.js";
 import { buildUserMessage, sleep } from "./shared.js";
@@ -45,10 +45,11 @@ export class GeminiDescriptionProvider implements DescriptionProvider {
     return this.chatRequest(contents, this.config.timeoutMs ?? 60000);
   }
 
-  async generateBatchDescriptions(chunks: Chunk[], logDebug?: (msg: string) => void): Promise<Map<string, string>> {
+  async generateBatchDescriptions(chunks: Chunk[], logger?: DescriptionLogger): Promise<Map<string, string>> {
+    const log = logger ?? { info: (msg: string) => console.log(msg), warn: (msg: string) => console.warn(msg), debug: (msg: string) => console.debug(msg) };
     const concurrency = this.config.batchConcurrency ?? 3;
     const total = chunks.length;
-    console.log(`[describer] Generating descriptions for ${total} chunks (concurrency: ${concurrency})`);
+    log.info(`[describer] Generating descriptions for ${total} chunks (concurrency: ${concurrency})`);
 
     const result = new Map<string, string>();
     const limit = pLimit(concurrency);
@@ -58,23 +59,23 @@ export class GeminiDescriptionProvider implements DescriptionProvider {
       chunks.map((chunk) =>
         limit(async () => {
           const userMsg = buildUserMessage(chunk, this.config.maxContentChars);
-          (logDebug ?? console.debug)(`[describer] REQUEST chunk ${chunk.id} (${chunk.metadata.filePath}:${chunk.metadata.startLine}):\n${userMsg}`);
+          log.debug(`[describer] REQUEST chunk ${chunk.id} (${chunk.metadata.filePath}:${chunk.metadata.startLine}):\n${userMsg}`);
           try {
             const desc = await this.generateDescription(chunk);
             result.set(chunk.id, desc);
-            (logDebug ?? console.debug)(`[describer] RESPONSE chunk ${chunk.id}: ${desc}`);
+            log.debug(`[describer] RESPONSE chunk ${chunk.id}: ${desc}`);
           } catch (err) {
-            console.log(`[describer] Failed to describe chunk ${chunk.id} (${chunk.metadata.filePath}:${chunk.metadata.startLine}): ${err instanceof Error ? err.message : String(err)}`);
+            log.warn(`[describer] Failed to describe chunk ${chunk.id} (${chunk.metadata.filePath}:${chunk.metadata.startLine}): ${err instanceof Error ? err.message : String(err)}`);
           }
           completed++;
           if (completed % 25 === 0 || completed === total) {
-            console.log(`[describer] Progress: ${completed}/${total}`);
+            log.info(`[describer] Progress: ${completed}/${total}`);
           }
         }),
       ),
     );
 
-    console.log(`[describer] Descriptions generated: ${result.size}/${total}`);
+    log.info(`[describer] Descriptions generated: ${result.size}/${total}`);
     return result;
   }
 

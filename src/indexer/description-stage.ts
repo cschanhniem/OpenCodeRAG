@@ -70,7 +70,7 @@ export async function generateDescriptions(
     try {
       batchMap = await descriptionProvider.generateBatchDescriptions(
         llmChunks,
-        (msg: string) => logger?.debug(msg),
+        { info: (msg) => logger?.debug(msg), warn: (msg) => logger?.warn(msg), debug: (msg) => logger?.debug(msg) },
       );
       logger?.debug(`  Batch descriptions received for ${batchMap.size} chunks`);
     } catch (err) {

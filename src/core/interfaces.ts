@@ -18,12 +18,19 @@ export interface Chunk {
   };
 }
 
+/** Logger interface for description generation progress messages. */
+export interface DescriptionLogger {
+  info(message: string): void;
+  warn(message: string): void;
+  debug(message: string): void;
+}
+
 /** Generates natural-language descriptions for code chunks using an LLM. */
 export interface DescriptionProvider {
   /** Generate a description for a single chunk. */
   generateDescription(chunk: Chunk): Promise<string>;
   /** Generate descriptions for multiple chunks concurrently. Returns a Map of chunk ID to description. */
-  generateBatchDescriptions(chunks: Chunk[], logDebug?: (msg: string) => void): Promise<Map<string, string>>;
+  generateBatchDescriptions(chunks: Chunk[], logger?: DescriptionLogger): Promise<Map<string, string>>;
 }
 
 /** Explains how a search result score was computed, including vector and keyword contributions. */
