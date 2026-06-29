@@ -1,6 +1,6 @@
 ﻿# OpenCodeRAG
 
-OpenCodeRAG is a **local-first RAG plugin** for semantic code and image search. It converts your codebase into vector indices and retrieves relevant code chunks on natural language queries. The primary aim is to save tokens by replacing full-file reads with targeted chunk retrieval and to speed-up tool calls for large codebases. Integrates seamlessly with [OpenCode](https://opencode.ai) and works as a standalone MCP server or CLI tool.
+OpenCodeRAG is a **local-first RAG plugin** for semantic code and image search. It converts your codebase into vector indices and retrieves relevant code chunks on natural language queries. The primary aim is to save tokens by replacing full-file reads with targeted chunk retrieval and to speed-up tool calls for large codebases. Integrates seamlessly with [OpenCode](https://opencode.ai) and works as a standalone MCP server or CLI tool for other AI harnesses.
 
 You don't need a dedicated GPU to run smaller embedding LLMs, as these models can still run performant on modern CPUs.
 
