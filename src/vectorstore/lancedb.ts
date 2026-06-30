@@ -429,6 +429,29 @@ export class LanceDbStore implements VectorStore {
   }
 
   /**
+   * Return all unique file paths currently stored in the index.
+   * @returns An array of normalized file paths.
+   */
+  async getFilePaths(): Promise<string[]> {
+    try {
+      const db = await this.getDb();
+      const tableNames = await db.tableNames();
+      if (!tableNames.includes(TABLE_NAME)) return [];
+
+      const table = await this.getTable();
+      const rows = await table.query().select(["filePath"]).toArray();
+      const paths = new Set<string>();
+      for (const row of rows) {
+        const fp = row.filePath as string;
+        if (fp) paths.add(fp);
+      }
+      return Array.from(paths);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
    * Re-open the store, optionally pointing at a new database path.
    * Closes any existing connection and resets internal state so that the
    * next operation lazily reconnects to (the new) path.

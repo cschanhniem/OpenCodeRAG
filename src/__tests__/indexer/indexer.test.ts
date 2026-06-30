@@ -565,6 +565,61 @@ describe("indexer", () => {
       assert.equal(entry.descriptionFailed, true);
     });
 
+    it("skips description generation for unchanged files with matching descHash", async () => {
+      await writeFile(path.join(workspaceDir, "src", "skip.ts"), "function skipDesc() { return 1; }\n");
+
+      let descCallCount = 0;
+      const descProvider: DescriptionProvider = {
+        async generateDescription(): Promise<string> {
+          descCallCount++;
+          return "A skip function.";
+        },
+        async generateBatchDescriptions(chunks: Chunk[]): Promise<Map<string, string>> {
+          descCallCount += chunks.length;
+          const result = new Map<string, string>();
+          for (const chunk of chunks) {
+            result.set(chunk.id, "A skip function.");
+          }
+          return result;
+        },
+      };
+
+      // First pass: file is new, descriptions should be generated
+      await runIndexPass({
+        cwd: workspaceDir,
+        storePath: storeDir,
+        config: testConfig(),
+        store,
+        embedder,
+        descriptionProvider: descProvider,
+      });
+      assert.ok(descCallCount > 0, "Descriptions should have been generated on first pass");
+
+      // Check that descHash is stored in the manifest
+      const manifestAfterFirst = await loadManifest(storeDir);
+      const filePath = normalizeFilePath(path.join(workspaceDir, "src", "skip.ts"));
+      const entry = manifestAfterFirst.manifest.files[filePath];
+      assert.ok(entry, "File should be in manifest");
+      assert.ok(entry.descHash, "descHash should be stored in manifest");
+
+      // Record the call count so far
+      const callsBeforeSecondPass = descCallCount;
+
+      // Second pass: file content is unchanged, descriptions should be skipped
+      const stats = await runIndexPass({
+        cwd: workspaceDir,
+        storePath: storeDir,
+        config: testConfig(),
+        store,
+        embedder,
+        descriptionProvider: descProvider,
+      });
+
+      assert.equal(stats.unchangedFiles, 1);
+      // descCallCount should not have increased
+      assert.equal(descCallCount, callsBeforeSecondPass, "Descriptions should not be re-generated for unchanged file");
+    });
+
     it("reindexes description-failed files on the next run", async () => {
       const filePath = path.join(workspaceDir, "src", "retry.ts");
       await writeFile(filePath, "function retry() { return 1; }\n");

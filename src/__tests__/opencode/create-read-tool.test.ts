@@ -30,6 +30,7 @@ function makeStore(options: {
     clear: async () => {},
     deleteByFilePath: async () => {},
     close: async () => {},
+    getFilePaths: async () => [],
   };
 }
 
@@ -265,6 +266,7 @@ describe("createRagReadTool", () => {
       clear: async () => {},
       deleteByFilePath: async () => {},
       close: async () => {},
+      getFilePaths: async () => [],
     };
 
     const tool = createRagReadTool({
@@ -478,6 +480,7 @@ describe("createRagReadTool", () => {
       clear: async () => {},
       deleteByFilePath: async () => {},
       close: async () => {},
+      getFilePaths: async () => [],
     };
 
     const embedder = makeEmbedder();
@@ -528,6 +531,7 @@ describe("createRagReadTool", () => {
       clear: async () => {},
       deleteByFilePath: async () => {},
       close: async () => {},
+      getFilePaths: async () => [],
     };
 
     const sessionLastMessage = new Map<string, string>();

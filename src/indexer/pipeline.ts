@@ -6,7 +6,7 @@ import path from "node:path";
 import pLimit from "p-limit";
 import { scanWorkspaceFiles } from "../content/reader.js";
 import type { RagConfig } from "../core/config.js";
-import { loadManifest, saveManifest, normalizeFilePath } from "../core/manifest.js";
+import { loadManifest, saveManifest, normalizeFilePath, computeDescriptionConfigHash } from "../core/manifest.js";
 import type {
   Chunk,
   DescriptionProvider,
@@ -156,6 +156,12 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
     logger.debug("Force mode: ignoring manifest");
   }
 
+  // Compute a hash of the current description config — used to skip re-description
+  // when neither the file content nor the description config has changed.
+  const descHash = options.descriptionProvider
+    ? computeDescriptionConfigHash(options.config)
+    : undefined;
+
   // Clear files that had description failures so they are fully re-indexed
   const descFailedPaths = Object.keys(manifest.files).filter(
     (p) => manifest.files[p]?.descriptionFailed,
@@ -164,6 +170,28 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
     logger.info(`  ${descFailedPaths.length} file(s) marked as description-failed — re-indexing`);
     for (const p of descFailedPaths) {
       delete manifest.files[p];
+    }
+  }
+
+  // Resume-on-interrupt: detect files that are in the manifest but missing from
+  // the vector store (e.g. indexing was aborted before all chunks were stored).
+  // These are removed from the manifest so they will be re-processed in this pass.
+  if (!options.force && manifestStatus === "ok" && Object.keys(manifest.files).length > 0) {
+    try {
+      const storedPaths = await options.store.getFilePaths();
+      const storedSet = new Set(storedPaths);
+      let interruptedCount = 0;
+      for (const [p, entry] of Object.entries(manifest.files)) {
+        if (entry.chunkCount > 0 && !storedSet.has(p)) {
+          delete manifest.files[p];
+          interruptedCount++;
+        }
+      }
+      if (interruptedCount > 0) {
+        logger.info(`  ${interruptedCount} file(s) in manifest but missing from store — re-indexing (resume after interruption)`);
+      }
+    } catch {
+      logger.debug("  Could not check store paths for resume — proceeding without");
     }
   }
 
@@ -328,6 +356,7 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
           options.descriptionProvider,
           logger,
           deferDescriptions,
+          descHash,
         );
 
         if (prep.earlyResult && isActive) {
@@ -483,7 +512,15 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
         // ── Update manifest in-memory and enqueue an atomic save ──
         if (result.chunkCount > 0 && !result.isRemoved) {
           const meta = fileMeta.get(result.normalizedPath);
-          manifest.files[result.normalizedPath] = {
+          const entry: {
+            hash: string;
+            chunkCount: number;
+            indexedAt: number;
+            mtime?: number;
+            size?: number;
+            descriptionFailed?: boolean;
+            descHash?: string;
+          } = {
             hash: result.hash,
             chunkCount: result.chunkCount,
             indexedAt: Date.now(),
@@ -491,6 +528,10 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
             size: meta?.size,
             descriptionFailed: result.descriptionFailed,
           };
+          if (result.descHash) {
+            entry.descHash = result.descHash;
+          }
+          manifest.files[result.normalizedPath] = entry as import("../core/manifest.js").ManifestEntry;
           enqueueManifestSave();
         } else if (result.isRemoved) {
           delete manifest.files[result.normalizedPath];

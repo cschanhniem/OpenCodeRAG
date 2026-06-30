@@ -5,12 +5,14 @@ import os from "node:os";
 import path from "node:path";
 import {
   computeFileHash,
+  computeDescriptionConfigHash,
   createEmptyManifest,
   loadManifest,
   manifestPathFor,
   normalizeFilePath,
   saveManifest,
 } from "../../core/manifest.js";
+import { type RagConfig } from "../../core/config.js";
 
 async function makeTempDir(name: string): Promise<string> {
   return fs.mkdtemp(path.join(os.tmpdir(), `${name}-`));
@@ -18,7 +20,7 @@ async function makeTempDir(name: string): Promise<string> {
 
 describe("manifest", () => {
   it("creates an empty manifest", () => {
-    assert.deepStrictEqual(createEmptyManifest(), { files: {}, schemaVersion: 1 });
+    assert.deepStrictEqual(createEmptyManifest(), { files: {}, schemaVersion: 2 });
   });
 
   it("normalizes file paths to absolute forward-slash paths", () => {
@@ -36,7 +38,7 @@ describe("manifest", () => {
     const dir = await makeTempDir("manifest-missing");
     const result = await loadManifest(dir);
     assert.equal(result.status, "missing");
-    assert.deepStrictEqual(result.manifest, { files: {}, schemaVersion: 1 });
+    assert.deepStrictEqual(result.manifest, { files: {}, schemaVersion: 2 });
     assert.equal(result.path, manifestPathFor(dir));
   });
 
@@ -67,6 +69,57 @@ describe("manifest", () => {
 
     const result = await loadManifest(dir);
     assert.equal(result.status, "corrupt");
-    assert.deepStrictEqual(result.manifest, { files: {}, schemaVersion: 1 });
+    assert.deepStrictEqual(result.manifest, { files: {}, schemaVersion: 2 });
+  });
+
+  it("accepts schema version 1 as valid (backward compatible)", async () => {
+    const dir = await makeTempDir("manifest-v1-migration");
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(
+      manifestPathFor(dir),
+      JSON.stringify({ schemaVersion: 1, files: {} }),
+      "utf-8",
+    );
+    const result = await loadManifest(dir);
+    assert.equal(result.status, "ok");
+  });
+
+  it("computeDescriptionConfigHash returns undefined when no description or imageConfig sections exist", () => {
+    const config = {} as unknown as RagConfig;
+    const hash = computeDescriptionConfigHash(config);
+    assert.equal(hash, undefined);
+  });
+
+  it("computeDescriptionConfigHash returns consistent values for same config", () => {
+    const config = {
+      description: {
+        provider: "ollama",
+        model: "qwen2.5:3b",
+        baseUrl: "http://127.0.0.1:11434",
+        systemPrompt: "Describe this code",
+      },
+      imageDescription: {
+        provider: "ollama",
+        model: "minicpm-v4.6",
+        baseUrl: "http://127.0.0.1:11434",
+        prompt: "Describe this image",
+      },
+    } as unknown as RagConfig;
+
+    const hash1 = computeDescriptionConfigHash(config);
+    const hash2 = computeDescriptionConfigHash(config);
+    assert.ok(typeof hash1 === "string");
+    assert.equal(hash1, hash2);
+  });
+
+  it("computeDescriptionConfigHash changes when description model changes", () => {
+    const config1 = {
+      description: { provider: "ollama", model: "qwen2.5:3b", baseUrl: "http://localhost:11434", systemPrompt: "test" },
+    } as unknown as RagConfig;
+    const config2 = {
+      description: { provider: "ollama", model: "qwen2.5:7b", baseUrl: "http://localhost:11434", systemPrompt: "test" },
+    } as unknown as RagConfig;
+
+    assert.notEqual(computeDescriptionConfigHash(config1), computeDescriptionConfigHash(config2));
   });
 });

@@ -6,6 +6,7 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import type { RagConfig } from "./config.js";
 
 /** Metadata entry for a single indexed file. */
 export interface ManifestEntry {
@@ -21,10 +22,19 @@ export interface ManifestEntry {
   size?: number;
   /** Whether the description generation step failed for this file. */
   descriptionFailed?: boolean;
+  /**
+   * Hash of the description config (provider, model, baseUrl, prompts) that
+   * was active when descriptions were generated for this file.  Skipped when
+   * no description provider is configured.  Used to avoid re-describing
+   * files whose source content and description config are both unchanged.
+   */
+  descHash?: string;
 }
 
 /** Current schema version for manifest files. */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
+/** Oldest schema version still accepted as valid (supports forward migration). */
+export const MIN_SUPPORTED_SCHEMA_VERSION = 1;
 
 /** Persistent manifest tracking indexing state across sessions. */
 export interface FileManifest {
@@ -71,6 +81,35 @@ export function computeFileHash(content: string): string {
   return createHash("sha256").update(content).digest("hex");
 }
 
+/**
+ * Compute a hash of the description configuration (provider, model, baseUrl,
+ * systemPrompt, image prompt, etc.) so that files are only re-described when
+ * the config actually changes.
+ *
+ * Returns `undefined` when neither `description` nor `imageDescription` is
+ * configured — callers treat this as "no descriptions needed".
+ */
+export function computeDescriptionConfigHash(config: RagConfig): string | undefined {
+  const desc = config.description;
+  const img = config.imageDescription;
+  if (!desc && !img) return undefined;
+
+  const parts: string[] = [];
+  if (desc) {
+    parts.push(
+      `desc:${desc.provider}|${desc.model}|${desc.baseUrl}|${desc.systemPrompt}`,
+    );
+  }
+  if (img) {
+    parts.push(
+      `img:${img.provider}|${img.model}|${img.baseUrl}|${img.prompt}`,
+    );
+  }
+  if (parts.length === 0) return undefined;
+
+  return createHash("sha256").update(parts.join("||")).digest("hex").slice(0, 16);
+}
+
 /** Load a manifest from disk, handling missing or corrupt files gracefully. */
 export async function loadManifest(dbPath: string): Promise<LoadedManifest> {
   const filePath = manifestPathFor(dbPath);
@@ -82,14 +121,15 @@ export async function loadManifest(dbPath: string): Promise<LoadedManifest> {
       return { manifest: createEmptyManifest(), path: filePath, status: "corrupt" };
     }
 
+    const version = parsed.schemaVersion ?? 0;
     return {
       manifest: {
         lastIndexedAt: typeof parsed.lastIndexedAt === "number" ? parsed.lastIndexedAt : undefined,
-        schemaVersion: parsed.schemaVersion,
+        schemaVersion: version,
         files: parsed.files as Record<string, ManifestEntry>,
       },
       path: filePath,
-      status: parsed.schemaVersion === SCHEMA_VERSION ? "ok" : "corrupt",
+      status: version >= MIN_SUPPORTED_SCHEMA_VERSION ? "ok" : "corrupt",
     };
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;

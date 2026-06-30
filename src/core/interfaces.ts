@@ -123,6 +123,8 @@ export interface VectorStore {
   clear(): Promise<void>;
   /** Delete all chunks associated with a specific file path. */
   deleteByFilePath(filePath: string): Promise<void>;
+  /** Return all unique file paths currently stored in the index. */
+  getFilePaths(): Promise<string[]>;
   /** Release any held resources and close the store. */
   close(): Promise<void>;
 }
