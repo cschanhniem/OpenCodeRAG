@@ -45,7 +45,7 @@ npm install --legacy-peer-deps
 
 > **Important:** The install scripts compile TypeScript to JS (`npm run build`), pack the plugin via `npm pack`, and install from the `.tgz` archive — creating filesystem links (junctions/symlinks) for global CLI access. Tree-sitter grammars ship as pre-built WASM files (bundled in `wasm/` and `@vscode/tree-sitter-wasm`). Native dependencies (`sharp`, `@lancedb/lancedb`) use pre-built platform binaries. The `opencode-rag` CLI is globally available via `~/.local/bin/` (Linux/macOS) or `~\.opencode\bin\` (Windows). The plugin itself is workspace-local — OpenCode loads it from `.opencode/plugins/`. Data (vector store, manifest) lives in the workspace.
 >
-> **Windows users:** The `canvas` native module (used for PDF DOMMatrix — optional, falls back to `@thednp/dommatrix` polyfill) is declared as an `optionalDependency`. It requires the [GTK for Windows Runtime](https://github.com/tschoonj/GTK-for-Windows-Runtime-Environment-Installer) to compile. If GTK is not installed, the install script skips `canvas` via `--ignore-optional` and PDF text extraction still works via the built-in polyfill.
+> **Windows users:** The `canvas` native module (used for PDF DOMMatrix — optional, falls back to `@thednp/dommatrix` polyfill) is declared as an `optionalDependency`. It requires the [GTK for Windows Runtime](https://github.com/tschoonj/GTK-for-Windows-Runtime-Environment-Installer) to compile. If GTK is not installed, the install script skips `canvas` via `.\install.ps1 ignore-optional` and PDF text extraction still works (but a little bit slower) via the built-in polyfill.
 
 ### Uninstall
 
