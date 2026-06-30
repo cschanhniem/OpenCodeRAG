@@ -966,6 +966,14 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
                   parts[0] = { ...first, text: first.text + "\n\n" + ragContext } as typeof parts[0];
                 }
 
+                const msgParts = (output?.message as Record<string, unknown>)?.parts;
+                if (Array.isArray(msgParts) && msgParts !== parts) {
+                  const mfirst = msgParts[0] as Record<string, unknown>;
+                  if (typeof mfirst.text === "string") {
+                    msgParts[0] = { ...mfirst, text: mfirst.text + "\n\n" + ragContext } as typeof msgParts[0];
+                  }
+                }
+
                 appendDebugLog(options.logFilePath, {
                   scope: "chat.message",
                   message: `injected ${pendingInjection} context into parts[0].text (text.length=${ragContext.length})`,
@@ -979,10 +987,10 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
             message: `injected ${pendingInjection} context (results=${results.length}, retrieval=${retrievalTimeMs}ms)`,
           });
 
-          const postPartsArr = output?.parts;
-          const postMsgPartsArr = (output?.message as Record<string, unknown>)?.parts;
-          const postPartsText = Array.isArray(postPartsArr) ? (postPartsArr[0] as Record<string, unknown>)?.text : undefined;
-          const postMsgPartsText = Array.isArray(postMsgPartsArr) ? (postMsgPartsArr[0] as Record<string, unknown>)?.text : undefined;
+          const postParts = output?.parts;
+          const postMsgParts = (output?.message as Record<string, unknown>)?.parts;
+          const postPartsText = Array.isArray(postParts) ? (postParts[0] as Record<string, unknown>)?.text : undefined;
+          const postMsgPartsText = Array.isArray(postMsgParts) ? (postMsgParts[0] as Record<string, unknown>)?.text : undefined;
           appendDebugLog(options.logFilePath, {
             scope: "chat.message",
             message: `post-injection parts[0].text="${typeof postPartsText === 'string' ? postPartsText.substring(0, 80) : 'n/a'}" msgParts[0].text="${typeof postMsgPartsText === 'string' ? postMsgPartsText.substring(0, 80) : 'n/a'}"`,

@@ -143,6 +143,20 @@ if ($args[0] -eq "uninstall") {
     exit 0
 }
 
+# --- ignore optional ---
+if ($args[0] -eq "ignore-optional") {
+    step "Installing $PLUGIN_NAME with --ignore-optional (skipping optional native deps)..."
+    Push-Location $RUNTIME_DIR
+    if (-not (Test-Path "package.json")) {
+        @{private = $true; type = "module"} | ConvertTo-Json | Set-Content "package.json"
+    }
+    $installOutput = cmd /c "npm install $PLUGIN_NAME --no-package-lock --legacy-peer-deps --ignore-optional 2>&1"
+    if ($LASTEXITCODE -ne 0) { Pop-Location; die "npm install failed: $installOutput" }
+    Pop-Location
+    step "Installed $PLUGIN_NAME with --ignore-optional. Restart OpenCode if it is running."
+    exit 0
+}
+
 # --- install ---
 
 Push-Location $REPO_ROOT
@@ -186,27 +200,27 @@ if ($runtimeReady) {
 
     # Warn about running OpenCode (native module locking) and clean stale modules
     warn_if_opencode_running
-    if (Test-Path -LiteralPath "$RUNTIME_DIR\node_modules") {
+    if (Test-Path -LiteralPath "$RUNTIME_DIR\node_modules\opencode-rag-plugin") {
         info "Removing stale node_modules to prevent DLL lock conflicts..."
-        Remove-Item -LiteralPath "$RUNTIME_DIR\node_modules" -Recurse -Force -ErrorAction SilentlyContinue
-        if (Test-Path -LiteralPath "$RUNTIME_DIR\node_modules") {
+        Remove-Item -LiteralPath "$RUNTIME_DIR\node_modules\opencode-rag-plugin" -Recurse -Force -ErrorAction SilentlyContinue
+        if (Test-Path -LiteralPath "$RUNTIME_DIR\node_modules\opencode-rag-plugin") {
             Start-Sleep -Seconds 2
-            Remove-Item -LiteralPath "$RUNTIME_DIR\node_modules" -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath "$RUNTIME_DIR\node_modules\opencode-rag-plugin" -Recurse -Force -ErrorAction SilentlyContinue
         }
-        if (Test-Path -LiteralPath "$RUNTIME_DIR\node_modules") {
-            die "Could not remove stale node_modules even after terminating OpenCode. Close any process locking $RUNTIME_DIR\node_modules and re-run."
+        if (Test-Path -LiteralPath "$RUNTIME_DIR\node_modules\opencode-rag-plugin") {
+            die "Could not remove stale node_modules even after terminating OpenCode. Close any process locking $RUNTIME_DIR\node_modules\opencode-rag-plugin and re-run."
         }
         ok "node_modules"
     }
 
     # Install from .tgz — resolves all required dependencies (commander, picocolors,
-    # sharp, lancedb, etc.) with prebuilt binaries via npm. Optional native deps
-    # (canvas) are skipped via --ignore-optional since it requires GTK on Windows.
+    # sharp, lancedb, etc.) with prebuilt binaries via npm.
+
     Push-Location $RUNTIME_DIR
     if (-not (Test-Path "package.json")) {
         @{private = $true; type = "module"} | ConvertTo-Json | Set-Content "package.json"
     }
-    $installOutput = cmd /c "npm install $tgzName --no-package-lock --legacy-peer-deps --ignore-optional 2>&1"
+    $installOutput = cmd /c "npm install $tgzName --no-package-lock --legacy-peer-deps 2>&1"
     if ($LASTEXITCODE -ne 0) { Pop-Location; Pop-Location; die "npm install from .tgz failed: $installOutput" }
 
     # Install @opencode-ai/plugin (peer dep, pure JS, always succeeds)
