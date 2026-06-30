@@ -171,10 +171,19 @@ $bundleTime = (Get-Item $versionFile -ErrorAction SilentlyContinue).LastWriteTim
 if (-not $bundleTime) { $bundleTime = [datetime]"1970-01-01" }
 $sourceChanged = ($newestDist -gt $bundleTime) -or ($distFiles.Count -gt 0 -and $bundleTime -eq [datetime]"1970-01-01")
 
+# Also rebuild if the installed version doesn't match the repo version
+$currentVersion = get_plugin_version
+$installedVersion = $null
+try {
+    $installedVersion = (Get-Content -LiteralPath "$pluginDir\package.json" -Raw | ConvertFrom-Json).version
+} catch {}
+$versionChanged = $currentVersion -ne $installedVersion
+
 $runtimeReady = (Test-Path -LiteralPath "$pluginDir\dist\cli.js") -and
                 (Test-Path -LiteralPath "$RUNTIME_DIR\node_modules\commander") -and
                 (Test-Path -LiteralPath "$RUNTIME_DIR\node_modules\@opencode-ai\plugin\package.json") -and
-                -not $sourceChanged
+                -not $sourceChanged -and
+                -not $versionChanged
 
 if ($runtimeReady) {
     step "Runtime already up-to-date at $RUNTIME_DIR"
