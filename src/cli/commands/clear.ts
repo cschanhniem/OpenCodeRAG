@@ -1,4 +1,7 @@
 /**
+ * @fileoverview Clear command to remove all indexed chunk data from the vector store with confirmation prompt.
+ */
+/**
  * `clear` command — removes all indexed vector data from the workspace.
  */
 

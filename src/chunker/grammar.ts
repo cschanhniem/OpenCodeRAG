@@ -1,7 +1,10 @@
+/**
+ * @fileoverview Tree-sitter WASM grammar loading, caching, and AST walking with doc comment extraction.
+ */
 import { Parser, Language, Node } from "web-tree-sitter";
 import { readFileSync, existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 
 const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");

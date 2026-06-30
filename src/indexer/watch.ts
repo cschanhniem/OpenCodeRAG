@@ -1,11 +1,16 @@
+/**
+ * @fileoverview Debounced file-watching scheduler and path-ignore predicate for incremental re-indexing.
+ */
 import path from "node:path";
 import { manifestPathFor } from "../core/manifest.js";
 import type { RagConfig } from "../core/config.js";
 
 /** Scheduler that coordinates debounced re-index passes triggered by file-system changes. */
 export interface WatchPassScheduler {
-  /** Notify the scheduler that a change occurred; triggers a debounced re-index. */
-  notifyChange(): void;
+  /** Notify the scheduler that a change occurred; triggers a debounced re-index.
+   *  If `changedPaths` are provided, they are accumulated and passed to runPass.
+   *  If omitted, a full scan is requested (no filter paths). */
+  notifyChange(changedPaths?: string[]): void;
   /** Resolves once the current pass (if any) finishes and no further passes are pending. */
   waitForIdle(): Promise<void>;
   /** Shut down the scheduler, cancelling any pending pass. */
@@ -17,13 +22,17 @@ export interface WatchPassScheduler {
  * running, subsequent notifications queue a single rerun. Useful for watching
  * file changes without overloading the system.
  *
+ * Paths passed via `notifyChange` are accumulated during the debounce window
+ * and forwarded to `runPass` as a deduplicated array. Calling `notifyChange()`
+ * without paths triggers a full scan (filterPaths = undefined).
+ *
  * @param runPass   - Async function that performs a single index pass.
  * @param onError   - Callback invoked when `runPass` throws.
  * @param debounceMs- Debounce interval in milliseconds (default 300).
  * @returns A {@link WatchPassScheduler} instance.
  */
 export function createWatchPassScheduler(
-  runPass: () => Promise<void>,
+  runPass: (filterPaths?: string[]) => Promise<void>,
   onError: (error: unknown) => void,
   debounceMs: number = 300,
 ): WatchPassScheduler {
@@ -31,6 +40,8 @@ export function createWatchPassScheduler(
   let running = false;
   let rerunRequested = false;
   let closed = false;
+  let fullPassRequested = false;
+  const pendingPaths = new Set<string>();
   const waiters: Array<() => void> = [];
 
   function resolveWaiters(): void {
@@ -56,9 +67,14 @@ export function createWatchPassScheduler(
       return;
     }
 
+    // Drain accumulated paths before running
+    const paths = fullPassRequested ? undefined : (pendingPaths.size > 0 ? [...pendingPaths] : undefined);
+    pendingPaths.clear();
+    fullPassRequested = false;
+
     running = true;
     try {
-      await runPass();
+      await runPass(paths);
     } catch (error) {
       onError(error);
     } finally {
@@ -73,8 +89,13 @@ export function createWatchPassScheduler(
   }
 
   return {
-    notifyChange() {
+    notifyChange(changedPaths?: string[]) {
       if (closed) return;
+      if (changedPaths && changedPaths.length > 0) {
+        for (const p of changedPaths) pendingPaths.add(p);
+      } else {
+        fullPassRequested = true;
+      }
       if (running) {
         rerunRequested = true;
         return;

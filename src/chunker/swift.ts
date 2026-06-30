@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Tree-sitter based Swift chunker splitting by function, enum, protocol, and variable declarations.
+ */
 import { TreeSitterChunker } from "./base.js";
 
 /**

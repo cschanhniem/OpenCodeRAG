@@ -1,11 +1,14 @@
 /**
+ * @fileoverview Update command for checking and installing OpenCodeRAG updates from GitHub.
+ */
+/**
  * `update` command — checks for and installs OpenCodeRAG updates from GitHub.
  */
 
 import type { Command } from "commander";
 import path from "node:path";
 import { getCurrentVersion, checkForUpdate, applyUpdate } from "../../updater.js";
-import { c, logCliError } from "../format.js";
+import { c } from "../format.js";
 import { getPackageRoot } from "../helpers.js";
 
 /** Options specific to the `update` command. */

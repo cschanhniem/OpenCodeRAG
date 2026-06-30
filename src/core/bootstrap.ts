@@ -1,3 +1,8 @@
+/**
+ * @fileoverview Bootstraps the full RAG pipeline context: loads config, resolves API keys,
+ * creates embedder, vector store, keyword index, and description provider.
+ */
+
 import path from "node:path";
 import { loadConfig, findConfigFile, DEFAULT_CONFIG, type RagConfig } from "./config.js";
 import { resolveApiKey } from "./resolve-api-key.js";
@@ -21,6 +26,10 @@ export interface BootstrapOptions {
   configPath?: string;
   /** If true, throw if no description provider is available. */
   requireDescriptionProvider?: boolean;
+  /** Skip the embedding dimension probe — use default 384 instead. Safe for read-only commands like `status` that don't need the store. */
+  skipProbe?: boolean;
+  /** Skip loading the keyword index from disk. Safe for read-only commands that only need store metadata. */
+  skipKeywordIndex?: boolean;
 }
 
 /** Resolved runtime context with all pipeline components wired together. */
@@ -94,10 +103,12 @@ export async function resolveRagContext(
   );
 
   const embedder = createEmbedder(cfg);
-  const dimension = await probeDimension(embedder);
+  const dimension = opts.skipProbe ? 384 : await probeDimension(embedder);
   const storePath = path.resolve(workDir, cfg.vectorStore.path);
   const store = createVectorStore(cfg, storePath, dimension);
-  const keywordIndex = await loadKeywordIndex(storePath);
+  const keywordIndex = opts.skipKeywordIndex
+    ? new KeywordIndex(storePath)
+    : await loadKeywordIndex(storePath);
 
   const descriptionConfig = cfg.description;
   const descriptionProvider =

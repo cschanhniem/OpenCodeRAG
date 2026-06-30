@@ -1,3 +1,8 @@
+/**
+ * @fileoverview Tracks which files have been documented during a documentation mode session.
+ * Persists progress to disk so interrupted sessions can resume.
+ */
+
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 

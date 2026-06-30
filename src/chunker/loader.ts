@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Dynamic loading and registration of pluggable chunker modules from configuration.
+ */
 import { registerChunker } from "./factory.js";
 import type { RagConfig, ChunkerConfig } from "../core/config.js";
 import { ImageChunker, SUPPORTED_IMAGE_EXTENSIONS } from "./image.js";

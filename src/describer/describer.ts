@@ -1,5 +1,8 @@
-import type { Chunk, DescriptionProvider } from "../core/interfaces.js";
-import type { DescriptionConfig, ProxyConfig } from "../core/config.js";
+/**
+ * @fileoverview OpenAI-compatible LLM description provider for generating natural-language descriptions of code chunks.
+ */
+import type { Chunk, DescriptionProvider, DescriptionLogger } from "../core/interfaces.js";
+import type { DescriptionConfig } from "../core/config.js";
 import { postJson } from "../embedder/http.js";
 import { buildUserMessage, sleep } from "./shared.js";
 import pLimit from "p-limit";
@@ -23,7 +26,7 @@ const RETRYABLE_STATUSES = new Set([404, 408, 429, 500, 502, 503, 504]);
  * Supports Bearer-token authentication, optional proxy, and retry with exponential backoff.
  * For Ollama, uses the `/api/chat` endpoint and sends additional options like `num_ctx` and `think`.
  */
-export class LLMDescriptionProvider implements DescriptionProvider {
+export class LlmDescriptionProvider implements DescriptionProvider {
   private readonly config: DescriptionConfig;
 
   /**
@@ -37,17 +40,18 @@ export class LLMDescriptionProvider implements DescriptionProvider {
   async generateDescription(chunk: Chunk): Promise<string> {
     const messages: ChatMessage[] = [
       { role: "system", content: this.config.systemPrompt },
-      { role: "user", content: buildUserMessage(chunk) },
+      { role: "user", content: buildUserMessage(chunk, this.config.maxContentChars) },
     ];
 
     return this.chatRequest(messages, this.config.timeoutMs ?? 60000);
   }
 
   /** @inheritdoc */
-  async generateBatchDescriptions(chunks: Chunk[], logDebug?: (msg: string) => void): Promise<Map<string, string>> {
+  async generateBatchDescriptions(chunks: Chunk[], logger?: DescriptionLogger): Promise<Map<string, string>> {
+    const log = logger ?? { info: (msg: string) => process.stderr.write(`${msg}\n`), warn: (msg: string) => console.warn(msg), debug: (msg: string) => console.debug(msg) };
     const concurrency = this.config.batchConcurrency ?? 3;
     const total = chunks.length;
-    process.stderr.write(`\nGenerating descriptions for ${total} chunks via ${this.config.provider}/${this.config.model} (concurrency: ${concurrency})...\n`);
+    log.info(`Generating descriptions for ${total} chunks via ${this.config.provider}/${this.config.model} (concurrency: ${concurrency})...`);
     const result = new Map<string, string>();
     const limit = pLimit(concurrency);
     let completed = 0;
@@ -55,26 +59,24 @@ export class LLMDescriptionProvider implements DescriptionProvider {
     await Promise.all(
       chunks.map((chunk) =>
         limit(async () => {
-          const userMsg = buildUserMessage(chunk);
-          (logDebug ?? console.debug)(`[describer] REQUEST chunk ${chunk.id} (${chunk.metadata.filePath}:${chunk.metadata.startLine}):\n${userMsg}`);
+          const userMsg = buildUserMessage(chunk, this.config.maxContentChars);
+          log.debug(`[describer] REQUEST chunk ${chunk.id} (${chunk.metadata.filePath}:${chunk.metadata.startLine}):\n${userMsg}`);
           try {
             const desc = await this.generateDescription(chunk);
             result.set(chunk.id, desc);
-            (logDebug ?? console.debug)(`[describer] RESPONSE chunk ${chunk.id}: ${desc}`);
+            log.debug(`[describer] RESPONSE chunk ${chunk.id}: ${desc}`);
           } catch (err) {
-            console.warn(`[describer] Failed to describe chunk ${chunk.id} (${chunk.metadata.filePath}:${chunk.metadata.startLine}): ${err instanceof Error ? err.message : String(err)}`);
+            log.warn(`[describer] Failed to describe chunk ${chunk.id} (${chunk.metadata.filePath}:${chunk.metadata.startLine}): ${err instanceof Error ? err.message : String(err)}`);
           }
           completed++;
           if (completed % 25 === 0 || completed === total) {
-            process.stderr.write(`\rDescriptions: ${completed}/${total}`);
-            (logDebug ?? console.debug)(`[describer] Progress: ${completed}/${total}`);
+            log.info(`Descriptions: ${completed}/${total}`);
           }
         }),
       ),
     );
 
-    process.stderr.write(`\rDescriptions: ${result.size}/${total} done.\n`);
-    (logDebug ?? console.debug)(`[describer] Descriptions generated: ${result.size}/${total}`);
+    log.info(`Descriptions: ${result.size}/${total} done.`);
     return result;
   }
 

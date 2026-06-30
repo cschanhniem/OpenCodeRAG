@@ -1,3 +1,9 @@
+/**
+ * @fileoverview OpenCode plugin integration for OpenCodeRAG. Registers semantic search,
+ * file skeleton, find usages, and describe image tools; hooks into chat messages for
+ * automatic context injection and documentation mode.
+ */
+
 import type { Plugin, PluginInput, Hooks, ToolDefinition } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin/tool";
 import type { EmbeddingProvider, DescriptionProvider, KeywordIndex, VectorStore, SearchResult } from "./core/interfaces.js";
@@ -6,6 +12,7 @@ import { createEmbedder } from "./embedder/factory.js";
 import { createDescriptionProvider } from "./describer/factory.js";
 import { createVectorStore } from "./vectorstore/factory.js";
 import { retrieve } from "./retriever/retriever.js";
+import { optimizeContext, DEFAULT_CONTEXT_OPTIMIZATION } from "./retriever/context-optimizer.js";
 import { loadChunkersFromConfig } from "./chunker/loader.js";
 import { appendDebugLog } from "./core/fileLogger.js";
 import { loadRuntimeOverrides, applyRuntimeOverrides } from "./core/runtime-overrides.js";
@@ -21,9 +28,9 @@ import { consumePendingRagInjection } from "./core/rag-injection-flag.js";
 import { loadDocProgress, markSubdirectoryDocumented } from "./core/doc-progress.js";
 import { loadManifest } from "./core/manifest.js";
 import { createSessionLogger, type SessionLogger } from "./eval/session-logger.js";
-import { countTokens, estimateContextTokensFormatted } from "./eval/token-counter.js";
+import { countTokens } from "./eval/token-counter.js";
 import { checkForUpdate, type UpdateInfo } from "./updater.js";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, unlinkSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn, execSync } from "node:child_process";
@@ -222,10 +229,7 @@ function formatContext(
   return parts.join("\n");
 }
 
-/**
- * Format auto-injected context results, trimming to a token budget.
- * Results are sorted by relevance and included up to maxChunks.
- */
+/** Format retrieved code chunks for injection into a user message (used by hotkey "chunks" mode). */
 function formatAutoInjectContext(
   results: SearchResult[],
   worktree: string,
@@ -294,31 +298,6 @@ function buildRetrievalQuery(hints: RetrievalQueryHints): string {
 }
 
 /**
- * Remove duplicate results based on file path + line range + content.
- * Keeps the first occurrence of each unique result.
- */
-function dedupeResults(results: SearchResult[]): SearchResult[] {
-  const seen = new Set<string>();
-  const deduped: SearchResult[] = [];
-
-  for (const result of results) {
-    const chunk = result.chunk;
-    const key = [
-      chunk.metadata.filePath,
-      chunk.metadata.startLine,
-      chunk.metadata.endLine,
-      chunk.content,
-    ].join(":");
-
-    if (seen.has(key)) continue;
-    seen.add(key);
-    deduped.push(result);
-  }
-
-  return deduped;
-}
-
-/**
  * Perform a retrieval query against the vector store with the given parameters.
  * Returns an empty array for blank queries.
  */
@@ -339,7 +318,8 @@ async function retrieveContext(
 }
 
 /**
- * Load results from one or two queries (primary + optional extra), deduplicate,
+ * Load results from one or two queries (primary + optional extra), optimize
+ * them via context optimization (adjacent merge, similarity dedup, file cap),
  * sort by descending score, and limit to maxContextChunks from config.
  */
 async function loadRetrievedResults(
@@ -361,7 +341,8 @@ async function loadRetrievedResults(
     ? await retrieveContext(extraQuery, embedder, store, topK, retrieveFn, minScore, keywordIndex, kw, queryPrefix, explain)
     : [];
 
-  return dedupeResults([...primaryResults, ...extraResults])
+  const optCfg = cfg.retrieval.contextOptimization ?? DEFAULT_CONTEXT_OPTIMIZATION;
+  return optimizeContext([...primaryResults, ...extraResults], { topK, config: optCfg })
     .sort((a, b) => b.score - a.score)
     .slice(0, cfg.openCode.maxContextChunks);
 }
@@ -458,7 +439,7 @@ function formatFileList(results: SearchResult[], worktree: string, maxFiles = 10
  * @returns The extracted user message text, or an empty string if not found.
  */
 function extractUserMessageText(
-  input: { sessionID: string; agent?: string; model?: { providerID: string; modelID: string }; messageID?: string; variant?: string },
+  _input: { sessionID: string; agent?: string; model?: { providerID: string; modelID: string }; messageID?: string; variant?: string },
   output?: { message?: unknown; parts?: unknown[] }
 ): string {
   // Try to extract from output.parts first (most common path)
@@ -521,8 +502,9 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
   // Session-level caches for lazy retrieval
   const sessionLastMessage = new Map<string, string>();
   const sessionRetrievalCache = new Map<string, { messageText: string; rawResults: SearchResult[] }>();
-
-
+  // Track the current assistant message text per session for 2-message search queries.
+  const sessionAssistantMessageId = new Map<string, string>();
+  const sessionAssistantText = new Map<string, string>();
 
   // Evaluation session logger — captures OpenCode events for analysis
   const sessionLogger: SessionLogger = createSessionLogger(options.storePath);
@@ -727,6 +709,45 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
   return {
     async event({ event }) {
       sessionLogger.onEvent(event as Parameters<typeof sessionLogger.onEvent>[0]);
+
+      // Accumulate the most recent assistant message's text via streaming deltas.
+      // Used to build the 2-message retrieval query in chat.message.
+      try {
+        if (event.type === "message.updated") {
+          const info = (event as Record<string, unknown>).properties as
+            | Record<string, unknown>
+            | undefined;
+          const msgInfo = info?.info as Record<string, unknown> | undefined;
+          if (
+            msgInfo?.role === "assistant" &&
+            typeof msgInfo.sessionID === "string" &&
+            typeof msgInfo.id === "string"
+          ) {
+            sessionAssistantMessageId.set(msgInfo.sessionID, msgInfo.id);
+            sessionAssistantText.set(msgInfo.sessionID, "");
+          }
+        } else if (event.type === "message.part.updated") {
+          const props = (event as Record<string, unknown>).properties as
+            | Record<string, unknown>
+            | undefined;
+          const part = props?.part as Record<string, unknown> | undefined;
+          const delta = props?.delta;
+          if (
+            part?.type === "text" &&
+            typeof part.sessionID === "string" &&
+            typeof part.messageID === "string" &&
+            typeof delta === "string"
+          ) {
+            const assistantMsgId = sessionAssistantMessageId.get(part.sessionID);
+            if (assistantMsgId && part.messageID === assistantMsgId) {
+              const existing = sessionAssistantText.get(part.sessionID) ?? "";
+              sessionAssistantText.set(part.sessionID, existing + delta);
+            }
+          }
+        }
+      } catch {
+        // Non-critical — must never throw
+      }
     },
     tool: tools,
     async "experimental.chat.system.transform"(_input, output) {
@@ -785,7 +806,17 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
     },
     async "chat.message"(input, output) {
       try {
+        const hasMsgParts = !!((output?.message as Record<string, unknown>)?.parts);
+        const samePartsRef = (output?.message as Record<string, unknown>)?.parts === output?.parts;
+        appendDebugLog(options.logFilePath, {
+          scope: "chat.message",
+          message: `hook invoked (hasOutput=${!!output}, hasMessage=${!!output?.message}, hasParts=${!!output?.parts}, hasMsgParts=${hasMsgParts}, sameRef=${samePartsRef})`,
+        });
         const text = extractUserMessageText(input, output);
+        appendDebugLog(options.logFilePath, {
+          scope: "chat.message",
+          message: `extracted text="${text}" (length=${text.length})`,
+        });
         if (text.length === 0) return;
 
         sessionLastMessage.set(input.sessionID, text);
@@ -882,126 +913,91 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
           return;
         }
 
+        // Handle hotkey-triggered RAG injection (Ctrl+Enter / Ctrl+Alt+Enter)
         const pendingInjection = consumePendingRagInjection(options.storePath);
-
-        const count = await store.count();
-        if (count === 0) return;
-
-        const effectiveCfg = getEffectiveCfg();
-        const hybridCfg = effectiveCfg.retrieval.hybridSearch;
-        const retrievalStart = Date.now();
-        const results = await dependencies.retrieve(text, embedder, store, {
-          topK: effectiveCfg.retrieval.topK,
-          minScore: pendingInjection ? 0 : effectiveCfg.retrieval.minScore,
-          keywordIndex,
-          keywordWeight: hybridCfg?.keywordWeight,
-          queryPrefix: effectiveCfg.embedding.queryPrefix,
-        });
-        const retrievalTimeMs = Date.now() - retrievalStart;
-
-        if (results.length === 0) {
-          sessionLogger.onRagContext(input.sessionID, input.messageID, {
-            chunkCount: 0,
-            uniqueFiles: 0,
-            contextTokens: 0,
-            topScore: 0,
-            retrievalTimeMs,
-          });
-          return;
-        }
-
-        if (pendingInjection === "chunks") {
-          const maxChunks = effectiveCfg.openCode.autoInject?.maxChunks ?? 5;
-          const topChunks = results.slice(0, maxChunks);
-          const chunkContext = formatAutoInjectContext(
-            topChunks,
-            options.worktree,
-            effectiveCfg.openCode.autoInject?.maxTokens ?? 3000,
-            maxChunks
-          );
-          sessionLogger.onRagContext(input.sessionID, input.messageID, {
-            chunkCount: topChunks.length,
-            uniqueFiles: new Set(topChunks.map((r) => r.chunk.metadata.filePath)).size,
-            contextTokens: chunkContext ? countTokens(chunkContext) : 0,
-            topScore: topChunks[0]?.score ?? 0,
-            retrievalTimeMs,
-          });
-          if (!chunkContext) return;
-          const parts = output?.parts ?? (output?.message as Record<string, unknown>)?.parts;
-          if (Array.isArray(parts) && parts.length > 0) {
-            const first = parts[0] as Record<string, unknown>;
-            if (typeof first.text === "string") {
-              parts[0] = { ...first, text: `${first.text}\n\n${chunkContext}` } as typeof parts[0];
-            }
-          }
-          return;
-        }
-
-        if (pendingInjection === "files") {
-          const fileList = formatFileList(results, options.worktree, effectiveCfg.retrieval.topK);
-          sessionLogger.onRagContext(input.sessionID, input.messageID, {
-            chunkCount: 0,
-            uniqueFiles: 0,
-            contextTokens: fileList ? countTokens(fileList) : 0,
-            topScore: results[0]?.score ?? 0,
-            retrievalTimeMs,
-          });
-          if (!fileList) return;
-          const parts = output?.parts ?? (output?.message as Record<string, unknown>)?.parts;
-          if (Array.isArray(parts) && parts.length > 0) {
-            const first = parts[0] as Record<string, unknown>;
-            if (typeof first.text === "string") {
-              parts[0] = { ...first, text: `${first.text}\n\n${fileList}` } as typeof parts[0];
-            }
-          }
-          return;
-        }
-
-        if (text.trim().split(/\s+/).length <= 1) {
-          const spaceCount = (text.match(/ /g) ?? []).length;
+        if (pendingInjection) {
           appendDebugLog(options.logFilePath, {
             scope: "chat.message",
-            message: `single-word prompt detected, suppressed auto-injection (spaceCount=${spaceCount})`,
+            message: `pending injection: ${pendingInjection}`,
+          });
+
+          const count = await store.count();
+          if (count === 0) return;
+
+          const effectiveCfg = getEffectiveCfg();
+          const hybridCfg = effectiveCfg.retrieval.hybridSearch;
+          const retrievalStart = Date.now();
+
+          // Build 2-message query: previous assistant response + current user prompt.
+          // Falls back to user-only text on the first turn (no prior assistant message).
+          const assistantText = sessionAssistantText.get(input.sessionID);
+          const searchQuery = assistantText ? assistantText + "\n" + text : text;
+
+          const results = await dependencies.retrieve(searchQuery, embedder, store, {
+            topK: effectiveCfg.retrieval.topK,
+            minScore: 0,
+            keywordIndex,
+            keywordWeight: hybridCfg?.keywordWeight,
+            queryPrefix: effectiveCfg.embedding.queryPrefix,
+          });
+          const retrievalTimeMs = Date.now() - retrievalStart;
+
+          if (results.length > 0) {
+            let ragContext: string;
+            if (pendingInjection === "files") {
+              ragContext = formatFileList(results, options.worktree, effectiveCfg.retrieval.topK);
+            } else {
+              ragContext = formatAutoInjectContext(
+                results,
+                options.worktree,
+                3000,
+                effectiveCfg.retrieval.topK
+              );
+            }
+
+            if (ragContext) {
+              const parts = output?.parts ?? (output?.message as Record<string, unknown>)?.parts;
+              if (Array.isArray(parts) && parts.length > 0) {
+                const first = parts[0] as Record<string, unknown>;
+                if (typeof first.text === "string") {
+                  // Append RAG context directly to the user's text part instead of
+                  // pushing a new part. Matches the /doc handler pattern — avoids the
+                  // duplicate-output bug caused by parts.push() in some render paths.
+                  parts[0] = { ...first, text: first.text + "\n\n" + ragContext } as typeof parts[0];
+                }
+
+                const msgParts = (output?.message as Record<string, unknown>)?.parts;
+                if (Array.isArray(msgParts) && msgParts !== parts) {
+                  const mfirst = msgParts[0] as Record<string, unknown>;
+                  if (typeof mfirst.text === "string") {
+                    msgParts[0] = { ...mfirst, text: mfirst.text + "\n\n" + ragContext } as typeof msgParts[0];
+                  }
+                }
+
+                appendDebugLog(options.logFilePath, {
+                  scope: "chat.message",
+                  message: `injected ${pendingInjection} context into parts[0].text (text.length=${ragContext.length})`,
+                });
+              }
+            }
+          }
+
+          appendDebugLog(options.logFilePath, {
+            scope: "chat.message",
+            message: `injected ${pendingInjection} context (results=${results.length}, retrieval=${retrievalTimeMs}ms)`,
+          });
+
+          const postParts = output?.parts;
+          const postMsgParts = (output?.message as Record<string, unknown>)?.parts;
+          const postPartsText = Array.isArray(postParts) ? (postParts[0] as Record<string, unknown>)?.text : undefined;
+          const postMsgPartsText = Array.isArray(postMsgParts) ? (postMsgParts[0] as Record<string, unknown>)?.text : undefined;
+          appendDebugLog(options.logFilePath, {
+            scope: "chat.message",
+            message: `post-injection parts[0].text="${typeof postPartsText === 'string' ? postPartsText.substring(0, 80) : 'n/a'}" msgParts[0].text="${typeof postMsgPartsText === 'string' ? postMsgPartsText.substring(0, 80) : 'n/a'}"`,
           });
           return;
         }
 
-        const autoInjectCfg = effectiveCfg.openCode.autoInject;
-        let suggestionList: string | undefined;
-        let injectedChunks: SearchResult[] = [];
-
-        if (autoInjectCfg?.enabled !== false) {
-          const minScore = autoInjectCfg?.minScore ?? 0.85;
-          const maxChunks = autoInjectCfg?.maxChunks ?? 5;
-          const maxTokens = autoInjectCfg?.maxTokens ?? 3000;
-          const contentType = autoInjectCfg?.contentType ?? "file_paths";
-          const highConfidence = results.filter((r) => r.score >= minScore);
-
-          if (highConfidence.length > 0) {
-            injectedChunks = highConfidence.slice(0, maxChunks);
-            suggestionList = contentType === "chunks"
-              ? formatAutoInjectContext(highConfidence, options.worktree, maxTokens, maxChunks)
-              : formatFileList(highConfidence, options.worktree, effectiveCfg.retrieval.topK);
-          }
-        }
-
-        sessionLogger.onRagContext(input.sessionID, input.messageID, {
-          chunkCount: injectedChunks.length,
-          uniqueFiles: new Set(injectedChunks.map((r) => r.chunk.metadata.filePath)).size,
-          contextTokens: suggestionList ? countTokens(suggestionList) : 0,
-          topScore: injectedChunks[0]?.score ?? 0,
-          retrievalTimeMs,
-        });
-
-        if (!suggestionList) return;
-
-        const parts = output?.parts ?? (output?.message as Record<string, unknown>)?.parts;
-        if (Array.isArray(parts) && parts.length > 0) {
-          const first = parts[0] as Record<string, unknown>;
-          if (typeof first.text === "string") {
-            parts[0] = { ...first, text: `${first.text}\n\n${suggestionList}` } as typeof parts[0];
-          }
-        }
       } catch (err) {
         appendDebugLog(options.logFilePath, {
           scope: "chat.message",
@@ -1315,6 +1311,14 @@ export const ragPlugin: Plugin = async (
     });
 
     backgroundIndexers.set(input.directory, indexer);
+  } else {
+    // Clean up stale watcher status from a previous session (e.g. after a crash
+    // while the watcher was running). Without this the TUI would keep showing
+    // "Watcher running…" even though auto-index is disabled.
+    const statusPath = path.join(storePath, "watcher-status.json");
+    if (existsSync(statusPath)) {
+      try { unlinkSync(statusPath); } catch { /* ignore */ }
+    }
   }
 
   // Auto-start MCP server if enabled (skip in temp dirs / test environments)

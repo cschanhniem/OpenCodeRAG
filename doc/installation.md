@@ -43,7 +43,9 @@ npm install --legacy-peer-deps
 .\install.ps1         # Windows
 ```
 
-> **Important:** The install scripts build from source and create filesystem links (junctions/symlinks) — no `npm pack` or global plugin installation. The `opencode-rag` CLI is globally available via `~/.local/bin/`. The plugin itself is workspace-local — OpenCode loads it from `.opencode/plugins/`. Data (vector store, manifest) lives in the workspace.
+> The install scripts compile TypeScript to JS (`npm run build`), pack the plugin via `npm pack`, and install from the `.tgz` archive — creating filesystem links (junctions/symlinks) for global CLI access. Tree-sitter grammars ship as pre-built WASM files (bundled in `wasm/` and `@vscode/tree-sitter-wasm`). Native dependencies (`sharp`, `@lancedb/lancedb`) use pre-built platform binaries. The `opencode-rag` CLI command is globally available via `~/.local/bin/` (Linux/macOS) or `~\.opencode\bin\` (Windows). The plugin itself is workspace-local — OpenCode loads it from `.opencode/plugins/`. Data (vector store, manifest) lives in the workspace.
+>
+> **Windows users:** The `canvas` native module (used for PDF DOMMatrix). It requires the [GTK for Windows Runtime](https://github.com/tschoonj/GTK-for-Windows-Runtime-Environment-Installer) to compile. If GTK is not installed, the install script can skip `canvas` via `.\install.ps1 ignore-optional` and PDF text extraction still works via the built-in polyfill (`@thednp/dommatrix`) module (just a little bit slower).
 
 ### Uninstall
 
@@ -56,9 +58,7 @@ This removes all copies and config entries of OpenCodeRAG.
 
 ## Workspace Initialization
 
-If you used the install script (`install.sh` / `install.ps1`), the current workspace is already initialized — you can skip to indexing.
-
-For any other workspace, initialize it with:
+The install script only installs the CLI globally. Initialize each workspace where you want to use OpenCodeRAG:
 
 ```bash
 cd /path/to/your/project

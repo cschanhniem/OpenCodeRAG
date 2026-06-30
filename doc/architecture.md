@@ -103,7 +103,7 @@ See [doc/chunking.md](chunking.md) for the full language matrix.
 
 | File | Role |
 |---|---|
-| `describer.ts` | `LLMDescriptionProvider` base class |
+| `describer.ts` | `LlmDescriptionProvider` base class |
 | `factory.ts` | `createDescriptionProvider()` dispatch |
 | `anthropic.ts` | Anthropic provider |
 | `gemini.ts` | Gemini provider |
@@ -119,7 +119,7 @@ See [doc/chunking.md](chunking.md) for the full language matrix.
 
 | File | Role |
 |---|---|
-| `lancedb.ts` | `LanceDBStore` — LanceDB-backed vector store with `memory://` support |
+| `lancedb.ts` | `LanceDbStore` — LanceDB-backed vector store with `memory://` support |
 
 ### OpenCode Integration (`src/opencode/`)
 
@@ -137,7 +137,7 @@ See [doc/chunking.md](chunking.md) for the full language matrix.
 |---|---|
 | `src/plugin.ts` | Main plugin: context tool, `chat.message` hook, auto-injection, read override |
 | `src/indexer.ts` | `runIndexPass()`, `scanWorkspace()`, `createWatchPassScheduler()`, `createWatchIgnore()` |
-| `src/watcher.ts` | `createBackgroundIndexer()` — chokidar watcher + debounced scheduler + periodic timer |
+| `src/watcher.ts` | `createBackgroundIndexer()` — chokidar watcher + debounced scheduler + periodic timer (git backend only) |
 
 ### Web UI (`src/web/`)
 
@@ -164,7 +164,7 @@ An LLM generates a natural-language description of each chunk. Batches of chunks
 ### 4. Embedding (`embedBatch` in `embedder/factory.ts`)
 Texts are optionally prefixed with `documentPrefix` (e.g., `search_document:`) and sent to the embedding provider in batches. Multiple batches are sent concurrently (configurable via `indexing.embedConcurrency`). The resulting vectors are written to the chunk objects.
 
-### 5. Storage (`LanceDBStore`)
+### 5. Storage (`LanceDbStore`)
 Chunks and their embeddings are stored in LanceDB in batched writes. The keyword index is maintained separately as an in-memory TF×IDF inverted index, serialized to `keyword-index.json`.
 
 ### 6. Retrieval (`retrieve` in `retriever/retriever.ts`)
@@ -192,7 +192,7 @@ runtime-overrides.json ───┼──> applyRuntimeOverrides() (5s TTL)
 | Language | TypeScript 5.8 |
 | Package manager | npm |
 | Chunking | `web-tree-sitter` (WASM, v0.26.9) |
-| Grammars | `tree-sitter-wasm` (v1.0.2, pre-built WASM) |
+| Grammars | `@vscode/tree-sitter-wasm` + self-bundled `wasm/` (pre-built WASM) |
 | Vector DB | `@lancedb/lancedb` (v0.29.0) |
 | Arrow types | `apache-arrow` (peer dep) |
 | CLI framework | `commander` (v13.1.0) |

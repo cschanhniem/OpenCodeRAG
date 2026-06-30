@@ -1,3 +1,8 @@
+/**
+ * @fileoverview Core type definitions for the OpenCodeRAG pipeline: Chunk, SearchResult,
+ * Chunker, EmbeddingProvider, VectorStore, KeywordIndex, and related interfaces.
+ */
+
 /** A semantic fragment of a file produced by a {@link Chunker}. */
 export interface Chunk {
   id: string;
@@ -13,12 +18,19 @@ export interface Chunk {
   };
 }
 
+/** Logger interface for description generation progress messages. */
+export interface DescriptionLogger {
+  info(message: string): void;
+  warn(message: string): void;
+  debug(message: string): void;
+}
+
 /** Generates natural-language descriptions for code chunks using an LLM. */
 export interface DescriptionProvider {
   /** Generate a description for a single chunk. */
   generateDescription(chunk: Chunk): Promise<string>;
   /** Generate descriptions for multiple chunks concurrently. Returns a Map of chunk ID to description. */
-  generateBatchDescriptions(chunks: Chunk[], logDebug?: (msg: string) => void): Promise<Map<string, string>>;
+  generateBatchDescriptions(chunks: Chunk[], logger?: DescriptionLogger): Promise<Map<string, string>>;
 }
 
 /** Explains how a search result score was computed, including vector and keyword contributions. */
@@ -48,6 +60,19 @@ export interface SearchResult {
   score: number;
   /** Optional breakdown of how the score was computed. */
   explanation?: SearchExplanation;
+}
+
+/** A search result enriched with metadata from context window optimization (adjacent merge, similarity dedup, file cap). */
+export interface OptimizedSearchResult extends SearchResult {
+  /** Metadata about optimizations applied to this result. */
+  optimized?: {
+    /** IDs of original chunks that were merged into this result. */
+    mergedFrom?: string[];
+    /** IDs of chunks that were removed due to high similarity in favor of this one. */
+    dedupedFrom?: string[];
+    /** Whether this chunk was kept despite its file exceeding the per-file cap. */
+    fileCapped?: boolean;
+  };
 }
 
 /** Splits a source file into semantic chunks based on AST structure or content heuristics. */

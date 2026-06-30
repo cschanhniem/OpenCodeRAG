@@ -1,6 +1,6 @@
 {
   "name": "opencode-rag-plugin",
-  "version": "1.14.4",
+  "version": "1.15.1",
   "description": "OpenCode plugin for local-first RAG-based semantic code search",
   "type": "module",
   "main": "./dist/plugin-entry.js",
@@ -50,8 +50,8 @@
     "postbuild": "node -e \"const fs=require('fs'),path=require('path');fs.mkdirSync('dist/types',{recursive:true});fs.copyFileSync('src/types/opencode-plugin.d.ts','dist/types/opencode-plugin.d.ts');const uiDir=path.join('dist','web','ui');fs.mkdirSync(uiDir,{recursive:true});fs.copyFileSync('src/web/ui/index.html',path.join(uiDir,'index.html'));['app.css','github-dark.css','highlight.min.js'].forEach(f=>{const src=path.join('src/web/ui',f);if(fs.existsSync(src))fs.copyFileSync(src,path.join(uiDir,f));});\"",
     "prepublishOnly": "npm run build",
     "typecheck": "tsc --noEmit",
-    "test": "node -e \"const {spawnSync}=require('node:child_process');const {globSync}=require('node:fs');const testFiles=globSync('src/**/*.test.ts').filter(f=>!f.includes('integration.test.ts')&&f!=='src/__tests__/plugin.test.ts');if(testFiles.length===0){console.log('No test files found under src; skipping npm test.');process.exit(0);}const result=spawnSync(process.execPath,['--import','tsx','--test','--test-force-exit',...testFiles],{stdio:'inherit'});process.exit(typeof result.status==='number'?result.status:1);\"",
-    "test:integration": "node -e \"const {spawnSync}=require('node:child_process');const testFiles=['src/__tests__/integration.test.ts','src/__tests__/plugin.test.ts'];const result=spawnSync(process.execPath,['--import','tsx','--test','--test-force-exit',...testFiles],{stdio:'inherit'});process.exit(typeof result.status==='number'?result.status:1);\"",
+    "test": "node -e \"const {spawnSync}=require('node:child_process');const {globSync}=require('node:fs');const testFiles=globSync('src/**/*.test.ts').filter(f=>!f.includes('integration.test.ts')&&f!=='src/__tests__/plugin.test.ts'&&f!=='src/__tests__/watcher/integration.test.ts');if(testFiles.length===0){console.log('No test files found under src; skipping npm test.');process.exit(0);}const result=spawnSync(process.execPath,['--import','tsx','--test','--test-force-exit',...testFiles],{stdio:'inherit'});process.exit(typeof result.status==='number'?result.status:1);\"",
+    "test:integration": "node -e \"const {spawnSync}=require('node:child_process');const testFiles=['src/__tests__/integration.test.ts','src/__tests__/plugin.test.ts','src/__tests__/watcher/integration.test.ts'];const result=spawnSync(process.execPath,['--import','tsx','--test','--test-force-exit',...testFiles],{stdio:'inherit'});process.exit(typeof result.status==='number'?result.status:1);\"",
     "cli": "tsx src/cli/index.ts",
     "release:patch": "node ./scripts/release-patch.js",
     "release:minor": "node ./scripts/release-minor.js"
@@ -85,11 +85,8 @@
     "@lancedb/lancedb": "^0.29.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@thednp/dommatrix": "^3.0.4",
-    "@tree-sitter-grammars/tree-sitter-markdown": "^0.3.2",
-    "@tree-sitter-grammars/tree-sitter-xml": "^0.7.0",
     "@vscode/tree-sitter-wasm": "^0.3.1",
     "apache-arrow": "18.1.0",
-    "canvas": "^3.2.3",
     "chokidar": "^4.0.3",
     "commander": "^13.1.0",
     "js-tiktoken": "^1.0.21",
@@ -98,22 +95,17 @@
     "pdfjs-dist": "^5.7.284",
     "picocolors": "^1.1.1",
     "sharp": "^0.35.2",
-    "tree-sitter-c": "^0.24.1",
-    "tree-sitter-html": "^0.23.2",
-    "tree-sitter-json": "^0.24.8",
-    "tree-sitter-kotlin": "^0.3.8",
-    "tree-sitter-swift": "^0.7.1",
     "web-tree-sitter": "^0.26.9",
     "word-extractor": "^1.0.4"
   },
+  "optionalDependencies": {
+    "canvas": "^3.2.3"
+  },
   "devDependencies": {
-    "@derekstride/tree-sitter-sql": "^0.3.11",
     "@opencode-ai/plugin": "1.15.5",
     "@opentui/core": "^0.4.0",
     "@opentui/keymap": "^0.4.0",
     "@opentui/solid": "^0.4.0",
-    "@tree-sitter-grammars/tree-sitter-toml": "^0.7.0",
-    "@tree-sitter-grammars/tree-sitter-yaml": "^0.7.1",
     "@types/node": "^22.20.0",
     "@types/react": "^19.2.17",
     "@types/word-extractor": "^1.0.6",
@@ -123,7 +115,6 @@
     "solid-js": "^1.9.12",
     "tailwindcss": "^3.4.19",
     "tree-sitter-cli": "^0.26.9",
-    "tree-sitter-containerfile": "^0.8.0",
     "tsx": "^4.22.4",
     "typescript": "^5.9.3"
   },
@@ -131,5 +122,10 @@
     "uuid": "^11.1.1",
     "web-tree-sitter": "$web-tree-sitter"
   },
-  "allowScripts": {}
+  "allowScripts": {
+    "canvas": true,
+    "esbuild": true,
+    "msgpackr-extract": true,
+    "tree-sitter-cli": true
+  }
 }

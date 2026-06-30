@@ -1,4 +1,7 @@
-import type { Chunk, DescriptionProvider } from "../core/interfaces.js";
+/**
+ * @fileoverview Google Gemini description provider for generating natural-language descriptions of code chunks.
+ */
+import type { Chunk, DescriptionProvider, DescriptionLogger } from "../core/interfaces.js";
 import type { DescriptionConfig } from "../core/config.js";
 import { postJson } from "../embedder/http.js";
 import { buildUserMessage, sleep } from "./shared.js";
@@ -19,6 +22,11 @@ interface GeminiResponse {
 
 const RETRYABLE_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
 
+/**
+ * Description provider that uses Google Gemini's generateContent API to describe code chunks.
+ *
+ * @param config - Configuration for the Gemini provider, including base URL, model, API key, and retry settings.
+ */
 export class GeminiDescriptionProvider implements DescriptionProvider {
   private readonly config: DescriptionConfig;
 
@@ -30,17 +38,18 @@ export class GeminiDescriptionProvider implements DescriptionProvider {
     const contents: GeminiContent[] = [
       {
         role: "user",
-        parts: [{ text: buildUserMessage(chunk) }],
+        parts: [{ text: buildUserMessage(chunk, this.config.maxContentChars) }],
       },
     ];
 
     return this.chatRequest(contents, this.config.timeoutMs ?? 60000);
   }
 
-  async generateBatchDescriptions(chunks: Chunk[], logDebug?: (msg: string) => void): Promise<Map<string, string>> {
+  async generateBatchDescriptions(chunks: Chunk[], logger?: DescriptionLogger): Promise<Map<string, string>> {
+    const log = logger ?? { info: (msg: string) => console.log(msg), warn: (msg: string) => console.warn(msg), debug: (msg: string) => console.debug(msg) };
     const concurrency = this.config.batchConcurrency ?? 3;
     const total = chunks.length;
-    console.log(`[describer] Generating descriptions for ${total} chunks (concurrency: ${concurrency})`);
+    log.info(`[describer] Generating descriptions for ${total} chunks (concurrency: ${concurrency})`);
 
     const result = new Map<string, string>();
     const limit = pLimit(concurrency);
@@ -49,24 +58,24 @@ export class GeminiDescriptionProvider implements DescriptionProvider {
     await Promise.all(
       chunks.map((chunk) =>
         limit(async () => {
-          const userMsg = buildUserMessage(chunk);
-          (logDebug ?? console.debug)(`[describer] REQUEST chunk ${chunk.id} (${chunk.metadata.filePath}:${chunk.metadata.startLine}):\n${userMsg}`);
+          const userMsg = buildUserMessage(chunk, this.config.maxContentChars);
+          log.debug(`[describer] REQUEST chunk ${chunk.id} (${chunk.metadata.filePath}:${chunk.metadata.startLine}):\n${userMsg}`);
           try {
             const desc = await this.generateDescription(chunk);
             result.set(chunk.id, desc);
-            (logDebug ?? console.debug)(`[describer] RESPONSE chunk ${chunk.id}: ${desc}`);
+            log.debug(`[describer] RESPONSE chunk ${chunk.id}: ${desc}`);
           } catch (err) {
-            console.warn(`[describer] Failed to describe chunk ${chunk.id} (${chunk.metadata.filePath}:${chunk.metadata.startLine}): ${err instanceof Error ? err.message : String(err)}`);
+            log.warn(`[describer] Failed to describe chunk ${chunk.id} (${chunk.metadata.filePath}:${chunk.metadata.startLine}): ${err instanceof Error ? err.message : String(err)}`);
           }
           completed++;
           if (completed % 25 === 0 || completed === total) {
-            console.log(`[describer] Progress: ${completed}/${total}`);
+            log.info(`[describer] Progress: ${completed}/${total}`);
           }
         }),
       ),
     );
 
-    console.log(`[describer] Descriptions generated: ${result.size}/${total}`);
+    log.info(`[describer] Descriptions generated: ${result.size}/${total}`);
     return result;
   }
 

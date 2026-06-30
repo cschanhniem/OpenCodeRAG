@@ -1,4 +1,7 @@
 /**
+ * @fileoverview Dump command for paginated output of all indexed chunks from the vector store.
+ */
+/**
  * `dump` command — dumps all indexed chunks with pagination support.
  */
 
@@ -27,7 +30,7 @@ export function registerDumpCommand(program: Command): void {
         const cwd = process.cwd();
         let logFilePath = path.resolve(cwd, ".opencode", "opencode-rag.log");
         const ctx = await resolveCliContext(options, logFilePath);
-        const { store, storePath } = ctx;
+        const { store } = ctx;
         logFilePath = ctx.logFilePath;
 
         const total = await store.count();

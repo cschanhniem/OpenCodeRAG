@@ -3,94 +3,60 @@ import assert from "node:assert/strict";
 import { getChunker, chunkFile } from "../../chunker/factory.js";
 
 describe("getChunker", () => {
-  it("returns TypeScript chunker for .ts files", () => {
-    const chunker = getChunker("src/app.ts");
-    assert.equal(chunker.language, "typescript");
-  });
+  const cases: [string, string][] = [
+    ["src/app.ts", "typescript"],
+    ["src/Component.tsx", "typescript"],
+    ["readme.md", "markdown"],
+    ["main.py", "python"],
+    ["Main.java", "java"],
+    ["main.go", "go"],
+    ["script.sh", "bash"],
+    ["index.php", "php"],
+    ["script.ps1", "powershell"],
+    ["module.psm1", "powershell"],
+    ["config.ini", "ini"],
+    ["config.cfg", "ini"],
+    ["config.yaml", "yaml"],
+    ["config.yml", "yaml"],
+    ["config.toml", "toml"],
+    ["query.sql", "sql"],
+    ["Dockerfile", "dockerfile"],
+    ["Containerfile", "dockerfile"],
+    ["main.c", "c"],
+    ["header.h", "c"],
+    ["main.cpp", "cpp"],
+    ["main.cc", "cpp"],
+    ["Program.cs", "csharp"],
+    ["app.js", "javascript"],
+    ["Component.jsx", "javascript"],
+    ["module.mjs", "javascript"],
+    ["Component.razor", "razor"],
+    ["view.cshtml", "razor"],
+    ["package.json", "json"],
+    ["index.html", "html"],
+    ["page.htm", "html"],
+    ["styles.css", "css"],
+    ["MyProject.csproj", "xml"],
+    ["config.xml", "xml"],
+    ["icon.svg", "xml"],
+    ["MySolution.sln", "sln"],
+    ["main.rs", "rust"],
+    ["app.rb", "ruby"],
+    ["main.kt", "kotlin"],
+    ["script.kts", "kotlin"],
+    ["main.swift", "swift"],
+    ["script.ssl", "ssl"],
+  ];
 
-  it("returns TypeScript chunker for .tsx files", () => {
-    const chunker = getChunker("src/Component.tsx");
-    assert.equal(chunker.language, "typescript");
-  });
-
-  it("returns markdown chunker for .md files", () => {
-    const chunker = getChunker("readme.md");
-    assert.equal(chunker.language, "markdown");
-  });
-
-  it("returns Python chunker for .py files", () => {
-    const chunker = getChunker("main.py");
-    assert.equal(chunker.language, "python");
-  });
-
-  it("returns Java chunker for .java files", () => {
-    const chunker = getChunker("Main.java");
-    assert.equal(chunker.language, "java");
-  });
-
-  it("returns Go chunker for .go files", () => {
-    const chunker = getChunker("main.go");
-    assert.equal(chunker.language, "go");
-  });
-
-  it("returns bash chunker for .sh files", () => {
-    const chunker = getChunker("script.sh");
-    assert.equal(chunker.language, "bash");
-  });
-
-  it("returns PHP chunker for .php files", () => {
-    const chunker = getChunker("index.php");
-    assert.equal(chunker.language, "php");
-  });
-
-  it("returns PowerShell chunker for .ps1 files", () => {
-    const chunker = getChunker("script.ps1");
-    assert.equal(chunker.language, "powershell");
-  });
-
-  it("returns PowerShell chunker for .psm1 files", () => {
-    const chunker = getChunker("module.psm1");
-    assert.equal(chunker.language, "powershell");
-  });
-
-  it("returns INI chunker for .ini files", () => {
-    const chunker = getChunker("config.ini");
-    assert.equal(chunker.language, "ini");
-  });
-
-  it("returns INI chunker for .cfg files", () => {
-    const chunker = getChunker("config.cfg");
-    assert.equal(chunker.language, "ini");
-  });
-
-  it("returns YAML chunker for .yaml files", () => {
-    const chunker = getChunker("config.yaml");
-    assert.equal(chunker.language, "yaml");
-  });
-
-  it("returns YAML chunker for .yml files", () => {
-    const chunker = getChunker("config.yml");
-    assert.equal(chunker.language, "yaml");
-  });
-
-  it("returns TOML chunker for .toml files", () => {
-    const chunker = getChunker("config.toml");
-    assert.equal(chunker.language, "toml");
-  });
-
-  it("returns SQL chunker for .sql files", () => {
-    const chunker = getChunker("query.sql");
-    assert.equal(chunker.language, "sql");
-  });
-
-  it("returns Dockerfile chunker for Dockerfile", () => {
-    const chunker = getChunker("Dockerfile");
-    assert.equal(chunker.language, "dockerfile");
-  });
-
-  it("returns Dockerfile chunker for Containerfile", () => {
-    const chunker = getChunker("Containerfile");
-    assert.equal(chunker.language, "dockerfile");
+  it("returns the correct chunker for each file extension", () => {
+    for (const [filePath, expectedLanguage] of cases) {
+      const chunker = getChunker(filePath);
+      assert.equal(
+        chunker.language,
+        expectedLanguage,
+        `Expected "${filePath}" to map to "${expectedLanguage}", got "${chunker.language}"`,
+      );
+    }
   });
 
   it("returns fallback chunker for unknown extensions", () => {
@@ -111,126 +77,6 @@ describe("getChunker", () => {
   it("handles paths with dots in directory names", () => {
     const chunker = getChunker("dir.with.dots/app.ts");
     assert.equal(chunker.language, "typescript");
-  });
-
-  it("returns C chunker for .c files", () => {
-    const chunker = getChunker("main.c");
-    assert.equal(chunker.language, "c");
-  });
-
-  it("returns C chunker for .h files", () => {
-    const chunker = getChunker("header.h");
-    assert.equal(chunker.language, "c");
-  });
-
-  it("returns C++ chunker for .cpp files", () => {
-    const chunker = getChunker("main.cpp");
-    assert.equal(chunker.language, "cpp");
-  });
-
-  it("returns C++ chunker for .cc files", () => {
-    const chunker = getChunker("main.cc");
-    assert.equal(chunker.language, "cpp");
-  });
-
-  it("returns C# chunker for .cs files", () => {
-    const chunker = getChunker("Program.cs");
-    assert.equal(chunker.language, "csharp");
-  });
-
-  it("returns JavaScript chunker for .js files", () => {
-    const chunker = getChunker("app.js");
-    assert.equal(chunker.language, "javascript");
-  });
-
-  it("returns JavaScript chunker for .jsx files", () => {
-    const chunker = getChunker("Component.jsx");
-    assert.equal(chunker.language, "javascript");
-  });
-
-  it("returns JavaScript chunker for .mjs files", () => {
-    const chunker = getChunker("module.mjs");
-    assert.equal(chunker.language, "javascript");
-  });
-
-  it("returns Razor chunker for .razor files", () => {
-    const chunker = getChunker("Component.razor");
-    assert.equal(chunker.language, "razor");
-  });
-
-  it("returns Razor chunker for .cshtml files", () => {
-    const chunker = getChunker("view.cshtml");
-    assert.equal(chunker.language, "razor");
-  });
-
-  it("returns JSON chunker for .json files", () => {
-    const chunker = getChunker("package.json");
-    assert.equal(chunker.language, "json");
-  });
-
-  it("returns HTML chunker for .html files", () => {
-    const chunker = getChunker("index.html");
-    assert.equal(chunker.language, "html");
-  });
-
-  it("returns HTML chunker for .htm files", () => {
-    const chunker = getChunker("page.htm");
-    assert.equal(chunker.language, "html");
-  });
-
-  it("returns CSS chunker for .css files", () => {
-    const chunker = getChunker("styles.css");
-    assert.equal(chunker.language, "css");
-  });
-
-  it("returns XML chunker for .csproj files", () => {
-    const chunker = getChunker("MyProject.csproj");
-    assert.equal(chunker.language, "xml");
-  });
-
-  it("returns XML chunker for .xml files", () => {
-    const chunker = getChunker("config.xml");
-    assert.equal(chunker.language, "xml");
-  });
-
-  it("returns XML chunker for .svg files", () => {
-    const chunker = getChunker("icon.svg");
-    assert.equal(chunker.language, "xml");
-  });
-
-  it("returns SLN chunker for .sln files", () => {
-    const chunker = getChunker("MySolution.sln");
-    assert.equal(chunker.language, "sln");
-  });
-
-  it("returns Rust chunker for .rs files", () => {
-    const chunker = getChunker("main.rs");
-    assert.equal(chunker.language, "rust");
-  });
-
-  it("returns Ruby chunker for .rb files", () => {
-    const chunker = getChunker("app.rb");
-    assert.equal(chunker.language, "ruby");
-  });
-
-  it("returns Kotlin chunker for .kt files", () => {
-    const chunker = getChunker("main.kt");
-    assert.equal(chunker.language, "kotlin");
-  });
-
-  it("returns Kotlin chunker for .kts files", () => {
-    const chunker = getChunker("script.kts");
-    assert.equal(chunker.language, "kotlin");
-  });
-
-  it("returns Swift chunker for .swift files", () => {
-    const chunker = getChunker("main.swift");
-    assert.equal(chunker.language, "swift");
-  });
-
-  it("returns SSL chunker for .ssl files", () => {
-    const chunker = getChunker("script.ssl");
-    assert.equal(chunker.language, "ssl");
   });
 });
 

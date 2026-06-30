@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Tree-sitter based CSS chunker splitting by rule sets, at-rules, media, and keyframes.
+ */
 import { TreeSitterChunker } from "./base.js";
 
 /**

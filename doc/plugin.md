@@ -91,20 +91,22 @@ Returns the pre-generated natural-language description for an indexed image file
 
 **Returns:** Markdown block with file path and the stored description text.
 
-### 2. `chat.message` Hook — Auto-Injection
+### 2. `chat.message` Hook — Hotkey-Activated Injection
 
-After each user message, the plugin runs automatic retrieval. The `contentType` setting controls what gets injected:
+The plugin captures `message.part.updated` events to accumulate the **last assistant message's text**. When you trigger injection via hotkey, the search query combines:
 
-- **`"file_paths"` (default)**: A lightweight file suggestion list is appended — `path (lang, lines N-M, relevance X.XX)`. Agents must call `search_semantic`, `get_file_skeleton`, or `find_usages` to retrieve actual code. This nudges proactive tool usage.
-- **`"chunks"`**: Full code chunks are injected under an **Auto-retrieved code context** header. Saves a tool-call round-trip but uses more tokens.
+```
+[Last assistant response]
+[Current user prompt]
+```
 
-Both modes only inject when score ≥ `openCode.autoInject.minScore` (default 0.85).
+This 2-message query provides the embedding model with conversation context for more relevant code retrieval. On the first turn (no prior assistant message), only the user prompt is used.
 
-The auto-injection respects:
-- `maxChunks` (default 5) — maximum chunks/files to inject
-- `maxTokens` (default 3000) — token budget (~4 chars/token estimate)
-- Low-scoring chunks are evicted first to fit the budget
-- Paths are made relative via `path.relative(worktree, ...)`
+RAG context is **appended directly to the user's message text** (not pushed as a separate part), matching the `/doc` handler pattern that avoids duplication.
+
+Use the hotkeys:
+- **Ctrl+Enter** — Injects a file suggestion list
+- **Ctrl+Alt+Enter** — Injects full code chunks
 
 ### 3. Agent Skill Discovery
 
@@ -197,12 +199,12 @@ See [Evaluation documentation](evaluation.md) for CLI commands, analysis interpr
             │                             │
     ragPlugin()                    BackgroundIndexer
             │                             │
-    createRagHooks()                chokidar watcher
-            │                             │
+    createRagHooks()                file watcher
+            │                        (chokidar/git)
     ┌───────┼───────────┐         debounced scheduler
     │       │           │                 │
   Tool   chat.message  read          periodic timer
-  hook    hook        override
+  hook    hook        override        (git only)
 ```
 
 ## Plugin Export Pattern
@@ -248,9 +250,11 @@ export default plugin;
 
 The plugin spawns one `BackgroundIndexer` per workspace directory (via `src/watcher.ts`):
 
-- **chokidar watcher**: Monitors file changes in the workspace
+- **File watcher**: Monitors file changes in the workspace (backend configurable via `autoIndex.watcher`)
+  - **chokidar** (default): Real-time filesystem events, minimal overhead
+  - **git**: Poll-based diff against last indexed commit
 - **Debounced scheduler**: Waits `autoIndex.debounceMs` (2000ms) after changes before re-indexing (disabled by default; enable via `autoIndex.enabled`)
-- **Periodic timer**: Runs a full pass every `autoIndex.intervalMs` (default 5 min)
+- **Periodic timer**: Only for `git` backend — runs a full pass every `autoIndex.intervalMs` (default 5 min). Not used with `chokidar` (real FS events are sufficient)
 - **Error recovery**: Detects LanceDB corruption and triggers auto-rebuild
 - **Status file**: Writes `watcher-status.json` to the store path for observability
 
@@ -283,7 +287,7 @@ The TUI plugin (`src/tui.ts`) registers a settings panel in the OpenCode sidebar
 | **Ctrl+Alt+Enter** | Retrieve and append full code chunks to the prompt |
 | **Ctrl+Shift+R** | Open the settings dialog |
 
-Both shortcuts read the current prompt text as the search query. If the prompt is empty, a toast reminds you to type first — no dialogs are opened. Keybindings are configurable in the settings menu under "Keybindings".
+Both shortcuts read the current prompt text combined with the previous assistant response (if any) as the search query. If the prompt is empty, a toast reminds you to type first — no dialogs are opened. Keybindings are configurable in the settings menu under "Keybindings".
 
 ## Plugin Troubleshooting
 

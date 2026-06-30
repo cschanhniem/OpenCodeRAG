@@ -1,8 +1,11 @@
+/**
+ * @fileoverview HTTP server for the OpenCodeRAG Web UI dashboard with static asset serving and REST API routing.
+ */
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from "node:http";
 import { readFileSync } from "node:fs";
 import { dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { LanceDBStore } from "../vectorstore/lancedb.js";
+import { LanceDbStore } from "../vectorstore/lancedb.js";
 import { KeywordIndex } from "../retriever/keyword-index.js";
 import { createApiHandler } from "./api.js";
 import { getStaticHtml } from "./static.js";
@@ -70,7 +73,7 @@ export async function startWebUi(
   cwd?: string,
   vectorDimension: number = 384
 ): Promise<WebUiServer> {
-  const store = new LanceDBStore(storePath, vectorDimension);
+  const store = new LanceDbStore(storePath, vectorDimension);
   const keywordIndex = await KeywordIndex.load(storePath);
 
   const html = getStaticHtml();

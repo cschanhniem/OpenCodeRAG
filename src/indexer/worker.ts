@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Per-file preparation, chunking, embedding, and storage within the indexing pipeline.
+ */
 import path from "node:path";
 import { chunkFile } from "../chunker/factory.js";
 import { uuid } from "../chunker/uuid.js";
@@ -140,6 +143,7 @@ export async function prepareFile(
   config: {
     embedding: { documentPrefix?: string };
     chunking?: { nodeTypes?: Record<string, string[]> };
+    description?: { maxContentChars?: number };
   },
   keywordIndex: KeywordIndex | undefined,
   descriptionProvider: DescriptionProvider | undefined,
@@ -257,7 +261,7 @@ export async function prepareFile(
   let descriptionFailed = false;
 
   if (descriptionProvider) {
-    const { descriptionMap, failures } = await generateDescriptions(chunks, descriptionProvider, logger);
+    const { descriptionMap, failures } = await generateDescriptions(chunks, descriptionProvider, logger, config.description?.maxContentChars);
     descriptionFailed = failures.length > 0;
     for (const chunk of chunks) {
       const batchDesc = descriptionMap.get(chunk.id);
@@ -305,7 +309,7 @@ export async function storeFileChunks(
   prep: PreparedFile,
   embeddings: number[][],
   store: VectorStore,
-  logger?: Logger,
+  _logger?: Logger,
 ): Promise<WorkerResult> {
   if (prep.earlyResult) return prep.earlyResult;
   if (!prep.chunks || !prep.textToEmbed) {
@@ -369,6 +373,7 @@ export async function processFile(
     embedding: { documentPrefix?: string };
     indexing: { embedBatchSize: number; embedConcurrency?: number };
     chunking?: { nodeTypes?: Record<string, string[]> };
+    description?: { maxContentChars?: number };
   },
   store: VectorStore,
   keywordIndex: KeywordIndex | undefined,

@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Tree-sitter based Rust chunker splitting by functions, structs, enums, traits, impls, and types.
+ */
 import { TreeSitterChunker } from "./base.js";
 
 /**

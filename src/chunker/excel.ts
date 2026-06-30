@@ -1,3 +1,6 @@
+/**
+ * @fileoverview CSV-per-sheet extraction and chunker for Excel spreadsheets using @e965/xlsx.
+ */
 import type { Chunker, Chunk } from "../core/interfaces.js";
 import { uuid } from "./uuid.js";
 

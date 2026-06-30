@@ -1,4 +1,7 @@
 /**
+ * @fileoverview Query command for hybrid vector and keyword search against the indexed codebase.
+ */
+/**
  * `query` command — searches the indexed codebase with semantic and keyword retrieval.
  */
 
@@ -6,7 +9,8 @@ import type { Command } from "commander";
 import path from "node:path";
 import pc from "picocolors";
 import { retrieve } from "../../retriever/retriever.js";
-import { c, resolveCliContext, cleanupContext, logCliError, logCliInfo, formatDuration, dedupeResults } from "../format.js";
+import { c, resolveCliContext, cleanupContext, logCliError, logCliInfo, formatDuration } from "../format.js";
+import { optimizeContext, DEFAULT_CONTEXT_OPTIMIZATION } from "../../retriever/context-optimizer.js";
 import type { CliOptions } from "../types.js";
 
 /**
@@ -33,7 +37,7 @@ export function registerQueryCommand(program: Command): void {
         const cwd = process.cwd();
         let logFilePath = path.resolve(cwd, ".opencode", "opencode-rag.log");
         const ctx = await resolveCliContext(options, logFilePath);
-        const { config, embedder, store, storePath, keywordIndex } = ctx;
+        const { config, embedder, store, keywordIndex } = ctx;
         logFilePath = ctx.logFilePath;
 
         logCliInfo(logFilePath, "query", `\n${c.heading("Querying:")} "${query}"`);
@@ -58,7 +62,8 @@ export function registerQueryCommand(program: Command): void {
           queryPrefix: config.embedding.queryPrefix,
           explain: options.explain ?? false,
         });
-        const results = dedupeResults(rawResults);
+        const optCfg = config.retrieval.contextOptimization ?? DEFAULT_CONTEXT_OPTIMIZATION;
+        const results = optimizeContext(rawResults, { topK, config: optCfg });
 
         if (results.length === 0) {
           logCliInfo(logFilePath, "query", c.warn("No results found."));

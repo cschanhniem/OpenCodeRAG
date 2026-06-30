@@ -1,4 +1,7 @@
 /**
+ * @fileoverview Describe-image command for generating image descriptions via a configured vision model provider.
+ */
+/**
  * `describe-image` command — describes an image file using a configured vision model.
  */
 

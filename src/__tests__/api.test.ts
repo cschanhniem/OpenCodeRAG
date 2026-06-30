@@ -58,6 +58,6 @@ describe("Library re-exports", () => {
     const mod = await import("../index.js");
     assert.equal(typeof mod.retrieve, "function");
     assert.equal(typeof mod.loadConfig, "function");
-    assert.equal(typeof mod.LanceDBStore, "function");
+    assert.equal(typeof mod.LanceDbStore, "function");
   });
 });

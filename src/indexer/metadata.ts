@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Builds metadata headers (file type, content type, document title) for embedding context.
+ */
 import path from "node:path";
 
 const FILE_TYPE_LABELS: Record<string, string> = {
@@ -73,6 +76,15 @@ function extractDocumentTitle(content: string, filePath: string): string {
     .slice(0, 80);
 }
 
+/**
+ * Build a metadata header string for embedding context that describes the
+ * file type, top-level directory, content classification, and document title.
+ *
+ * @param filePath - Absolute path to the file.
+ * @param cwd - Workspace root directory (used to compute relative path).
+ * @param content - File content used to extract a document title.
+ * @returns A space-delimited metadata string such as `"[typescript] [src] [source] MyComponent"`.
+ */
 export function buildFileMetadataHeader(filePath: string, cwd: string, content: string): string {
   const ext = path.extname(filePath).toLowerCase();
   const relPath = path.relative(cwd, filePath).replace(/\\/g, "/");

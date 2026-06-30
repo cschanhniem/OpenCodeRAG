@@ -1,6 +1,6 @@
 ﻿# OpenCodeRAG
 
-OpenCodeRAG is a **local-first RAG plugin** for semantic code and image search. It converts your codebase into vector indices and retrieves relevant code chunks on natural language queries. The primary aim is to save tokens by replacing full-file reads with targeted chunk retrieval and to speed-up tool calls for large codebases. Integrates seamlessly with [OpenCode](https://opencode.ai) and works as a standalone MCP server or CLI tool.
+OpenCodeRAG is a **local-first RAG plugin** for semantic code and image search. It converts your codebase into vector indices and retrieves relevant code chunks on natural language queries. The primary aim is to save tokens by replacing full-file reads with targeted chunk retrieval and to speed-up tool calls for large codebases. Integrates seamlessly with [OpenCode](https://opencode.ai) and works as a standalone MCP server or CLI tool for other AI harnesses.
 
 You don't need a dedicated GPU to run smaller embedding LLMs, as these models can still run performant on modern CPUs.
 
@@ -79,11 +79,12 @@ Launch with `opencode-rag ui`. See [Web UI documentation](doc/webui.md) for deta
 OpenCodeRAG can index image files (PNG, JPEG, WebP, etc.) by sending them to a vision-capable LLM and storing the generated text descriptions as searchable vector chunks. This makes visual assets discoverable via natural language queries (e.g., "login screen screenshot", "architecture diagram").
 
 **Supported providers:** Ollama, OpenAI, Anthropic, Google Gemini compatible providers.
+
 **Disabled by default** — enable in `opencode-rag.json` to opt in (recommended for dedicated GPUs).
 
 ## MCP Server
 
-OpenCodeRAG ships a stdio-based [MCP (Model Context Protocol)](https://spec.modelcontextprotocol.io/) server that exposes semantic code tools to any MCP-compatible client (Claude Desktop, OpenCode, Cursor, etc.).
+OpenCodeRAG ships a CLI-based [MCP (Model Context Protocol)](https://spec.modelcontextprotocol.io/) server that exposes semantic code tools to any MCP-compatible client (Claude Desktop, OpenCode, Cursor, etc.).
 
 ```bash
 opencode-rag mcp
@@ -128,15 +129,10 @@ When using OpenCode, the plugin enhances your agent with three discovery mechani
 ### 1. Skill-Based Discovery (Recommended)
 `opencode-rag init` creates `.opencode/skills/opencode-rag/SKILL.md` - an OpenCode skill that teaches agents the tool workflow. Agents load it on demand via the `skill` tool, keeping token overhead minimal.
 
-### 2. Auto-Injection (Background Context)
-After every message you send, the plugin searches your vector-indexed codebase:
-- **`contentType: "file_paths"` (default):** A lightweight list of relevant files is appended (e.g., `src/plugin.ts (typescript, lines 10-42, relevance 0.92)`). Agents must call `search_semantic` or `find_usages` to retrieve actual code — nudging proactive tool usage.
-- **`contentType: "chunks"`:** High-confidence code chunks (score ≥ 0.85) are injected directly into your prompt, giving the agent instant context without a tool-call round-trip.
-
-### 3. System Prompt Guidance (Conditional)
+### 2. System Prompt Guidance (Conditional)
 When chunks are indexed, a brief tool list is prepended to the system prompt so agents know the tools exist. This is skipped when no chunks are indexed to save tokens.
 
-### 4. On-Demand RAG Context (Ctrl+Enter / Ctrl+Alt+Enter)
+### 3. On-Demand RAG Context (Ctrl+Enter / Ctrl+Alt+Enter)
 Press **Ctrl+Enter** in the terminal prompt to retrieve and append a relevant file list to your current prompt. Press **Ctrl+Alt+Enter** to append full code chunks instead. The query is taken from your typed text - if the prompt is empty, a toast reminds you to type first. Results are appended directly to the prompt as formatted code blocks with file paths, line ranges, and relevance scores. No dialogs are opened. Keybindings are configurable in the settings menu (Ctrl+Shift+R).
 
 ---

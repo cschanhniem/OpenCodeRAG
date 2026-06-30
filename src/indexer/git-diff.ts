@@ -1,11 +1,21 @@
+/**
+ * @fileoverview Uses git to detect changed, deleted, and untracked files for incremental indexing.
+ */
 import { execSync } from "node:child_process";
 
+/** Result of comparing the working tree against a prior commit. */
 export interface GitDiffResult {
   changedFiles: string[];
   deletedFiles: string[];
   currentCommit: string;
 }
 
+/**
+ * Resolve the root directory of the git repository containing `cwd`.
+ *
+ * @param cwd - A path inside the repository.
+ * @returns The absolute repository root path, or `null` if not a git repo.
+ */
 export function getRepoRoot(cwd: string): string | null {
   try {
     return execSync("git rev-parse --show-toplevel", {
@@ -19,6 +29,12 @@ export function getRepoRoot(cwd: string): string | null {
   }
 }
 
+/**
+ * Get the full SHA of the current HEAD commit.
+ *
+ * @param cwd - A path inside the repository.
+ * @returns The commit SHA, or `null` on failure.
+ */
 export function getCurrentCommit(cwd: string): string | null {
   try {
     return execSync("git rev-parse HEAD", {
@@ -32,6 +48,13 @@ export function getCurrentCommit(cwd: string): string | null {
   }
 }
 
+/**
+ * List changed, added, and deleted files between `fromCommit` and HEAD.
+ *
+ * @param cwd - A path inside the repository.
+ * @param fromCommit - The commit SHA to diff against.
+ * @returns A diff result, or `null` if the git command fails.
+ */
 export function getChangedFilesSince(
   cwd: string,
   fromCommit: string,
@@ -59,6 +82,12 @@ export function getChangedFilesSince(
   }
 }
 
+/**
+ * List untracked files in the repository, respecting .gitignore rules.
+ *
+ * @param cwd - A path inside the repository.
+ * @returns An array of untracked file paths (relative to repo root).
+ */
 export function getUntrackedFiles(cwd: string): string[] {
   try {
     const raw = execSync(
@@ -68,5 +97,50 @@ export function getUntrackedFiles(cwd: string): string[] {
     return raw.length > 0 ? raw.split("\n") : [];
   } catch {
     return [];
+  }
+}
+
+/** Result of comparing the working tree against HEAD. */
+export interface WorkingTreeChanges {
+  /** Modified/renamed tracked files (unstaged + staged but not committed). */
+  changedFiles: string[];
+  /** Deleted tracked files (relative to repo root). */
+  deletedFiles: string[];
+  /** Untracked files respecting .gitignore (relative to repo root). */
+  untrackedFiles: string[];
+}
+
+/**
+ * Detect uncommitted working-tree changes by comparing against HEAD.
+ * Uses `git diff-index` for tracked file modifications, `git diff --diff-filter=D`
+ * for deleted files, and `git ls-files --others` for untracked files.
+ *
+ * @param cwd - A path inside the repository.
+ * @returns Working-tree changes, or `null` if not a git repo.
+ */
+export function getWorkingTreeChanges(cwd: string): WorkingTreeChanges | null {
+  try {
+    const modifiedRaw = execSync(
+      "git diff-index --name-only -M HEAD",
+      { cwd, encoding: "utf-8", timeout: 10000, stdio: ["ignore", "pipe", "ignore"] },
+    ).trim();
+
+    const deletedRaw = execSync(
+      "git diff --name-only --diff-filter=D HEAD",
+      { cwd, encoding: "utf-8", timeout: 10000, stdio: ["ignore", "pipe", "ignore"] },
+    ).trim();
+
+    const untrackedRaw = execSync(
+      "git ls-files --others --exclude-standard",
+      { cwd, encoding: "utf-8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"] },
+    ).trim();
+
+    const changedFiles = modifiedRaw.length > 0 ? modifiedRaw.split("\n") : [];
+    const deletedFiles = deletedRaw.length > 0 ? deletedRaw.split("\n") : [];
+    const untrackedFiles = untrackedRaw.length > 0 ? untrackedRaw.split("\n") : [];
+
+    return { changedFiles, deletedFiles, untrackedFiles };
+  } catch {
+    return null;
   }
 }

@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Terminal-based live-updating progress table for indexing through chunking/description/embedding stages.
+ */
 import type { IndexProgress } from "../core/interfaces.js";
 
 const STAGE_LABELS = ["Chunking", "Description", "Embedding"] as const;
@@ -38,16 +41,16 @@ function logLine(label: string, maxLabelLength: number, breadcrumb: string): str
  * For non-TTY streams (piped output), each finished or failed file is logged as a single line.
  */
 export class TerminalProgressTable implements IndexProgress {
-  private entries = new Map<string, number>();
-  private failed = new Set<string>();
-  private fileLabels: string[] = [];
+  private readonly entries = new Map<string, number>();
+  private readonly failed = new Set<string>();
+  private readonly fileLabels: string[] = [];
   private fileCount = 0;
   private maxLabelLength = 0;
   private renderedLineCount = 0;
   private dirty = false;
   private timer: ReturnType<typeof setInterval> | null = null;
   private done_ = false;
-  private isTTY: boolean;
+  private readonly isTTY: boolean;
 
   /**
    * @param stream - The write stream used for rendering (typically `process.stdout` or `process.stderr`).

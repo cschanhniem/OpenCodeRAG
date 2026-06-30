@@ -1,4 +1,7 @@
 /**
+ * @fileoverview UI command to start a local web dashboard for browsing the vector database and running searches.
+ */
+/**
  * `ui` command — starts a local web UI for browsing the vector database.
  */
 

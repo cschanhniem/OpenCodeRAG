@@ -1,6 +1,11 @@
+/**
+ * @fileoverview Live-configuration overrides that take precedence over the on-disk config file.
+ * Supports per-key overrides stored as JSON, loaded at runtime.
+ */
+
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
-import type { RagConfig, AutoInjectContentType } from "./config.js";
+import type { RagConfig } from "./config.js";
 import { DEFAULT_CONFIG } from "./config.js";
 
 /** Live-configuration overrides that take precedence over the on-disk config file. */
@@ -17,6 +22,7 @@ export interface RuntimeOverrides {
     autoIndex?: {
       enabled?: boolean;
       debounceMs?: number;
+      watcher?: string;
     };
     autoInject?: {
       enabled?: boolean;
@@ -107,16 +113,10 @@ export function applyRuntimeOverrides(
 
   if (overrides.openCode) {
     if (overrides.openCode.autoIndex) {
-      if (!merged.openCode.autoIndex) merged.openCode.autoIndex = { enabled: true, debounceMs: 2000, intervalMs: 300000 };
+      if (!merged.openCode.autoIndex) merged.openCode.autoIndex = { enabled: true, debounceMs: 2000, intervalMs: 300000, watcher: "chokidar" };
       if (overrides.openCode.autoIndex.enabled !== undefined) merged.openCode.autoIndex.enabled = overrides.openCode.autoIndex.enabled;
       if (overrides.openCode.autoIndex.debounceMs !== undefined) merged.openCode.autoIndex.debounceMs = overrides.openCode.autoIndex.debounceMs;
-    }
-    if (overrides.openCode.autoInject) {
-      if (!merged.openCode.autoInject) merged.openCode.autoInject = { enabled: true, minScore: 0.75, maxChunks: 10, maxTokens: 3000, contentType: "file_paths" };
-      if (overrides.openCode.autoInject.enabled !== undefined) merged.openCode.autoInject.enabled = overrides.openCode.autoInject.enabled;
-      if (overrides.openCode.autoInject.minScore !== undefined) merged.openCode.autoInject.minScore = overrides.openCode.autoInject.minScore;
-      if (overrides.openCode.autoInject.maxChunks !== undefined) merged.openCode.autoInject.maxChunks = overrides.openCode.autoInject.maxChunks;
-      if (overrides.openCode.autoInject.contentType !== undefined) merged.openCode.autoInject.contentType = overrides.openCode.autoInject.contentType as AutoInjectContentType;
+      if (overrides.openCode.autoIndex.watcher !== undefined) merged.openCode.autoIndex.watcher = overrides.openCode.autoIndex.watcher as "chokidar" | "git";
     }
   }
 

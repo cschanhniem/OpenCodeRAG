@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Tree-sitter based Python chunker splitting by function and decorated definitions.
+ */
 import { TreeSitterChunker } from "./base.js";
 
 /**

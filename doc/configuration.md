@@ -24,7 +24,7 @@ Controls how code chunks are converted to vector embeddings.
     "provider": "ollama",
     "baseUrl": "http://localhost:11434/api",
     "apiKey": null,
-    "model": "embeddinggemma:latest",
+    "model": "qwen2.5:3b:latest",
     "timeoutMs": 30000,
     "proxy": {
       "url": "http://proxy.example.com:8080",
@@ -43,7 +43,7 @@ Controls how code chunks are converted to vector embeddings.
 | `provider` | `"ollama"` | `"ollama"`, `"openai"`, or `"cohere"` |
 | `baseUrl` | `http://127.0.0.1:11434/api` | API endpoint |
 | `apiKey` | `null` | API key (auto-resolved from OpenCode provider config for OpenAI) |
-| `model` | `"embeddinggemma:latest"` | Model name |
+| `model` | `"qwen2.5:3b:latest"` | Model name |
 | `timeoutMs` | `30000` | Request timeout (increase for cold starts) |
 | `proxy.url` | — | Proxy URL (env vars take precedence) - only needed when need to connect to an external provider behind a firewall /corporatre network |
 | `proxy.username` | — | Proxy auth username |
@@ -121,6 +121,13 @@ Controls how queries are matched against the index.
     "hybridSearch": {
       "enabled": true,
       "keywordWeight": 0.4
+    },
+    "contextOptimization": {
+      "enabled": true,
+      "maxPerFile": 3,
+      "mergeAdjacent": true,
+      "adjacentGapThreshold": 5,
+      "similarityThreshold": 0.8
     }
   }
 }
@@ -132,6 +139,11 @@ Controls how queries are matched against the index.
 | `minScore` | `0.5` | Minimum relevance score (0–1) |
 | `hybridSearch.enabled` | `true` | Enable combined TF×IDF + vector search |
 | `hybridSearch.keywordWeight` | `0.4` | Weight for keyword score in fusion: `(1-kw)*vScore + kw*kScore` |
+| `contextOptimization.enabled` | `true` | Enable post-retrieval optimization pipeline |
+| `contextOptimization.maxPerFile` | `3` | Max chunks per file in final result (0 = unlimited) |
+| `contextOptimization.mergeAdjacent` | `true` | Merge consecutive same-file chunks separated by ≤ gap |
+| `contextOptimization.adjacentGapThreshold` | `5` | Max line gap for adjacent merge (lines between end and next start) |
+| `contextOptimization.similarityThreshold` | `0.8` | Jaccard similarity threshold (0–1) for same-file dedup |
 
 ### `description`
 
@@ -168,6 +180,7 @@ Controls LLM-based description generation for code chunks.
 | `batchConcurrency` | `3` | Number of LLM batch description requests sent in parallel. Higher values speed up description generation but increase LLM pressure |
 | `retryMax` | `3` | Retry attempts on failure |
 | `retryBaseDelayMs` | `1000` | Base delay for exponential backoff |
+| `maxContentChars` | `4000` | Maximum content characters sent to the LLM. Chunks exceeding this limit receive fallback descriptions (line range + language) instead of LLM-generated descriptions. Prevents timeouts on large/minified files. |
 
 When enabled, the embedded text is `filePath + "\n\n" + description + "\n\n" + code content`. Even when disabled, descriptions include the line range and language (e.g., `lines 10-42, typescript`). On LLM failure, falls back to embedding filePath + raw content. Files where description generation failed are flagged in the manifest (`descriptionFailed: true`) and automatically retried on the next `opencode-rag index` run.
 
@@ -233,14 +246,8 @@ Controls the OpenCode plugin integration.
     "autoIndex": {
       "enabled": false,
       "debounceMs": 2000,
-      "intervalMs": 300000
-    },
-    "autoInject": {
-      "enabled": true,
-      "minScore": 0.85,
-      "maxChunks": 5,
-      "maxTokens": 3000,
-      "contentType": "file_paths"
+      "intervalMs": 300000,
+      "watcher": "chokidar"
     }
   }
 }
@@ -255,12 +262,8 @@ Controls the OpenCode plugin integration.
 | `readRelatedFilesMax` | `5` | Max related file suggestions per read |
 | `autoIndex.enabled` | `false` | Auto-index changed files in background |
 | `autoIndex.debounceMs` | `2000` | Debounce delay for file change events |
-| `autoIndex.intervalMs` | `300000` | Periodic full-index interval (5 min) |
-| `autoInject.enabled` | `true` | Auto-inject context on chat messages |
-| `autoInject.minScore` | `0.85` | Minimum score for auto-injection |
-| `autoInject.maxChunks` | `5` | Max auto-injected chunks |
-| `autoInject.maxTokens` | `3000` | Token budget for auto-injected context |
-| `autoInject.contentType` | `"file_paths"` | What to inject: `"file_paths"` (lightweight paths + scores) or `"chunks"` (full code) |
+| `autoIndex.intervalMs` | `300000` | Periodic full-index interval, only used by git backend (ignored with chokidar) |
+| `autoIndex.watcher` | `"chokidar"` | File-change detection backend: `"chokidar"` (real-time FS events) or `"git"` (poll-based diff) |
 
 ### `autoUpdate`
 

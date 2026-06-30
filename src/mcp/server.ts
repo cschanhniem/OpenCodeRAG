@@ -1,9 +1,11 @@
+/**
+ * @fileoverview MCP server setup exposing search_semantic, get_file_skeleton, find_usages, and describe_image tools.
+ */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod/v4";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import type { RagConfig } from "../core/config.js";
-import { resolveRagContext, type RagContext } from "../core/bootstrap.js";
+import { resolveRagContext } from "../core/bootstrap.js";
 import { retrieve } from "../retriever/retriever.js";
 import process from "node:process";
 import {

@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Tree-sitter based Bash chunker splitting by function definitions.
+ */
 import { TreeSitterChunker } from "./base.js";
 
 /**

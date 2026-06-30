@@ -1,4 +1,7 @@
 /**
+ * @fileoverview CLI entry point creating the Commander program, wiring all command modules, and handling auto-run detection.
+ */
+/**
  * CLI entry point — creates the Commander program, wires all command modules,
  * and handles auto-run detection for symlinked binaries.
  *
@@ -37,11 +40,13 @@ import {
  * module initialization. The program is parsed either on auto-run detection or
  * when {@link runCli} is called programmatically.
  */
+const pkg = getPackageMetadata();
 const program = new Command();
 
 program
   .name("opencode-rag")
-  .description("Local-first RAG semantic code search");
+  .description(`Local-first RAG semantic code search v${pkg.version}`)
+  .version(pkg.version);
 
 registerIndexCommand(program);
 registerQueryCommand(program);

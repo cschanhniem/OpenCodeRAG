@@ -33,6 +33,43 @@ remove_from_config() {
   done
 }
 
+remove_stale_plugin_from_config() {
+  local removed=false
+  for cfg in opencode.jsonc opencode.json; do
+    local cfgpath="$GLOBAL_CONFIG/$cfg"
+    [[ -f "$cfgpath" ]] || continue
+    if node -e "const fs=require('fs');const c=JSON.parse(fs.readFileSync('$cfgpath','utf8'));if(c.plugin){delete c.plugin;fs.writeFileSync('$cfgpath',JSON.stringify(c,null,2)+'\n');process.exit(0)}process.exit(1)" 2>/dev/null; then
+      info "Removed stale plugin entry from $cfgpath"
+      removed=true
+    fi
+  done
+  $removed
+}
+
+warn_if_opencode_running() {
+  local pids
+  pids=$(pgrep -x opencode 2>/dev/null || true)
+  [[ -z "$pids" ]] && return 0
+  printf '\n'
+  printf 'WARNING: OpenCode is currently running (PID(s): %s).\n' "$(echo "$pids" | tr '\n' ' ')" >&2
+  printf '  OpenCode may have native modules (sharp/libvips) locked,\n' >&2
+  printf '  which will cause npm install to fail with EBUSY.\n' >&2
+  printf '\n'
+  printf 'Terminate all OpenCode processes before installing? [y/N] '
+  read -r answer
+  case "$answer" in
+    [yY]|[yY][eE][sS])
+      info "Terminating OpenCode process(es)..."
+      kill -9 $pids 2>/dev/null || true
+      sleep 2
+      info "OpenCode terminated."
+      ;;
+    *)
+      die "Installation aborted. Close all OpenCode instances and re-run install.sh"
+      ;;
+  esac
+}
+
 # --- preflight ---
 
 command -v npm >/dev/null 2>&1 || die "npm is required but was not found in PATH"
@@ -45,7 +82,7 @@ if [[ "${1:-}" = "uninstall" ]]; then
   info "Removing CLI wrapper..."
   rm -f "$CLI_BIN_DIR/opencode-rag" "$CLI_BIN_DIR/opencode-rag.ps1" "$CLI_BIN_DIR/opencode-rag.sh"
   info "Removing from OpenCode runtime ($RUNTIME_DIR)..."
-  rm -rf "$RUNTIME_DIR/node_modules/$PLUGIN_NAME"
+  rm -rf "$RUNTIME_DIR/node_modules" "$RUNTIME_DIR/package.json"
   info "Removing .tgz package files...";                     cleanup_tgz
   info "Removing OpenCode cache..."
   rm -rf "$HOME/.cache/opencode/packages/$PLUGIN_NAME-"* 2>/dev/null || true
@@ -62,39 +99,72 @@ fi
 
 cd "$REPO_ROOT"
 
-step "Building $PLUGIN_NAME..."
-npm run build
-
-step "Installing into OpenCode runtime ($RUNTIME_DIR)..."
-mkdir -p "$RUNTIME_DIR/node_modules"
-
-# Pack the package into a .tgz
-version=$(get_plugin_version)
-tgz_name="$PLUGIN_NAME-$version.tgz"
-tgz_path="$RUNTIME_DIR/$tgz_name"
-rm -f "$tgz_path"
-
-pack_output=$(npm pack --pack-destination "$RUNTIME_DIR" 2>&1)
-if [[ $? -ne 0 ]]; then die "npm pack failed: $pack_output"; fi
-
-if [[ ! -f "$tgz_path" ]]; then
-  tgz_name=$(echo "$pack_output" | tail -1 | tr -d '[:space:]')
-  tgz_path="$RUNTIME_DIR/$tgz_name"
-fi
-
-# Install the plugin from .tgz via npm — resolves all dependencies
-mkdir -p "$RUNTIME_DIR"
-if [[ ! -f "$RUNTIME_DIR/package.json" ]]; then
-  printf '{"private":true,"type":"module"}\n' > "$RUNTIME_DIR/package.json"
-fi
-(cd "$RUNTIME_DIR" && npm install "$tgz_path" --no-package-lock --ignore-scripts --silent 2>/dev/null || true)
-if [[ $? -ne 0 ]]; then die "npm install from .tgz failed"; fi
-
 plugin_dir="$RUNTIME_DIR/node_modules/$PLUGIN_NAME"
-if [[ -d "$plugin_dir/dist" ]]; then
-  ok "$plugin_dir (installed from $tgz_name via npm)"
+version_file="$RUNTIME_DIR/.bundle-version"
+
+# Rebuild if the bundle marker doesn't exist or if repo's package.json (source) is newer
+pkg_json="$REPO_ROOT/package.json"
+pkg_mtime=$(node -e "console.log(require('fs').statSync('$pkg_json').mtimeMs)" 2>/dev/null || echo 0)
+bundle_mtime=$(node -e "console.log(require('fs').statSync('$version_file').mtimeMs)" 2>/dev/null || echo 0)
+source_changed=$(node -e "console.log($pkg_mtime > $bundle_mtime ? 1 : 0)")
+
+if [[ -d "$plugin_dir/dist" ]] && \
+   [[ -d "$RUNTIME_DIR/node_modules/commander" ]] && \
+   [[ -f "$RUNTIME_DIR/node_modules/@opencode-ai/plugin/package.json" ]] && \
+   [[ "$source_changed" = "0" ]]; then
+  step "Runtime already up-to-date at $RUNTIME_DIR"
+  ok "Plugin + dependencies already installed"
 else
-  fail "$plugin_dir"; die "Failed to install plugin — dist/ not found"
+  step "Building $PLUGIN_NAME..."
+  npm run build
+
+  step "Installing $PLUGIN_NAME into global runtime ($RUNTIME_DIR)..."
+  mkdir -p "$RUNTIME_DIR"
+
+  # Pack plugin (dist/ + wasm/ + package.json, ~13 MB, no node_modules)
+  version=$(get_plugin_version)
+  tgz_name="$PLUGIN_NAME-$version.tgz"
+  tgz_path="$REPO_ROOT/$tgz_name"
+  rm -f "$tgz_path"
+  npm pack --pack-destination "$REPO_ROOT" 2>/dev/null
+  if [[ $? -ne 0 ]]; then die "npm pack failed"; fi
+
+  # Move .tgz to runtime dir
+  mv "$tgz_path" "$RUNTIME_DIR/"
+  tgz_path="$RUNTIME_DIR/$tgz_name"
+
+  # Warn about running OpenCode (native module locking) and clean stale modules
+  warn_if_opencode_running
+  if [[ -d "$RUNTIME_DIR/node_modules" ]]; then
+    info "Removing stale node_modules to prevent DLL lock conflicts..."
+    rm -rf "$RUNTIME_DIR/node_modules" 2>/dev/null || true
+    if [[ -d "$RUNTIME_DIR/node_modules" ]]; then
+      sleep 2
+      rm -rf "$RUNTIME_DIR/node_modules" 2>/dev/null || true
+    fi
+    if [[ -d "$RUNTIME_DIR/node_modules" ]]; then
+      die "Could not remove stale node_modules even after terminating OpenCode. Close any process locking $RUNTIME_DIR/node_modules and re-run."
+    fi
+    ok "node_modules"
+  fi
+
+  # Install from .tgz — resolves ALL dependencies (commander, picocolors, canvas,
+  # sharp, lancedb, etc.) with prebuilt binaries via npm. This is the ONE install.
+  if [[ ! -f "$RUNTIME_DIR/package.json" ]]; then
+    printf '{"private":true,"type":"module"}\n' > "$RUNTIME_DIR/package.json"
+  fi
+  if ! (cd "$RUNTIME_DIR" && npm install "./$tgz_name" --no-package-lock --legacy-peer-deps 2>/dev/null); then
+    die "npm install from .tgz failed"
+  fi
+
+  # Install @opencode-ai/plugin (peer dep, pure JS, always succeeds)
+  (cd "$RUNTIME_DIR" && npm install @opencode-ai/plugin --no-save 2>/dev/null || true)
+
+  if [[ ! -d "$plugin_dir/dist" ]]; then
+    fail "$plugin_dir"; die "Failed to install plugin — dist/ not found"
+  fi
+  ok "$plugin_dir (installed from $tgz_name via npm)"
+  printf '%s\n' "$version" > "$version_file"
 fi
 
 step "Making CLI available on PATH..."
@@ -112,9 +182,9 @@ step "Verifying installation..."
 verified=true
 
 if [[ -d "$plugin_dir/dist" ]]; then
-  ok "Runtime package (installed)"
+  ok "Runtime plugin (installed via npm)"
 else
-  fail "Runtime package"; verified=false
+  fail "Runtime plugin"; verified=false
 fi
 
 if [[ -x "$CLI_BIN_DIR/opencode-rag" ]]; then
@@ -123,11 +193,15 @@ else
   fail "CLI wrapper"; verified=false
 fi
 
-# --- workspace init ---
+# --- CLI smoke test ---
 
-step "Initializing workspace for OpenCodeRAG..."
-node "$plugin_dir/dist/cli.js" init --skip-health-check --skip-install || true
-ok "Workspace config files"
+step "Verifying CLI works..."
+cli_help=$("$CLI_BIN_DIR/opencode-rag" --help 2>&1)
+if echo "$cli_help" | grep -q "opencode-rag"; then
+  ok "CLI help loads successfully"
+else
+  fail "CLI smoke test"; verified=false
+fi
 
 # --- done ---
 
@@ -135,8 +209,8 @@ step ""
 if $verified; then printf 'Installation complete!\n'; else printf 'Installation finished with warnings (see above).\n' >&2; fi
 
 printf '\nWhat to do next:\n'
-printf '  1. Restart OpenCode if it is running.\n'
-printf '  2. Run "opencode-rag index" in this workspace to index its files.\n'
-printf '  3. OpenCode will automatically use the indexed data for context-aware queries.\n'
-printf '  (The workspace was already initialized by the install script.)\n'
+printf '  1. Run "opencode-rag init" in each workspace you want to use with OpenCodeRAG.\n'
+printf '  2. Run "opencode-rag index" to index workspace files.\n'
+printf '  3. Restart OpenCode if it is running so it discovers the RAG tools.\n'
+printf '  4. OpenCode will automatically use the indexed data for context-aware queries.\n'
 printf '\nRun "%s uninstall" to remove.\n' "$0"

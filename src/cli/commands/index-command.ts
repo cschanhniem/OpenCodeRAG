@@ -1,8 +1,12 @@
 /**
+ * @fileoverview Index command for incremental or full workspace file indexing into the vector database with watch mode support.
+ */
+/**
  * `index` command — indexes workspace files into the vector database.
  *
  * Supports incremental indexing (only changed files), full rebuilds (`--force`),
  * and watch mode (`--watch`) with chokidar-based file monitoring.
+ * Watch mode suppresses all CLI output — logs to opencode-rag.log only.
  */
 
 import type { Command } from "commander";
@@ -27,6 +31,25 @@ import {
 } from "../format.js";
 import { TerminalProgressTable } from "../progress.js";
 import type { CliOptions } from "../types.js";
+
+/**
+ * Build a logger that suppresses console output when watchTriggered is true.
+ */
+function watchAwareLogger(logFilePath: string, scope: string, watchTriggered: boolean) {
+  return {
+    info: (message: string) => {
+      if (!watchTriggered) console.log(message);
+      appendDebugLog(logFilePath, { scope, message });
+    },
+    warn: (message: string) => {
+      if (!watchTriggered) console.warn(message);
+      appendDebugLog(logFilePath, { scope, message: `WARN: ${message}` });
+    },
+    debug: (message: string) => {
+      appendDebugLog(logFilePath, { scope, message: `DEBUG: ${message}`, severity: "debug" });
+    },
+  };
+}
 
 /**
  * Register the `index` command on the given Commander program.
@@ -98,7 +121,11 @@ export function registerIndexCommand(program: Command): void {
 
         logCliInfo(logFilePath, "index", `${c.label("Scanning:")} ${c.file(cwd)}`);
         const progress = new TerminalProgressTable(process.stdout);
-        const runPass = async (watchTriggered: boolean = false, abortSignal?: AbortSignal): Promise<IndexRunStats> => {
+        const runPass = async (
+          watchTriggered: boolean = false,
+          abortSignal?: AbortSignal,
+          filterPaths?: string[],
+        ): Promise<IndexRunStats> => {
           const passStarted = Date.now();
           const stats = await runIndexPass({
             cwd,
@@ -109,40 +136,31 @@ export function registerIndexCommand(program: Command): void {
             keywordIndex,
             descriptionProvider,
             progress,
-            force: Boolean(options.force && !watchTriggered),
+            force: !!(options.force && !watchTriggered),
             abortSignal,
             dimension,
-            logger: {
-              info: (message) => {
-                console.log(message);
-                appendDebugLog(logFilePath, { scope: "index", message });
-              },
-              warn: (message) => {
-                console.warn(message);
-                appendDebugLog(logFilePath, { scope: "index", message: `WARN: ${message}` });
-              },
-              debug: (message) => {
-                appendDebugLog(logFilePath, { scope: "index", message: `DEBUG: ${message}`, severity: "debug" });
-              },
-            },
+            filterPaths,
+            logger: watchAwareLogger(logFilePath, watchTriggered ? "watch" : "index", watchTriggered),
           });
 
           progress.done();
-          logIndexSummary(logFilePath, stats);
-          logCliInfo(
-            logFilePath,
-            "index",
-            `\n${c.success("Indexing complete.")} ${c.num(stats.finalCount)} chunks stored (${formatDuration(Date.now() - passStarted)}).`
-          );
+          if (!watchTriggered) {
+            logIndexSummary(logFilePath, stats);
+            logCliInfo(
+              logFilePath,
+              "index",
+              `\n${c.success("Indexing complete.")} ${c.num(stats.finalCount)} chunks stored (${formatDuration(Date.now() - passStarted)}).`
+            );
+          }
 
-          if (sigReceived) {
+          if (sigReceived && !watchTriggered) {
             logCliInfo(logFilePath, "index", `\n${c.warn("Indexing was interrupted.")} ${c.num(stats.finalCount)} chunks saved. Run again to index remaining files.`);
           }
 
           return stats;
         };
 
-        const stats = await runPass(false, abortController.signal);
+        await runPass(false, abortController.signal);
 
         process.removeListener("SIGINT", handleSigint);
         process.removeListener("SIGTERM", handleSigint);
@@ -154,7 +172,7 @@ export function registerIndexCommand(program: Command): void {
 
         logCliInfo(logFilePath, "index", `\n${c.heading("Watching for changes...")}`);
         const scheduler = createWatchPassScheduler(
-          async (): Promise<void> => { await runPass(true); },
+          async (changedPaths?: string[]): Promise<void> => { await runPass(true, undefined, changedPaths); },
           (error) => {
             const message = (error as Error).message || String(error);
             logCliError(logFilePath, "watch", `\nWatch reindex failed: ${message}`, error);
@@ -168,15 +186,13 @@ export function registerIndexCommand(program: Command): void {
           persistent: true,
         });
 
-        const handleChange = () => scheduler.notifyChange();
-        watcher.on("add", handleChange);
-        watcher.on("change", handleChange);
-        watcher.on("unlink", handleChange);
-        watcher.on("unlinkDir", handleChange);
-        watcher.on("addDir", handleChange);
+        watcher.on("add", (filePath: string) => scheduler.notifyChange([filePath]));
+        watcher.on("change", (filePath: string) => scheduler.notifyChange([filePath]));
+        watcher.on("unlink", (filePath: string) => scheduler.notifyChange([filePath]));
+        watcher.on("unlinkDir", (filePath: string) => scheduler.notifyChange([filePath]));
+        watcher.on("addDir", (filePath: string) => scheduler.notifyChange([filePath]));
         watcher.on("error", (error) => {
           logCliError(logFilePath, "watch", `Watcher error: ${(error as Error).message}`, error);
-          console.error(c.error(`\nWatcher error: ${(error as Error).message}`));
         });
 
         const shutdown = async () => {

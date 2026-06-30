@@ -1,6 +1,9 @@
+/**
+ * @fileoverview JSONL-based session event storage, retrieval, summarization, and comparison for evaluation.
+ */
 import { appendFileSync, readFileSync, mkdirSync, readdirSync, unlinkSync, existsSync } from "node:fs";
 import path from "node:path";
-import type { SessionEvent, SessionSummary, ComparisonResult, TokenUsage } from "./types.js";
+import type { SessionEvent, SessionSummary, ComparisonResult } from "./types.js";
 import { isRagTool } from "./types.js";
 
 const EVAL_DIR = "eval-sessions";
@@ -179,11 +182,6 @@ export function getSession(storePath: string, sessionID: string): { events: Sess
   const events = readSessionEvents(storePath, sessionID);
   if (events.length === 0) return null;
   return { events, summary: computeSummary(events) };
-}
-
-function avgOrZero(values: number[]): number {
-  if (values.length === 0) return 0;
-  return Math.round(values.reduce((a, b) => a + b, 0) / values.length);
 }
 
 /** Compare two sessions by computing the delta between their summaries. Returns null if either session does not exist. */

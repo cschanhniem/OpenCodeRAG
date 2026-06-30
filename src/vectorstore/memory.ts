@@ -1,5 +1,9 @@
+/**
+ * @fileoverview Ephemeral in-memory vector store using cosine similarity search.
+ */
 import type { VectorStore, Chunk, SearchResult } from "../core/interfaces.js";
 
+/** Ephemeral in-memory vector store using cosine similarity search. */
 export class InMemoryVectorStore implements VectorStore {
   private chunks: Chunk[] = [];
 

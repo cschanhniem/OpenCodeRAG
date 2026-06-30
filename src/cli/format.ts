@@ -1,11 +1,13 @@
 /**
+ * @fileoverview CLI formatting helpers, color palette, logging utilities, context resolution, and result formatting.
+ */
+/**
  * CLI formatting helpers — color palette, logging utilities, context resolution,
  * and result formatting functions shared across all CLI command modules.
  */
 
 import pc from "picocolors";
-import path from "node:path";
-import { resolveRagContext, type RagContext } from "../core/bootstrap.js";
+import { resolveRagContext, type BootstrapOptions, type RagContext } from "../core/bootstrap.js";
 import { destroyAllPooledConnections } from "../embedder/http.js";
 import type { RagConfig } from "../core/config.js";
 import type { SearchResult } from "../core/interfaces.js";
@@ -69,10 +71,10 @@ export const c = {
  * @param error - Optional error object for structured logging.
  */
 export function logCliError(
-  logFilePath: string,
-  scope: string,
+  _logFilePath: string,
+  _scope: string,
   message: string,
-  error: unknown,
+  _error: unknown,
 ): void {
   console.error(c.error(message));
   //appendDebugLog(logFilePath, { scope, message, error });
@@ -86,8 +88,8 @@ export function logCliError(
  * @param message - Human-readable info message.
  */
 export function logCliInfo(
-  logFilePath: string,
-  scope: string,
+  _logFilePath: string,
+  _scope: string,
   message: string,
 ): void {
   console.log(message);
@@ -108,8 +110,12 @@ export function logCliInfo(
 export async function resolveCliContext(
   opt: CliOptions,
   logFilePath: string,
+  bootstrapOpts?: Partial<BootstrapOptions>,
 ): Promise<RagContext> {
-  const ctx = await resolveRagContext({ configPath: opt.config });
+  const ctx = await resolveRagContext({
+    configPath: opt.config,
+    ...bootstrapOpts,
+  });
   logCliInfo(logFilePath, "config", `${c.label("Config:")} ${c.file(ctx.logFilePath)}`);
   logConfigDetails(logFilePath, ctx.config);
   return ctx;

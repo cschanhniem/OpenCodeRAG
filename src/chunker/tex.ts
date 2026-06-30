@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Section-command based chunker for LaTeX files splitting by chapter/section/subsection boundaries.
+ */
 import type { Chunker, Chunk } from "../core/interfaces.js";
 import { uuid } from "./uuid.js";
 

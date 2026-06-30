@@ -3,14 +3,14 @@ import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, readdirSync, unlinkSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { LanceDBStore } from "../../vectorstore/lancedb.js";
+import { LanceDbStore } from "../../vectorstore/lancedb.js";
 import { normalizeFilePath } from "../../core/manifest.js";
 
-describe("LanceDBStore (memory)", () => {
-  let store: LanceDBStore;
+describe("LanceDbStore (memory)", () => {
+  let store: LanceDbStore;
 
   before(async () => {
-    store = new LanceDBStore("memory://");
+    store = new LanceDbStore("memory://");
   });
 
   after(async () => {
@@ -349,11 +349,11 @@ describe("LanceDBStore (memory)", () => {
   });
 });
 
-describe("LanceDBStore (disk corruption recovery)", () => {
+describe("LanceDbStore (disk corruption recovery)", () => {
   it("recovers gracefully from missing data files", async () => {
     const tmpDir = mkdtempSync(join(tmpdir(), "opencode-rag-test-"));
     try {
-      const store = new LanceDBStore(tmpDir);
+      const store = new LanceDbStore(tmpDir);
 
       const emb1 = new Array(384).fill(0.1);
       const emb2 = new Array(384).fill(0.2);
@@ -390,7 +390,7 @@ describe("LanceDBStore (disk corruption recovery)", () => {
   it("handles non-existent table gracefully", async () => {
     const tmpDir = mkdtempSync(join(tmpdir(), "opencode-rag-test-"));
     try {
-      const store = new LanceDBStore(tmpDir);
+      const store = new LanceDbStore(tmpDir);
       const results = await store.search(new Array(384).fill(0.1), 10);
       assert.equal(results.length, 0);
       const count = await store.count();

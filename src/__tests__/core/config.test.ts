@@ -27,107 +27,68 @@ describe("loadConfig", () => {
     assert.deepStrictEqual(config, { ...DEFAULT_CONFIG, chunkers: undefined, chunking: { nodeTypes: {} } });
   });
 
-  it("allows partial override of embedding proxy setting", () => {
-    writeFileSync(
-      tmpFile,
-      JSON.stringify({ embedding: { proxy: { url: "http://proxy:8080" } } }),
-      "utf-8"
-    );
-    const config = loadConfig(tmpFile);
-    assert.equal(config.embedding.proxy?.url, "http://proxy:8080");
-  });
+  const partialOverrideCases: {
+    name: string;
+    json: Record<string, unknown>;
+    assert: (config: ReturnType<typeof loadConfig>) => void;
+  }[] = [
+    {
+      name: "embedding proxy",
+      json: { embedding: { proxy: { url: "http://proxy:8080" } } },
+      assert: (c) => assert.equal(c.embedding.proxy?.url, "http://proxy:8080"),
+    },
+    {
+      name: "embedding provider and model",
+      json: { embedding: { provider: "openai", model: "custom-model" } },
+      assert: (c) => {
+        assert.equal(c.embedding.provider, "openai");
+        assert.equal(c.embedding.model, "custom-model");
+        assert.equal(c.embedding.baseUrl, DEFAULT_CONFIG.embedding.baseUrl);
+      },
+    },
+    {
+      name: "indexing chunkOverlap",
+      json: { indexing: { chunkOverlap: 5 } },
+      assert: (c) => {
+        assert.equal(c.indexing.chunkOverlap, 5);
+        assert.deepStrictEqual(c.indexing.includeExtensions, DEFAULT_CONFIG.indexing.includeExtensions);
+      },
+    },
+    {
+      name: "retrieval topK",
+      json: { retrieval: { topK: 20 } },
+      assert: (c) => assert.equal(c.retrieval.topK, 20),
+    },
+    {
+      name: "openCode maxContextChunks",
+      json: { openCode: { maxContextChunks: 10 } },
+      assert: (c) => {
+        assert.equal(c.openCode.maxContextChunks, 10);
+        assert.equal(c.openCode.enabled, DEFAULT_CONFIG.openCode.enabled);
+      },
+    },
+    {
+      name: "vectorStore path",
+      json: { vectorStore: { path: "/custom/path" } },
+      assert: (c) => assert.equal(c.vectorStore.path, "/custom/path"),
+    },
+    {
+      name: "logging level",
+      json: { logging: { level: "debug" } },
+      assert: (c) => {
+        assert.equal(c.logging.level, "debug");
+        assert.equal(c.logging.logFilePath, DEFAULT_CONFIG.logging.logFilePath);
+      },
+    },
+  ];
 
-  it("allows partial override of embedding settings", () => {
-    writeFileSync(
-      tmpFile,
-      JSON.stringify({ embedding: { provider: "openai", model: "custom-model" } }),
-      "utf-8"
-    );
-    const config = loadConfig(tmpFile);
-    assert.equal(config.embedding.provider, "openai");
-    assert.equal(config.embedding.model, "custom-model");
-    assert.equal(config.embedding.baseUrl, DEFAULT_CONFIG.embedding.baseUrl);
-  });
-
-  it("allows partial override of indexing settings", () => {
-    writeFileSync(
-      tmpFile,
-      JSON.stringify({ indexing: { chunkOverlap: 5 } }),
-      "utf-8"
-    );
-    const config = loadConfig(tmpFile);
-    assert.equal(config.indexing.chunkOverlap, 5);
-    assert.deepStrictEqual(
-      config.indexing.includeExtensions,
-      DEFAULT_CONFIG.indexing.includeExtensions
-    );
-  });
-
-  it("allows partial override of retrieval settings", () => {
-    writeFileSync(
-      tmpFile,
-      JSON.stringify({ retrieval: { topK: 20 } }),
-      "utf-8"
-    );
-    const config = loadConfig(tmpFile);
-    assert.equal(config.retrieval.topK, 20);
-  });
-
-  it("allows partial override of openCode settings", () => {
-    writeFileSync(
-      tmpFile,
-      JSON.stringify({ openCode: { maxContextChunks: 10 } }),
-      "utf-8"
-    );
-    const config = loadConfig(tmpFile);
-    assert.equal(config.openCode.maxContextChunks, 10);
-    assert.equal(config.openCode.enabled, DEFAULT_CONFIG.openCode.enabled);
-  });
-
-  it("allows partial override of autoInject settings", () => {
-    writeFileSync(
-      tmpFile,
-      JSON.stringify({ openCode: { autoInject: { minScore: 0.5, maxChunks: 5 } } }),
-      "utf-8"
-    );
-    const config = loadConfig(tmpFile);
-    assert.equal(config.openCode.autoInject?.enabled, true);
-    assert.equal(config.openCode.autoInject?.minScore, 0.5);
-    assert.equal(config.openCode.autoInject?.maxChunks, 5);
-    assert.equal(config.openCode.autoInject?.maxTokens, 3000);
-    assert.equal(config.openCode.autoInject?.contentType, "file_paths");
-  });
-
-  it("allows disabling autoInject", () => {
-    writeFileSync(
-      tmpFile,
-      JSON.stringify({ openCode: { autoInject: { enabled: false } } }),
-      "utf-8"
-    );
-    const config = loadConfig(tmpFile);
-    assert.equal(config.openCode.autoInject?.enabled, false);
-  });
-
-  it("allows partial override of vectorStore path", () => {
-    writeFileSync(
-      tmpFile,
-      JSON.stringify({ vectorStore: { path: "/custom/path" } }),
-      "utf-8"
-    );
-    const config = loadConfig(tmpFile);
-    assert.equal(config.vectorStore.path, "/custom/path");
-  });
-
-  it("allows partial override of logging settings", () => {
-    writeFileSync(
-      tmpFile,
-      JSON.stringify({ logging: { level: "debug" } }),
-      "utf-8"
-    );
-    const config = loadConfig(tmpFile);
-    assert.equal(config.logging.level, "debug");
-    assert.equal(config.logging.logFilePath, DEFAULT_CONFIG.logging.logFilePath);
-  });
+  for (const { name, json, assert: assertion } of partialOverrideCases) {
+    it(`allows partial override of ${name}`, () => {
+      writeFileSync(tmpFile, JSON.stringify(json), "utf-8");
+      const config = loadConfig(tmpFile);
+      assertion(config);
+    });
+  }
 });
 
 describe("DEFAULT_CONFIG", () => {
@@ -174,14 +135,6 @@ describe("DEFAULT_CONFIG", () => {
 
   it("has default logFilePath", () => {
     assert.equal(DEFAULT_CONFIG.logging.logFilePath, "./.opencode/opencode-rag.log");
-  });
-
-  it("has autoInject enabled by default with sensible defaults", () => {
-    assert.equal(DEFAULT_CONFIG.openCode.autoInject?.enabled, true);
-    assert.equal(DEFAULT_CONFIG.openCode.autoInject?.minScore, 0.75);
-    assert.equal(DEFAULT_CONFIG.openCode.autoInject?.maxChunks, 10);
-    assert.equal(DEFAULT_CONFIG.openCode.autoInject?.maxTokens, 3000);
-    assert.equal(DEFAULT_CONFIG.openCode.autoInject?.contentType, "file_paths");
   });
 });
 

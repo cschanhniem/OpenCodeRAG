@@ -1,3 +1,8 @@
+/**
+ * @fileoverview OpenCode TUI (Terminal UI) plugin: renders a sidebar with RAG status,
+ * settings dialog for editing config values, and model selection picker.
+ */
+
 import type { TuiPluginModule, TuiDialogSelectProps, TuiDialogPromptProps, TuiToast, TuiState } from "@opencode-ai/plugin/tui";
 import type { JSX } from "@opentui/solid";
 import { createElement, insert, setProp } from "@opentui/solid";
@@ -73,7 +78,7 @@ function loadWatcherStatus(storePath: string): WatcherState {
       lastRunAt: typeof raw.lastRunAt === "number" ? raw.lastRunAt : undefined,
     };
   } catch {
-    return { running: false, lastRunAt: undefined };
+    return { running: false, lastRunAt: undefined, disabled: true };
   }
 }
 
@@ -240,7 +245,7 @@ function renderSidebar(
       text({ fg: theme.textMuted }, [timeLine]),
       text({ fg: watcher.running ? theme.accent : theme.textMuted }, [watcherLine]),
       text({ fg: theme.textMuted }, ["Ctrl+Shift+R → Settings"]),
-      text({ fg: theme.textMuted }, [`${formatKeybinding(fileListKey)} → Add Files`]),
+      text({ fg: theme.textMuted }, [`${formatKeybinding(fileListKey)} → Add File List`]),
       text({ fg: theme.textMuted }, [`${formatKeybinding(chunksKey)} → Add Chunks`]),
       ...(tokenStats && tokenStats.queries > 0 ? [
         text({ fg: theme.textMuted }, [""]),
@@ -367,7 +372,6 @@ function saveConfigValue(configPath: string, path: string[], value: unknown): vo
     target[path[path.length - 1]!] = value;
     writeFileSync(configPath, JSON.stringify(data, null, 2), "utf-8");
   } catch {
-    // silently ignore write errors
   }
 }
 
@@ -434,8 +438,6 @@ function buildSettingCategories(
   const openCodeRo = (ro.openCode ?? {}) as Record<string, unknown>;
   const aiCfg = (openCodeCfg.autoIndex ?? {}) as Record<string, unknown>;
   const aiRo = (openCodeRo.autoIndex ?? {}) as Record<string, unknown>;
-  const ajCfg = (openCodeCfg.autoInject ?? {}) as Record<string, unknown>;
-  const ajRo = (openCodeRo.autoInject ?? {}) as Record<string, unknown>;
 
   const descCfg = (cfg.description ?? {}) as Record<string, unknown>;
   const descRo = (ro.description ?? {}) as Record<string, unknown>;
@@ -506,40 +508,15 @@ function buildSettingCategories(
           type: "number",
           currentValue: (aiRo.debounceMs as number) ?? (aiCfg.debounceMs as number) ?? 2000,
         },
-      ],
-    },
-    {
-      id: "autoinject",
-      label: "Auto-Inject",
-      description: "Configure automatic context injection",
-      entries: [
         {
-          path: ["openCode", "autoInject", "enabled"],
-          label: "Auto-inject context",
-          type: "boolean",
-          currentValue: (ajRo.enabled as boolean) ?? (ajCfg.enabled as boolean) ?? true,
-        },
-        {
-          path: ["openCode", "autoInject", "minScore"],
-          label: "Inject min score",
-          type: "number",
-          currentValue: (ajRo.minScore as number) ?? (ajCfg.minScore as number) ?? 0.85,
-        },
-        {
-          path: ["openCode", "autoInject", "maxChunks"],
-          label: "Inject max chunks",
-          type: "number",
-          currentValue: (ajRo.maxChunks as number) ?? (ajCfg.maxChunks as number) ?? 5,
-        },
-        {
-          path: ["openCode", "autoInject", "contentType"],
-          label: "Inject content type",
+          path: ["openCode", "autoIndex", "watcher"],
+          label: "Watcher backend",
           type: "string",
-          currentValue: (ajRo.contentType as string) ?? (ajCfg.contentType as string) ?? "file_paths",
           options: [
-            { title: "File paths", value: "file_paths" },
-            { title: "Code chunks", value: "chunks" },
+            { title: "chokidar (FS events)", value: "chokidar", description: "Detect file changes via filesystem events (default)" },
+            { title: "git (poll)", value: "git", description: "Poll `git diff-index HEAD` for working-tree changes" },
           ],
+          currentValue: (aiRo.watcher as string) ?? (aiCfg.watcher as string) ?? "chokidar",
         },
       ],
     },
@@ -552,7 +529,7 @@ function buildSettingCategories(
           path: ["embedding", "model"],
           label: "Model",
           type: "string",
-          currentValue: displayModel(embeddingRo.provider, embeddingRo.model, embeddingCfg.provider, embeddingCfg.model, "ollama", "embeddinggemma:latest"),
+          currentValue: displayModel(embeddingRo.provider, embeddingRo.model, embeddingCfg.provider, embeddingCfg.model, "ollama", "qwen2.5:3b:latest"),
           options: modelOptions,
         },
       ],
@@ -978,13 +955,16 @@ const plugin: TuiPluginModule & { id: string } = {
     try {
       const fileListKey = tuiConfig?.fileListKeybinding ?? "ctrl+enter";
       api.keymap.registerLayer({
+        priority: 1000,
         bindings: [{ key: fileListKey, cmd: "opencode-rag:show-file-list" }],
         commands: [
           {
             name: "opencode-rag:show-file-list",
             run: () => {
-              if (flagStorePath) setPendingRagInjection(flagStorePath, "files");
-              api.keymap.dispatchCommand("prompt.submit");
+              if (flagStorePath) {
+                setPendingRagInjection(flagStorePath, "files");
+                setTimeout(() => { api.keymap.dispatchCommand("prompt.submit"); }, 0);
+              }
               return undefined;
             },
           },
@@ -998,13 +978,16 @@ const plugin: TuiPluginModule & { id: string } = {
     try {
       const chunksKey = tuiConfig?.chunksKeybinding ?? "ctrl+alt+enter";
       api.keymap.registerLayer({
+        priority: 1000,
         bindings: [{ key: chunksKey, cmd: "opencode-rag:add-chunks" }],
         commands: [
           {
             name: "opencode-rag:add-chunks",
             run: () => {
-              if (flagStorePath) setPendingRagInjection(flagStorePath, "chunks");
-              api.keymap.dispatchCommand("prompt.submit");
+              if (flagStorePath) {
+                setPendingRagInjection(flagStorePath, "chunks");
+                setTimeout(() => { api.keymap.dispatchCommand("prompt.submit"); }, 0);
+              }
               return undefined;
             },
           },

@@ -1,3 +1,6 @@
+/**
+ * @fileoverview PDF text extraction and paragraph-based chunker using pdfjs-dist.
+ */
 import type { Chunker, Chunk } from "../core/interfaces.js";
 import { uuid } from "./uuid.js";
 import { createRequire } from "node:module";

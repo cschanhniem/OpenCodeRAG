@@ -1,3 +1,8 @@
+/**
+ * @fileoverview Plugin entry point for OpenCode runtime. Conforms to OpenCode's
+ * plugin module signature with default export { id, server }.
+ */
+
 import { ragPlugin } from "./plugin.js";
 
 /** Unique identifier for the OpenCodeRAG plugin. */

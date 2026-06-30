@@ -1,4 +1,7 @@
 /**
+ * @fileoverview Package and file-system utility helpers used by CLI command modules.
+ */
+/**
  * Package and file-system utility helpers used by CLI command modules.
  */
 
@@ -69,7 +72,11 @@ export function readJsonObject(filePath: string): Record<string, unknown> | unde
     return undefined;
   }
 
-  return JSON.parse(readFileSync(filePath, "utf-8")) as Record<string, unknown>;
+  try {
+    return JSON.parse(readFileSync(filePath, "utf-8")) as Record<string, unknown>;
+  } catch (err) {
+    throw new Error(`Failed to parse JSON at ${filePath}: ${(err as Error).message}`);
+  }
 }
 
 /**

@@ -1,9 +1,9 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert";
-import { mkdtempSync, rmSync, existsSync, readFileSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { appendSessionEvent, readSessionEvents, listSessionIDs, listSessions, getSession, deleteSession, computeSummary, compareSessions } from "../../eval/storage.js";
+import { appendSessionEvent, readSessionEvents, listSessionIDs, deleteSession, computeSummary, compareSessions } from "../../eval/storage.js";
 import { createSessionLogger } from "../../eval/session-logger.js";
 import type { SessionEvent } from "../../eval/types.js";
 

@@ -18,7 +18,7 @@ import path from "node:path";
 import os from "node:os";
 import { createRagHooks } from "../../plugin.js";
 import { DEFAULT_CONFIG, type RagConfig } from "../../core/config.js";
-import { appendSessionEvent, computeSummary, compareSessions } from "../../eval/storage.js";
+import { appendSessionEvent, compareSessions } from "../../eval/storage.js";
 import {
   analyzeTokenUsage,
   compareTokenAnalyses,
@@ -27,7 +27,7 @@ import {
   projectTokenSavings,
 } from "../../eval/token-analysis.js";
 import { handleEvalAnalysis, handleEvalTokenCompare, handleEvalProjectSavings } from "../../web/api.js";
-import type { EmbeddingProvider, SearchResult, VectorStore, KeywordIndex } from "../../core/interfaces.js";
+import type { VectorStore } from "../../core/interfaces.js";
 import type { SessionEvent } from "../../eval/types.js";
 
 function makeTmpDir(): string {
@@ -46,42 +46,6 @@ function makeConfig(overrides: Partial<RagConfig> = {}): RagConfig {
   };
 }
 
-function makeResult(
-  id: string,
-  filePath: string,
-  startLine: number,
-  endLine: number,
-  language: string,
-  content: string,
-  score: number,
-  description?: string
-): SearchResult {
-  return {
-    score,
-    chunk: {
-      id,
-      content,
-      description,
-      metadata: { filePath, startLine, endLine, language },
-    },
-  };
-}
-
-function makeToolContext(): Record<string, unknown> {
-  return { sessionID: "session-test", callID: "call-test", agent: "test" };
-}
-
-function makeMockDependencies(results: SearchResult[]) {
-  const retrieve = async (
-    _query: string,
-    _embedder: EmbeddingProvider,
-    _store: VectorStore,
-    _options?: { topK?: number }
-  ): Promise<SearchResult[]> => results;
-
-  return { dependencies: { retrieve } };
-}
-
 const dummyStore: VectorStore = {
   addChunks: async () => {},
   search: async () => [],
@@ -89,11 +53,6 @@ const dummyStore: VectorStore = {
   clear: async () => {},
   deleteByFilePath: async () => {},
   close: async () => {},
-};
-
-const dummyProvider: EmbeddingProvider = {
-  name: "test",
-  embed: async () => [],
 };
 
 // ── Token estimation tests ──────────────────────────────────────
@@ -119,209 +78,6 @@ describe("estimateContextTokens", () => {
 });
 
 // ── Auto-injection token measurement ────────────────────────────
-
-describe("auto-injection token measurement", () => {
-  let tmpDir: string;
-
-  beforeEach(() => {
-    tmpDir = makeTmpDir();
-  });
-
-  afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true });
-  });
-
-  it("measures context tokens injected by auto-inject (chunks mode)", async () => {
-    const results = [
-      makeResult("c1", "/p/src/auth.ts", 10, 25, "typescript", "export function login() {\n  return authenticate();\n}", 0.95),
-      makeResult("c2", "/p/src/user.ts", 5, 15, "typescript", "export function getUser() {\n  return db.query();\n}", 0.88),
-    ];
-
-    const { dependencies } = makeMockDependencies(results);
-    const hooks = createRagHooks({
-      cfg: makeConfig({
-        openCode: {
-          enabled: true,
-          maxContextChunks: 5,
-          autoInject: { enabled: true, minScore: 0.75, maxChunks: 3, maxTokens: 3000, contentType: "chunks" as const },
-        },
-      }),
-      storePath: "memory://",
-      logFilePath: path.join(tmpDir, "opencode-rag.log"),
-      store: dummyStore,
-      dependencies,
-      worktree: "/p",
-    });
-
-    const chatHook = hooks["chat.message"];
-    assert.ok(chatHook);
-
-    // Run the hook with a multi-word prompt
-    const output = {
-      message: { id: "m1", role: "user", sessionID: "s1", parts: [{ type: "text", text: "How does authentication work?", id: "p1", messageID: "m1", sessionID: "s1" }] },
-      parts: [{ type: "text", text: "How does authentication work?", id: "p1", messageID: "m1", sessionID: "s1" }],
-    };
-    await chatHook?.({ sessionID: "s1", messageID: "m1" } as never, output as never);
-
-    const injected = (output.parts[0] as Record<string, unknown>).text as string;
-    const originalLen = "How does authentication work?".length;
-    const injectedLen = injected.length;
-    const contextLen = injectedLen - originalLen;
-
-    // Context was injected
-    assert.ok(contextLen > 0, "Expected context to be injected");
-    assert.match(injected, /Auto-retrieved code context/);
-    assert.match(injected, /auth\.ts/);
-    assert.match(injected, /user\.ts/);
-
-    // Measure token overhead
-    const contextTokens = estimateContextTokens(injected.substring(injected.indexOf("\n\n**Auto-retrieved")));
-    assert.ok(contextTokens > 0, `Expected context tokens > 0, got ${contextTokens}`);
-
-    console.log(`    [chunks mode] Injected ${contextLen} chars ≈ ${contextTokens} tokens`);
-  });
-
-  it("measures context tokens injected by auto-inject (file_paths mode)", async () => {
-    const results = [
-      makeResult("c1", "/p/src/auth.ts", 10, 25, "typescript", "export function login() {}", 0.95),
-    ];
-
-    const { dependencies } = makeMockDependencies(results);
-    const hooks = createRagHooks({
-      cfg: makeConfig({
-        openCode: {
-          enabled: true,
-          maxContextChunks: 5,
-          autoInject: { enabled: true, minScore: 0.75, maxChunks: 3, maxTokens: 3000, contentType: "file_paths" },
-        },
-      }),
-      storePath: "memory://",
-      logFilePath: path.join(tmpDir, "opencode-rag.log"),
-      store: dummyStore,
-      dependencies,
-      worktree: "/p",
-    });
-
-    const chatHook = hooks["chat.message"];
-    const output = {
-      message: { id: "m1", role: "user", sessionID: "s1", parts: [{ type: "text", text: "test the chunks", id: "p1", messageID: "m1", sessionID: "s1" }] },
-      parts: [{ type: "text", text: "test the chunks", id: "p1", messageID: "m1", sessionID: "s1" }],
-    };
-    await chatHook?.({ sessionID: "s1", messageID: "m1" } as never, output as never);
-
-    const injected = (output.parts[0] as Record<string, unknown>).text as string;
-    assert.match(injected, /Relevant files:/);
-    assert.match(injected, /auth\.ts/);
-
-    const contextTokens = estimateContextTokens(injected.substring(injected.indexOf("\n\nRelevant files")));
-    console.log(`    [file_paths mode] Injected ~${contextTokens} tokens of file suggestions`);
-  });
-
-  it("injects zero tokens when autoInject is disabled", async () => {
-    const results = [
-      makeResult("c1", "/p/src/auth.ts", 10, 25, "typescript", "export function login() {}", 0.95),
-    ];
-
-    const { dependencies } = makeMockDependencies(results);
-    const hooks = createRagHooks({
-      cfg: makeConfig({
-        openCode: {
-          enabled: true,
-          maxContextChunks: 5,
-          autoInject: { enabled: false, minScore: 0.75, maxChunks: 3, maxTokens: 3000, contentType: "chunks" },
-        },
-      }),
-      storePath: "memory://",
-      logFilePath: path.join(tmpDir, "opencode-rag.log"),
-      store: dummyStore,
-      dependencies,
-      worktree: "/p",
-    });
-
-    const chatHook = hooks["chat.message"];
-    const output = {
-      message: { id: "m1", role: "user", sessionID: "s1", parts: [{ type: "text", text: "test the chunks", id: "p1", messageID: "m1", sessionID: "s1" }] },
-      parts: [{ type: "text", text: "test the chunks", id: "p1", messageID: "m1", sessionID: "s1" }],
-    };
-    await chatHook?.({ sessionID: "s1", messageID: "m1" } as never, output as never);
-
-    const result = (output.parts[0] as Record<string, unknown>).text as string;
-    assert.equal(result, "test the chunks", "No injection when autoInject disabled");
-  });
-
-  it("suppresses injection for single-word prompts (zero token overhead)", async () => {
-    const results = [
-      makeResult("c1", "/p/src/auth.ts", 10, 25, "typescript", "export function login() {}", 0.95),
-    ];
-
-    const { dependencies } = makeMockDependencies(results);
-    const hooks = createRagHooks({
-      cfg: makeConfig({
-        openCode: {
-          enabled: true,
-          maxContextChunks: 5,
-          autoInject: { enabled: true, minScore: 0.5, maxChunks: 3, maxTokens: 3000, contentType: "chunks" as const },
-        },
-      }),
-      storePath: "memory://",
-      logFilePath: path.join(tmpDir, "opencode-rag.log"),
-      store: dummyStore,
-      dependencies,
-      worktree: "/p",
-    });
-
-    const chatHook = hooks["chat.message"];
-    const output = {
-      message: { id: "m1", role: "user", sessionID: "s1", parts: [{ type: "text", text: "test", id: "p1", messageID: "m1", sessionID: "s1" }] },
-      parts: [{ type: "text", text: "test", id: "p1", messageID: "m1", sessionID: "s1" }],
-    };
-    await chatHook?.({ sessionID: "s1", messageID: "m1" } as never, output as never);
-
-    const result = (output.parts[0] as Record<string, unknown>).text as string;
-    assert.equal(result, "test", "Single-word prompts should not be injected");
-  });
-
-  it("respects maxTokens budget — evicts chunks to fit", async () => {
-    // Create large chunks that exceed maxTokens
-    const largeContent = "x".repeat(4000); // ~1000 tokens
-    const results = [
-      makeResult("c1", "/p/a.ts", 1, 100, "typescript", largeContent, 0.95),
-      makeResult("c2", "/p/b.ts", 1, 100, "typescript", largeContent, 0.90),
-      makeResult("c3", "/p/c.ts", 1, 100, "typescript", largeContent, 0.85),
-    ];
-
-    const { dependencies } = makeMockDependencies(results);
-    const hooks = createRagHooks({
-      cfg: makeConfig({
-        openCode: {
-          enabled: true,
-          maxContextChunks: 5,
-          autoInject: { enabled: true, minScore: 0.5, maxChunks: 3, maxTokens: 500, contentType: "chunks" as const }, // tight budget
-        },
-      }),
-      storePath: "memory://",
-      logFilePath: path.join(tmpDir, "opencode-rag.log"),
-      store: dummyStore,
-      dependencies,
-      worktree: "/p",
-    });
-
-    const chatHook = hooks["chat.message"];
-    const output = {
-      message: { id: "m1", role: "user", sessionID: "s1", parts: [{ type: "text", text: "test the chunks", id: "p1", messageID: "m1", sessionID: "s1" }] },
-      parts: [{ type: "text", text: "test the chunks", id: "p1", messageID: "m1", sessionID: "s1" }],
-    };
-    await chatHook?.({ sessionID: "s1", messageID: "m1" } as never, output as never);
-
-    const injected = (output.parts[0] as Record<string, unknown>).text as string;
-    // Should have some injection but trimmed to fit budget
-    assert.match(injected, /Auto-retrieved code context/);
-    // Not all 3 chunks should be present
-    const chunkCount = (injected.match(/score: /g) ?? []).length;
-    assert.ok(chunkCount <= 3, `Expected ≤3 chunks, got ${chunkCount}`);
-    console.log(`    [maxTokens] ${chunkCount} chunks fit within 500-token budget`);
-  });
-});
 
 // ── Session event comparison tests ──────────────────────────────
 
@@ -369,11 +125,7 @@ describe("token comparison via session events", () => {
     assert.ok(comparison!.delta.inputTokens > 0, "RAG-on should have higher input tokens (injected context)");
     assert.ok(comparison!.delta.ragContextTokens > 0, "RAG-on should have rag context tokens");
 
-    console.log(`    RAG-on input: ${comparison!.sessionA.totalTokens.input}`);
-    console.log(`    RAG-off input: ${comparison!.sessionB.totalTokens.input}`);
-    console.log(`    Delta: ${comparison!.delta.inputTokens} more input tokens with RAG`);
-    console.log(`    RAG-on avg response: ${comparison!.sessionA.avgResponseTimeMs ?? "n/a"}ms`);
-    console.log(`    RAG-off avg response: ${comparison!.sessionB.avgResponseTimeMs ?? "n/a"}ms`);
+    // Values verified above
   });
 
   it("analyzeTokenUsage produces correct breakdown", () => {
@@ -408,7 +160,7 @@ describe("token comparison via session events", () => {
     assert.equal(analysis.breakdowns[1]!.inputTokens, 2800);
     assert.equal(analysis.breakdowns[1]!.ragContextTokens, 300);
 
-    console.log(`    Analysis: ${analysis.totals.inputTokens} input, ${analysis.totals.ragContextTokens} RAG ctx, ${analysis.totals.readToolCalls} reads, ${analysis.totals.ragToolCalls} RAG tools`);
+    // Values verified above
   });
 
   it("compareTokenAnalyses computes correct deltas", () => {
@@ -450,14 +202,11 @@ describe("token comparison via session events", () => {
     assert.ok(comparison.verdict.includes("COSTS tokens") || comparison.verdict.includes("fewer read calls"),
       `Verdict should explain tradeoff: ${comparison.verdict}`);
 
-    console.log(`    Verdict: ${comparison.verdict}`);
-
     // Generate and print the report
     const report = formatTokenReport(ragOnAnalysis, ragOffAnalysis, comparison);
     assert.ok(report.length > 0);
     assert.match(report, /TOKEN USAGE COMPARISON/);
     assert.match(report, /PER-QUERY BREAKDOWN/);
-    console.log(report);
   });
 });
 
@@ -477,7 +226,7 @@ describe("projectTokenSavings", () => {
     assert.ok(result.netSavings > 0);
     assert.ok(result.savedReadTokens > result.ragOverheadTokens);
 
-    console.log(`    Projection: overhead=${result.ragOverheadTokens}, saved=${result.savedReadTokens}, net=${result.netSavings}`);
+    // Values verified above
   });
 
   it("projects negative savings when chunks are large and reads are few", () => {
@@ -492,7 +241,7 @@ describe("projectTokenSavings", () => {
     assert.ok(!result.isPositive, "Expected negative savings");
     assert.ok(result.netSavings < 0);
 
-    console.log(`    Projection: overhead=${result.ragOverheadTokens}, saved=${result.savedReadTokens}, net=${result.netSavings}`);
+    // Values verified above
   });
 
   it("breaks even when overhead equals savings", () => {
@@ -506,7 +255,7 @@ describe("projectTokenSavings", () => {
 
     // 300*10 = 3000 overhead, 1200*1*10 = 12000 saved → positive
     assert.ok(result.isPositive);
-    console.log(`    Break-even test: net=${result.netSavings}`);
+    // Values verified above
   });
 });
 
@@ -545,7 +294,6 @@ describe("system prompt guidance overhead", () => {
     const guidance = output.system[0]!;
     const guidanceTokens = estimateContextTokens(guidance);
 
-    console.log(`    System guidance: ${guidance.length} chars ≈ ${guidanceTokens} tokens`);
     assert.ok(guidanceTokens >= 100, `Expected ≥100 tokens for system guidance, got ${guidanceTokens}`);
     assert.ok(guidanceTokens <= 600, `Expected ≤600 tokens for system guidance, got ${guidanceTokens}`);
   });

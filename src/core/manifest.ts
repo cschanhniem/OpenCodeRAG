@@ -1,3 +1,8 @@
+/**
+ * @fileoverview File hash manifest for tracking indexing state across sessions.
+ * Provides load/save with atomic writes, schema versioning, and corruption detection.
+ */
+
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";

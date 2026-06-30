@@ -1,8 +1,12 @@
+/**
+ * @fileoverview Abstract base class for tree-sitter based language chunkers.
+ */
 import { Parser } from "web-tree-sitter";
 import { loadLanguage, loadLanguageFromPath, walkTree, type AstNode } from "./grammar.js";
 import type { Chunker, Chunk } from "../core/interfaces.js";
 import { uuid } from "./uuid.js";
 
+/** Abstract base for tree-sitter based language chunkers. */
 export abstract class TreeSitterChunker implements Chunker {
   abstract readonly language: string;
   abstract readonly fileExtensions: string[];

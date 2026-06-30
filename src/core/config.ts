@@ -1,3 +1,8 @@
+/**
+ * @fileoverview Configuration types and defaults for OpenCodeRAG. Defines RagConfig,
+ * all sub-config interfaces, DEFAULT_CONFIG, validateConfig, and loadConfig.
+ */
+
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { env } from "node:process";
@@ -29,29 +34,17 @@ export interface AutoIndexConfig {
   enabled: boolean;
   /** Debounce delay in ms after a file change before triggering an index pass. */
   debounceMs: number;
-  /** Periodic full index interval in ms. */
+  /** Periodic full index interval in ms (only used by git backend). */
   intervalMs: number;
+  /** Change-detection backend: "chokidar" (FS events, default) or "git" (poll-based). */
+  watcher?: WatcherBackend;
 }
 
 /** Behavior when a read tool query returns no results. */
 export type ReadNoResultsBehavior = "hint" | "empty" | "error";
 
-/** Format for auto-injected context content. */
-export type AutoInjectContentType = "chunks" | "file_paths";
-
-/** Configuration for automatically injecting relevant context into OpenCode chat messages. */
-export interface AutoInjectConfig {
-  /** Whether auto-injection is enabled. */
-  enabled: boolean;
-  /** Minimum relevance score for a chunk to be auto-injected. */
-  minScore: number;
-  /** Maximum number of chunks to inject per message. */
-  maxChunks: number;
-  /** Maximum total tokens for auto-injected content. */
-  maxTokens: number;
-  /** Whether to inject full chunk content or just file paths. */
-  contentType: AutoInjectContentType;
-}
+/** Supported file-change watcher backends. */
+export type WatcherBackend = "chokidar" | "git";
 
 /** Configuration for LLM-powered chunk description generation. */
 export interface DescriptionConfig {
@@ -85,6 +78,8 @@ export interface DescriptionConfig {
   think?: boolean;
   /** Context window size for the LLM. */
   numCtx?: number;
+  /** Maximum content characters sent to the LLM. Chunks exceeding this use fallback descriptions. */
+  maxContentChars?: number;
 }
 
 /** Configuration for vision-model-based image description generation. */
@@ -153,6 +148,20 @@ export interface AutoUpdateConfig {
   enabled: boolean;
 }
 
+/** Configuration for post-retrieval context window optimization (adjacent merge, similarity dedup, file diversity cap). */
+export interface ContextOptimizationConfig {
+  /** Whether context window optimization is enabled. */
+  enabled: boolean;
+  /** Maximum number of chunks to keep per file (0 = unlimited). */
+  maxPerFile: number;
+  /** Whether to merge adjacent chunks from the same file. */
+  mergeAdjacent: boolean;
+  /** Maximum line gap between adjacent chunks that can still be merged. */
+  adjacentGapThreshold: number;
+  /** Jaccard similarity threshold (0-1) for same-file dedup. */
+  similarityThreshold: number;
+}
+
 /** Complete configuration for the OpenCodeRAG pipeline. */
 export interface RagConfig {
   /** Embedding provider settings (model, endpoint, prefixes). */
@@ -217,6 +226,8 @@ export interface RagConfig {
       /** Weight for keyword scores in fusion (0 = vector only, 1 = keyword only). */
       keywordWeight: number;
     };
+    /** Context window optimization settings for post-retrieval quality filtering. */
+    contextOptimization?: ContextOptimizationConfig;
   };
   /** OpenCode plugin integration settings. */
   openCode: {
@@ -226,8 +237,6 @@ export interface RagConfig {
     maxContextChunks: number;
     /** Auto-indexing behavior on file changes. */
     autoIndex?: AutoIndexConfig;
-    /** Auto-injection of relevant chunks into chat messages. */
-    autoInject?: AutoInjectConfig;
     /** Whether to override the built-in read tool with RAG-enhanced version. */
     readOverride?: boolean;
     /** Maximum characters returned by the overridden read tool. */
@@ -361,7 +370,8 @@ export const DEFAULT_CONFIG: RagConfig = {
       "memory:",
       "wasm",
       ".commandcode",
-      ".agents"
+      ".agents",
+      "graphify-out",
     ],
     excludeFiles: [
       "package-lock.json",
@@ -370,7 +380,7 @@ export const DEFAULT_CONFIG: RagConfig = {
     minFileSizeBytes: 0,
     concurrency: 8,
     embedBatchSize: 100,
-    embedConcurrency: 3,
+    embedConcurrency: 6,
     ollamaMaxBatchSize: 4000,
     descriptionConcurrency: 4,
   },
@@ -385,6 +395,13 @@ export const DEFAULT_CONFIG: RagConfig = {
       enabled: true,
       keywordWeight: 0.4,
     },
+    contextOptimization: {
+      enabled: true,
+      maxPerFile: 3,
+      mergeAdjacent: true,
+      adjacentGapThreshold: 5,
+      similarityThreshold: 0.8,
+    },
   },
   openCode: {
     enabled: true,
@@ -394,13 +411,7 @@ export const DEFAULT_CONFIG: RagConfig = {
       enabled: false,
       debounceMs: 2000,
       intervalMs: 300000,
-    },
-    autoInject: {
-      enabled: true,
-      minScore: 0.75,
-      maxChunks: 10,
-      maxTokens: 3000,
-      contentType: "file_paths",
+      watcher: "chokidar",
     },
   },
   imageDescription: {
@@ -409,9 +420,9 @@ export const DEFAULT_CONFIG: RagConfig = {
     model: "minicpm-v4.6:latest",
     baseUrl: "http://127.0.0.1:11434/api",
     timeoutMs: 60000,
-    prompt: "Describe this image precisely and concisely: what it shows, any text content, layout, colors, objects, and purpose. Maximum 40 words. Start with \"Image of ...\" and always mention that this is an image file.",
-    think: true,
-    numCtx: 4096,
+    prompt: "Describe this image 10-20 comma-separated keywords.",
+    think: false,
+    numCtx: 2048,
     resizeMaxDimension: 1024,
   },
   description: {
@@ -423,10 +434,11 @@ export const DEFAULT_CONFIG: RagConfig = {
     numCtx: 4096,
     timeoutMs: 60000,
     systemPrompt:
-      "Describe code precise and concise in 2 sentences. Maximum 20 words. Focus on functionality and purpose.",
-    batchConcurrency: 3,
+      "Describe this code in 10-20 comma-separated keywords.",
+    batchConcurrency: 1,
     retryMax: 3,
     retryBaseDelayMs: 1000,
+    maxContentChars: 4000,
   },
   documentationMode: {
     enabled: false,
@@ -559,6 +571,19 @@ export function validateConfig(config: RagConfig): ConfigValidationResult {
     warnings.push("openCode.maxContextChunks must be > 0");
   }
 
+  if (config.openCode.autoIndex?.watcher && !["chokidar", "git"].includes(config.openCode.autoIndex.watcher)) {
+    warnings.push(`openCode.autoIndex.watcher "${config.openCode.autoIndex.watcher}" — expected "chokidar" or "git"`);
+  }
+
+  if (config.retrieval.contextOptimization) {
+    const co = config.retrieval.contextOptimization;
+    if (co.maxPerFile < 0) warnings.push("retrieval.contextOptimization.maxPerFile must be >= 0");
+    if (co.adjacentGapThreshold < 0) warnings.push("retrieval.contextOptimization.adjacentGapThreshold must be >= 0");
+    if (co.similarityThreshold < 0 || co.similarityThreshold > 1) {
+      warnings.push("retrieval.contextOptimization.similarityThreshold must be between 0 and 1");
+    }
+  }
+
   if (!["debug", "info", "error", "none"].includes(config.logging.level)) {
     warnings.push(`logging.level "${config.logging.level}" — expected "debug", "info", "error", or "none"`);
   }
@@ -665,10 +690,6 @@ export function loadConfig(filePath: string, validate: boolean = true): RagConfi
           ...base.autoIndex,
           ...(safeObj<AutoIndexConfig>(user.autoIndex) ?? {}),
         } as AutoIndexConfig,
-        autoInject: {
-          ...base.autoInject,
-          ...(safeObj<AutoInjectConfig>(user.autoInject) ?? {}),
-        } as AutoInjectConfig,
       };
       return merged;
     })(),

@@ -1,3 +1,7 @@
+/**
+ * @fileoverview Extracts text descriptions from image files using a vision provider, with BMP decoding and resizing support.
+ */
+
 import path from "node:path";
 import sharp from "sharp";
 import type { ExtractResult } from "./types.js";
@@ -9,6 +13,9 @@ import {
 
 export { SUPPORTED_IMAGE_EXTENSIONS };
 
+/**
+ * Check whether a file path points to a supported image file based on its extension.
+ */
 export function isImageFile(fp: string): boolean {
   const lower = fp.toLowerCase();
   for (const ext of SUPPORTED_IMAGE_EXTENSIONS) {
@@ -71,6 +78,10 @@ function decodeBmp(buffer: Buffer): { pixels: Buffer; width: number; height: num
   return { pixels, width, height: absHeight, channels };
 }
 
+/**
+ * Resize an image buffer to fit within a maximum dimension while preserving aspect ratio.
+ * Handles BMP files with a custom decoder before delegating to sharp.
+ */
 export async function resizeImage(
   buffer: Buffer,
   filePath: string,
@@ -108,6 +119,10 @@ export async function resizeImage(
   }
 }
 
+/**
+ * Extract a text description of an image by sending it to a vision provider.
+ * Optionally resizes the image before transmission to stay within provider limits.
+ */
 export async function extract(
   filePath: string,
   buffer: Buffer,

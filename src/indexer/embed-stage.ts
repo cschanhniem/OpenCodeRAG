@@ -1,7 +1,10 @@
-import pLimit from "p-limit";
+/**
+ * @fileoverview Batches chunks for embedding generation.
+ */
 import type { Chunk, EmbeddingProvider } from "../core/interfaces.js";
 import { embedBatch } from "../embedder/factory.js";
 
+/** Options for embedding a batch of chunks. */
 export interface EmbedChunksOptions {
   chunks: Chunk[];
   embedder: EmbeddingProvider;
@@ -9,6 +12,16 @@ export interface EmbedChunksOptions {
   concurrency: number;
 }
 
+/**
+ * Generate embeddings for chunks that don't already have one.
+ * Skips chunks that already have a valid embedding vector.
+ *
+ * @param chunks - Chunks to embed; existing embeddings are preserved in-place.
+ * @param embedder - Embedding provider for vector generation.
+ * @param batchSize - Number of texts to embed per batch.
+ * @param concurrency - Number of concurrent embedding requests.
+ * @returns The same chunk array with embeddings attached.
+ */
 export async function embedChunks({
   chunks,
   embedder,
@@ -16,19 +29,6 @@ export async function embedChunks({
   concurrency,
 }: EmbedChunksOptions): Promise<Chunk[]> {
   if (chunks.length === 0) return [];
-
-  const limit = pLimit(concurrency);
-
-  const results = await Promise.all(
-    chunks.map((chunk, index) =>
-      limit(async () => {
-        if (!chunk.embedding || chunk.embedding.length === 0) {
-          return chunk;
-        }
-        return chunk;
-      }),
-    ),
-  );
 
   const textsToEmbed: string[] = [];
   const chunkIndices: number[] = [];

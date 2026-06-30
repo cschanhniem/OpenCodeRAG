@@ -12,7 +12,7 @@ import {
   runIndexPass,
 } from "../../indexer.js";
 import type { Chunk, DescriptionProvider, EmbeddingProvider } from "../../core/interfaces.js";
-import { LanceDBStore } from "../../vectorstore/lancedb.js";
+import { LanceDbStore } from "../../vectorstore/lancedb.js";
 
 class TestEmbedder implements EmbeddingProvider {
   readonly name = "test";
@@ -46,13 +46,14 @@ function testConfig(): RagConfig {
 describe("indexer", () => {
   let workspaceDir: string;
   let storeDir: string;
-  let store: LanceDBStore;
+  let store: LanceDbStore;
   const embedder = new TestEmbedder();
 
   beforeEach(async () => {
     workspaceDir = await makeTempDir("indexer-workspace");
     storeDir = await makeTempDir("indexer-store");
-    store = new LanceDBStore(storeDir, 4);
+    // Use in-memory store for speed; storePath still needs a real dir for manifest
+    store = new LanceDbStore("memory://", 4);
   });
 
   it("indexes new files and records them in the manifest", async () => {
@@ -294,27 +295,46 @@ describe("indexer", () => {
     assert.equal(runs, 2);
   });
 
-  describe("description provider integration", () => {
-    function makeTestDescriptionProvider(descriptions: Map<string, string>): DescriptionProvider {
-      return {
-        async generateDescription(chunk: Chunk): Promise<string> {
-          const desc = descriptions.get(chunk.id);
-          if (!desc) throw new Error(`No description for chunk ${chunk.id}`);
-          return desc;
-        },
-        async generateBatchDescriptions(chunks: Chunk[]): Promise<Map<string, string>> {
-          const result = new Map<string, string>();
-          for (const chunk of chunks) {
-            const desc = descriptions.get(chunk.id);
-            if (desc) {
-              result.set(chunk.id, desc);
-            }
-          }
-          return result;
-        },
-      };
-    }
+  it("accumulates paths across multiple notifyChange calls", async () => {
+    const receivedPaths: string[][] = [];
+    const scheduler = createWatchPassScheduler(
+      async (paths?: string[]) => {
+        receivedPaths.push(paths ?? []);
+      },
+      () => { assert.fail("unexpected error"); },
+      10,
+    );
 
+    scheduler.notifyChange(["a.ts", "b.ts"]);
+    scheduler.notifyChange(["b.ts", "c.ts"]); // b.ts is duplicate
+    await delay(50);
+
+    assert.equal(receivedPaths.length, 1);
+    const paths = receivedPaths[0]!.sort();
+    assert.deepStrictEqual(paths, ["a.ts", "b.ts", "c.ts"]);
+
+    scheduler.close();
+  });
+
+  it("accumulates paths and passes undefined when no paths given", async () => {
+    const receivedPaths: (string[] | undefined)[] = [];
+    const scheduler = createWatchPassScheduler(
+      async (paths?: string[]) => { receivedPaths.push(paths); },
+      () => { assert.fail("unexpected error"); },
+      10,
+    );
+
+    scheduler.notifyChange(["x.ts"]);
+    scheduler.notifyChange(); // full pass request overrides
+    await delay(50);
+
+    assert.equal(receivedPaths.length, 1);
+    assert.equal(receivedPaths[0], undefined); // full pass = no filter paths
+
+    scheduler.close();
+  });
+
+  describe("description provider integration", () => {
     it("generates descriptions and embeds description + content together", async () => {
       await writeFile(path.join(workspaceDir, "src", "a.ts"), "function alpha() { return 1; }\n");
 

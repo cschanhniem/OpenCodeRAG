@@ -1,4 +1,8 @@
 /**
+ * @fileoverview Factory functions for OpenCode autonomous-agent tools (file skeleton, find usages, describe image).
+ */
+
+/**
  * Specialized tool factories for autonomous agent workflows.
  *
  * Provides smaller, focused tools that are more efficient for agentic use:
@@ -16,7 +20,7 @@ import type { EmbeddingProvider, VectorStore, KeywordIndex, SearchResult } from 
 import type { RagConfig } from "../core/config.js";
 import { SUPPORTED_IMAGE_EXTENSIONS, createImageVisionProvider, getMimeType, type ImageVisionProvider } from "../chunker/image.js";
 import { resizeImage } from "../content/image.js";
-import { retrieve, type RetrieveOptions } from "../retriever/retriever.js";
+import { retrieve } from "../retriever/retriever.js";
 import { Parser } from "web-tree-sitter";
 import { initParser, loadLanguage, walkTree, type AstNode } from "../chunker/grammar.js";
 import { readFileSync } from "node:fs";
@@ -115,7 +119,6 @@ async function extractSkeleton(
         items.push({ type: ext.slice(1), name, startLine: lineNum, endLine: lineNum });
       }
     }
-    // Deduplicate by name
     const seen = new Set<string>();
     return items.filter((item) => {
       const key = `${item.type}:${item.name}`;
@@ -148,7 +151,7 @@ async function extractSkeleton(
  * Extract a human-readable name from a code node.
  * For declarations, this is typically the identifier after the keyword.
  */
-function extractNodeName(text: string, nodeType: string): string {
+function extractNodeName(text: string, _nodeType: string): string {
   // Try first line only for large nodes
   const firstLine = text.split("\n")[0] ?? text;
 
@@ -212,6 +215,7 @@ function typeIcon(type: string): string {
 // Tool 1: get_file_skeleton
 // ────────────────────────────────────────────────────────────────────────────
 
+/** Options for creating the `get_file_skeleton` tool. */
 export interface FileSkeletonToolOptions {
   worktree: string;
 }
@@ -247,7 +251,6 @@ export function createFileSkeletonTool(
 
         const skeleton = await extractSkeleton(content, ext);
 
-        // Build a summary line
         const declCounts = new Map<string, number>();
         for (const item of skeleton) {
           const baseType = item.type.replace(/_declaration$|_definition$|_specifier$|_item$/, "");
@@ -285,6 +288,7 @@ export function createFileSkeletonTool(
 // Tool 3: find_usages
 // ────────────────────────────────────────────────────────────────────────────
 
+/** Options for creating the `find_usages` tool. */
 export interface FindUsagesToolOptions {
   store: VectorStore;
   embedder: EmbeddingProvider;
@@ -309,12 +313,23 @@ export interface FindUsagesToolOptions {
 // Tool 4: describe_image
 // ────────────────────────────────────────────────────────────────────────────
 
+/** Options for creating the `describe_image` tool. */
 export interface DescribeImageToolOptions {
   worktree: string;
   config: RagConfig;
   visionProvider?: ImageVisionProvider;
 }
 
+/**
+ * Create the `describe_image` tool.
+ *
+ * Reads an image file from disk and sends it to the configured vision provider
+ * for natural-language description. Supports Ollama, OpenAI, Anthropic, and
+ * Google Gemini providers with automatic resizing.
+ *
+ * @param options - Tool configuration including workspace root and vision provider.
+ * @returns A tool definition suitable for OpenCode plugin registration.
+ */
 export function createDescribeImageTool(
   options: DescribeImageToolOptions
 ): ToolDefinition {
@@ -398,6 +413,17 @@ export function createDescribeImageTool(
   });
 }
 
+/**
+ * Create the `find_usages` tool.
+ *
+ * Searches the indexed codebase for references to a given symbol by combining
+ * keyword index matches (fast, precise) with vector-store fallback (broader
+ * referral discovery). Extracts line-level matches with surrounding context
+ * and groups results by file.
+ *
+ * @param options - Store, embedder, config, and optional keyword index.
+ * @returns A tool definition suitable for OpenCode plugin registration.
+ */
 export function createFindUsagesTool(
   options: FindUsagesToolOptions
 ): ToolDefinition {

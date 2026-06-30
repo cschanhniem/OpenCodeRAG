@@ -1,12 +1,53 @@
 /**
+ * @fileoverview Status command showing index statistics, store health, manifest status, and configuration summary.
+ */
+/**
  * `status` command — shows index statistics, store health, and configuration summary.
  */
 
 import type { Command } from "commander";
 import path from "node:path";
+import fs from "node:fs";
 import { c, resolveCliContext, cleanupContext, logCliError, logCliInfo, formatTimestamp } from "../format.js";
 import { getIndexStatusSummary } from "../../indexer.js";
 import type { CliOptions } from "../types.js";
+
+/**
+ * Check for a stale index.lock file and clean it up if the owning process is dead.
+ *
+ * An `index.lock` file is created by `runIndexPass` to prevent concurrent index
+ * operations. If the process that created it has terminated (e.g. crash, Ctrl+C),
+ * the lock becomes stale and must be removed before any new index pass can start.
+ * This function also warns the user when a live index pass is detected.
+ *
+ * @param storePath - Path to the vector store directory.
+ * @param logFilePath - Path to the debug log file for status output.
+ */
+function checkStaleLock(storePath: string, logFilePath: string): void {
+  const lockPath = path.join(storePath, "index.lock");
+  if (!fs.existsSync(lockPath)) return;
+
+  try {
+    const raw = fs.readFileSync(lockPath, "utf-8");
+    const lock = JSON.parse(raw) as { pid?: number; startedAt?: number };
+
+    if (lock.pid) {
+      try {
+        // Signal 0 tests whether the process exists without actually sending a signal.
+        process.kill(lock.pid, 0);
+        logCliInfo(logFilePath, "status", `\n${c.warn("⚠")} Index lock is held by running process ${c.num(lock.pid)} — status may be stale until it completes.`);
+        return;
+      } catch {
+        // Process is dead — lock is stale
+      }
+    }
+
+    logCliInfo(logFilePath, "status", `\n${c.warn("⚠")} Stale index.lock found (PID ${lock.pid ?? "unknown"} is no longer running) — removing it.`);
+    fs.unlinkSync(lockPath);
+  } catch {
+    // Can't read or parse the lock file — not our concern, ignore silently
+  }
+}
 
 /**
  * Register the `status` command on the given Commander program.
@@ -26,9 +67,11 @@ export function registerStatusCommand(program: Command): void {
       try {
         const cwd = process.cwd();
         let logFilePath = path.resolve(cwd, ".opencode", "opencode-rag.log");
-        const ctx = await resolveCliContext(options, logFilePath);
+        const ctx = await resolveCliContext(options, logFilePath, { skipProbe: true, skipKeywordIndex: true });
         const { config, store, storePath, keywordIndex } = ctx;
         logFilePath = ctx.logFilePath;
+
+        checkStaleLock(storePath, logFilePath);
 
         const count = await store.count();
         const summary = await getIndexStatusSummary(
@@ -36,6 +79,7 @@ export function registerStatusCommand(program: Command): void {
           storePath,
           config,
           store,
+          true, // skipScan — don't walk the workspace tree, just use manifest stats
         );
 
         logCliInfo(logFilePath, "status", `\n${c.heading("Indexed chunks:")}    ${c.num(count)}`);

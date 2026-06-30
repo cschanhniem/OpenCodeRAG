@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { walkTree, type AstNode } from "../../chunker/grammar.js";
+import { walkTree } from "../../chunker/grammar.js";
 
 interface MockNode {
   type: string;

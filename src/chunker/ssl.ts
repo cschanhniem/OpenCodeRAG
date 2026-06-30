@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Keyword-based chunker for STARLIMS SSL script files using block nesting analysis.
+ */
 import type { Chunker, Chunk } from "../core/interfaces.js";
 import { uuid } from "./uuid.js";
 
@@ -22,7 +25,6 @@ const BLOCK_END: Record<string, string> = {
 };
 
 const KEYWORD_RE = /^:(\w+)\b/i;
-const PROC_RE = /^:PROCEDURE\s+(\w+)/i;
 
 /**
  * Chunker for STARLIMS SSL script files (.ssl).
@@ -45,7 +47,6 @@ export class SslChunker implements Chunker {
     const lines = content.split("\n");
     const chunks: Chunk[] = [];
 
-    // Track block nesting stack
     const blockStack: string[] = [];
 
     let topLevelStart = 1;
@@ -65,7 +66,6 @@ export class SslChunker implements Chunker {
       const line = lines[i]!.trim();
       if (!line) continue;
 
-      // Skip comment lines
       if (line.startsWith("/*") || line.startsWith("*")) continue;
 
       const kwMatch = line.match(KEYWORD_RE);
@@ -73,7 +73,6 @@ export class SslChunker implements Chunker {
 
       const keyword = kwMatch[1]!.toUpperCase();
 
-      // Check if this keyword starts a new block
       const blockType = BLOCK_START[keyword];
       if (blockType) {
         // Before starting a procedure, flush any preceding top-level content
@@ -90,12 +89,10 @@ export class SslChunker implements Chunker {
         continue;
       }
 
-      // Check if this keyword ends a block
       const endType = BLOCK_END[keyword];
       if (endType) {
         const expected = blockStack.pop();
         if (expected === "proc" && endType === "proc") {
-          // Emit procedure chunk
           const procLine = findProcedureStartLine(lines, i, filePath);
           const startLine = procLine ?? (i + 1);
           const endLine = i + 1;
@@ -123,7 +120,6 @@ export class SslChunker implements Chunker {
       }
     }
 
-    // Flush remaining top-level content
     flushTopLevel(lines.length + 1);
 
     if (chunks.length === 0) {
@@ -146,7 +142,7 @@ export class SslChunker implements Chunker {
  * @param filePath - Original file path (unused, for metadata consistency).
  * @returns The 1-based start line of the PROCEDURE, or null if not found.
  */
-function findProcedureStartLine(lines: string[], fromIndex: number, filePath: string): number | null {
+function findProcedureStartLine(lines: string[], fromIndex: number, _filePath: string): number | null {
   let depth = 0;
   for (let i = fromIndex - 1; i >= 0; i--) {
     const line = lines[i]!.trim().toUpperCase();

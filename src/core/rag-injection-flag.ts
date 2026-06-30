@@ -1,3 +1,8 @@
+/**
+ * @fileoverview Persists a flag across plugin restarts indicating that RAG context
+ * should be injected on the next chat message (chunks or file paths).
+ */
+
 import { writeFileSync, readFileSync, unlinkSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
@@ -9,6 +14,17 @@ const FLAG_FILE = ".pending-injection";
 /** Persist a flag indicating that RAG context should be injected on the next message. */
 export function setPendingRagInjection(storePath: string, type: RagInjectionType): void {
   writeFileSync(join(storePath, FLAG_FILE), type, "utf-8");
+}
+
+/** Check if a pending injection flag exists without consuming it. */
+export function peekPendingRagInjection(storePath: string): RagInjectionType | undefined {
+  const flagPath = join(storePath, FLAG_FILE);
+  if (!existsSync(flagPath)) return undefined;
+  try {
+    return readFileSync(flagPath, "utf-8") as RagInjectionType;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Read and remove the pending injection flag. Returns the injection type or undefined if none pending. */

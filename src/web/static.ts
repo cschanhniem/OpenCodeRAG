@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Static HTML file reader and cache for the Web UI entry page.
+ */
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";

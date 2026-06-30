@@ -1,3 +1,7 @@
+/**
+ * @fileoverview UUID v4 string generation for chunk identifiers.
+ */
+/** Generate a UUID v4 string for use as a chunk identifier. */
 export function uuid(): string {
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0;

@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Tree-sitter based C++ chunker splitting by function definitions and struct/enum/union specifiers.
+ */
 import { TreeSitterChunker } from "./base.js";
 
 /**

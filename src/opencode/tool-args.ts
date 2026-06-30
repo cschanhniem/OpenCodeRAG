@@ -1,3 +1,7 @@
+/**
+ * @fileoverview Normalizes and validates read tool arguments, and resolves file paths relative to the workspace root.
+ */
+
 import path from "node:path";
 
 /**

@@ -8,23 +8,14 @@ across real coding queries against the indexed OpenCodeRAG codebase (876 chunks,
 
 ## Method
 
-### Phase 1: Auto-injection overhead measurement
-
-Feed the same 10 benchmark queries through the `chat.message` hook with:
-- **RAG ON**: `autoInject.enabled: true`, `contentType: "chunks"`, `minScore: 0.85`
-- **RAG OFF**: `autoInject.enabled: false`
-
-Measure the text delta (chars → tokens via `ceil(len/4)`) to quantify exactly
-how many tokens RAG injects per query.
-
-### Phase 2: Retrieval quality check
+### Phase 1: Retrieval quality check
 
 For each query, run `retrieve()` with the real embedder and store, measure:
 - Number of results returned
 - Top relevance score
 - Whether the retrieval actually finds relevant code
 
-### Phase 3: Projection
+### Phase 2: Projection
 
 Using measured injection overhead + typical agent behavior estimates:
 - Without RAG: agent makes ~2-3 extra `read` calls per query (~1200 tok each)

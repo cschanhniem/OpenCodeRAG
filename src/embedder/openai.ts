@@ -1,3 +1,6 @@
+/**
+ * @fileoverview OpenAI-compatible embedding provider with provider-specific API quirks (e.g. NVIDIA "passage" input type).
+ */
 import type { EmbeddingProvider } from "../core/interfaces.js";
 import type { ProxyConfig } from "../core/config.js";
 import { postJson } from "./http.js";
@@ -14,15 +17,24 @@ function inferProviderName(baseUrl: string): string {
   return "openai"; // default — most providers follow OpenAI conventions
 }
 
+/**
+ * OpenAI-compatible embedding provider with provider-specific API quirks (e.g. NVIDIA "passage" input type).
+ *
+ * @param baseUrl - API base URL (e.g. https://api.openai.com/v1)
+ * @param model - Model name to use for embedding
+ * @param apiKey - API key for authentication
+ * @param timeoutMs - Request timeout in milliseconds (default 30000)
+ * @param proxy - Optional proxy configuration
+ */
 export class OpenAIProvider implements EmbeddingProvider {
   readonly name = "openai";
 
-  private baseUrl: string;
-  private model: string;
-  private apiKey: string;
-  private timeoutMs: number;
+  private readonly baseUrl: string;
+  private readonly model: string;
+  private readonly apiKey: string;
+  private readonly timeoutMs: number;
   private proxy?: ProxyConfig;
-  private provider: string;
+  private readonly provider: string;
 
   constructor(baseUrl: string, model: string, apiKey: string, timeoutMs: number = 30000, proxy?: ProxyConfig) {
     this.baseUrl = baseUrl.replace(/\/+$/, "");

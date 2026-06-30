@@ -1,4 +1,7 @@
 /**
+ * @fileoverview TypeScript type definitions for the evaluation framework (session events, summaries, tokens, comparisons).
+ */
+/**
  * Evaluation framework types for session logging and comparison.
  *
  * Captures OpenCode session events (messages, tool calls, RAG injections)

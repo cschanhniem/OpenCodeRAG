@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Tree-sitter based PowerShell chunker splitting by function statement boundaries.
+ */
 import { TreeSitterChunker } from "./base.js";
 
 /**

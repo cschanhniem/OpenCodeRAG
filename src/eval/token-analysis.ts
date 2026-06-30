@@ -1,4 +1,7 @@
 /**
+ * @fileoverview Token usage analysis for comparing RAG-on vs RAG-off sessions with per-query breakdowns and savings projections.
+ */
+/**
  * Token usage analysis for comparing RAG-on vs RAG-off sessions.
  *
  * Provides functions to:
@@ -8,7 +11,7 @@
  */
 
 import { readSessionEvents, computeSummary } from "./storage.js";
-import type { SessionEvent, TokenUsage } from "./types.js";
+import type { SessionEvent } from "./types.js";
 import { countTokens } from "./token-counter.js";
 
 /** Average tokens consumed by a `read` tool call (typical file read). */
@@ -261,9 +264,6 @@ export function compareTokenAnalyses(
   const dResponseTime = avgOnTime - avgOffTime;
 
   const pct = (delta: number, base: number) => base === 0 ? 0 : Math.round((delta / base) * 1000) / 10;
-
-  const totalOn = ragOn.totals.inputTokens + ragOn.totals.outputTokens;
-  const totalOff = ragOff.totals.inputTokens + ragOff.totals.outputTokens;
 
   // Verdict
   let verdict: string;

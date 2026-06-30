@@ -1,3 +1,7 @@
+/**
+ * @fileoverview Creates the RAG-backed read tool that returns full file contents with supplementary semantic context.
+ */
+
 import fs from "node:fs/promises";
 import { tool } from "@opencode-ai/plugin/tool";
 import type { EmbeddingProvider, KeywordIndex, VectorStore, SearchResult } from "../core/interfaces.js";
@@ -5,7 +9,7 @@ import type { RagConfig } from "../core/config.js";
 import { retrieve } from "../retriever/retriever.js";
 import { normalizeReadArgs, resolveWorkspacePath } from "./tool-args.js";
 import { buildReadQuery } from "./read-query.js";
-import { formatHybridReadOutput, formatRelatedFiles, formatFileFallback } from "./read-format.js";
+import { formatHybridReadOutput } from "./read-format.js";
 import { retrievalErrorMessage } from "./read-fallback.js";
 
 export interface RagReadToolOptions {

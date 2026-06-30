@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Orchestrates the full indexing pipeline: scan, chunk, embed, and store.
+ */
 import fs from "node:fs/promises";
 import path from "node:path";
 import pLimit from "p-limit";
@@ -16,7 +19,8 @@ import { embedBatch } from "../embedder/factory.js";
 import { createVectorStore } from "../vectorstore/factory.js";
 import { swapStoreDirectories } from "../vectorstore/lancedb.js";
 import { createIndexStats, type IndexRunStats, type IndexStatusSummary } from "./stats.js";
-import { prepareFile, buildTextsToEmbed, storeFileChunks, type WorkerResult, type PreparedFile } from "./worker.js";
+import { prepareFile, buildTextsToEmbed, storeFileChunks, type WorkerResult } from "./worker.js";
+import { buildFallbackDescription } from "./description-stage.js";
 import { getCurrentCommit, getChangedFilesSince, getUntrackedFiles, getRepoRoot } from "./git-diff.js";
 
 export type { WatchPassScheduler } from "./watch.js";
@@ -48,8 +52,19 @@ export interface RunIndexPassOptions {
   abortSignal?: AbortSignal;
   /** Embedding vector dimension — needed when creating a temporary store for atomic rebuilds. */
   dimension?: number;
+  /**
+   * Caller-provided list of changed file paths (absolute). When set, only these
+   * files are scanned — full directory walk is skipped.
+   */
+  filterPaths?: string[];
+  /**
+   * Caller-provided list of deleted file paths (absolute). When set, these
+   * entries are removed from the index without comparing against the scanned set.
+   */
+  deletedPaths?: string[];
 }
 
+/** Minimal logger interface for indexing pipeline diagnostics. */
 export interface Logger {
   info(message: string): void;
   warn(message: string): void;
@@ -214,7 +229,7 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
       delete manifest.files[key];
     }
     manifest.lastIndexedAt = undefined;
-    rebuildPerformed = existingCount > 0 || Boolean(options.force);
+    rebuildPerformed = existingCount > 0 || !!options.force;
     if (manifestStatus !== "ok" && existingCount > 0) {
       logger.warn("Manifest missing or corrupt; rebuilding full index.");
     }
@@ -290,7 +305,6 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
   }
   logger.debug(`Processing ${workspaceFiles.length} files (${newCount} new, ${modifiedCount} modified, ${unchangedCount} unchanged)...`);
 
-  // ── Phase 1: prepare all files (chunk + keyword, defer descriptions if provider present) ──
   const limit = pLimit(options.config.indexing.concurrency);
   const deferDescriptions = !!options.descriptionProvider;
 
@@ -325,17 +339,26 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
     ),
   );
 
-  // ── Phase 1.5: global description generation (single pool, no nested concurrency) ──
   if (deferDescriptions) {
     const deferredPreps = prepared.filter((p) => p.chunks && p.chunks.length > 0 && p.relPath !== undefined);
     if (deferredPreps.length > 0) {
       const allChunks: Chunk[] = [];
+      const oversizedChunks: Chunk[] = [];
+      const maxContentChars = options.config.description?.maxContentChars;
       for (const prep of deferredPreps) {
         for (const chunk of prep.chunks!) {
           if (chunk.metadata.contentType !== "image") {
-            allChunks.push(chunk);
+            if (maxContentChars && chunk.content.length > maxContentChars) {
+              oversizedChunks.push(chunk);
+            } else {
+              allChunks.push(chunk);
+            }
           }
         }
+      }
+
+      for (const chunk of oversizedChunks) {
+        chunk.description = buildFallbackDescription(chunk);
       }
 
       // Advance progress to Description stage before descriptions start
@@ -345,7 +368,7 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
 
       if (allChunks.length > 0) {
         try {
-          const batchResult = await options.descriptionProvider!.generateBatchDescriptions(allChunks, (msg: string) => logger.debug(msg));
+          const batchResult = await options.descriptionProvider!.generateBatchDescriptions(allChunks, logger);
           for (const chunk of allChunks) {
             const desc = batchResult.get(chunk.id);
             if (desc && desc.trim().length > 0) {
@@ -362,7 +385,6 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
         }
       }
 
-      // Phase 1.6: build textToEmbed with descriptions injected
       for (const prep of deferredPreps) {
         prep.textToEmbed = buildTextsToEmbed(
           prep.chunks!,
@@ -375,7 +397,6 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
     }
   }
 
-  // ── Phase 2+3: per-file delete, embed + store (in parallel) ──
   // Deletions for modified/re-removed files happen per-worker, right before
   // embedding, so that an abort mid-embed doesn't orphan old entries.
   const isOllama = options.embedder.name === "ollama";
@@ -402,12 +423,10 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
   const workerResults = await Promise.all(
     prepared.map((prep) =>
       embedStoreLimit(async () => {
-        // ── Check abort signal before any work ──
         if (aborted()) {
           return { normalizedPath: prep.normalizedPath, skipped: true as const } as const;
         }
 
-        // ── Early results (empty / too-small / unchanged / chunking failure) ──
         if (prep.earlyResult) {
           // Remove stale manifest/store entries for files that no longer produce chunks
           if (prep.earlyResult.isRemoved) {
@@ -430,7 +449,6 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
           };
         }
 
-        // ── Embed ──
         const batchSize = isOllama
           ? Math.min(prep.textToEmbed.length, ollamaMaxBatch)
           : defaultBatchSize;
@@ -485,7 +503,6 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
     ),
   );
 
-  // Strip skipped sentinels
   const finalResults: WorkerResult[] = [];
   for (const r of workerResults) {
     if ((r as { skipped?: boolean }).skipped) break;
@@ -504,7 +521,6 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
     }
   }
 
-  // ── Aggregate stats ──
   aggregateStats(stats, finalResults);
 
   // Update timestamps; advance lastGitCommit ONLY on a complete pass
@@ -594,15 +610,28 @@ function aggregateStats(
   }
 }
 
+/**
+ * Build an overview of the current index health without running a full pass.
+ * Scans workspace files and compares their hashes against the manifest to
+ * determine how many are up-to-date vs pending re-indexing.
+ *
+ * @param cwd - Workspace root directory.
+ * @param storePath - Path to the vector store data directory.
+ * @param config - Full RAG configuration.
+ * @param store - Vector store instance for chunk count.
+ * @param skipScan - When true, skip the workspace file scan and only report
+ *   manifest / store metadata.
+ * @returns A summary of the current index status.
+ */
 export async function getIndexStatusSummary(
   cwd: string,
   storePath: string,
   config: RagConfig,
   store: VectorStore,
+  skipScan?: boolean,
 ): Promise<IndexStatusSummary> {
   const loadResult = await loadManifest(storePath);
   const manifest = loadResult.manifest;
-  const workspaceFiles = await scanWorkspaceFiles(cwd, config, undefined, manifest);
   const storeCount = await store.count();
 
   if (loadResult.status !== "ok") {
@@ -610,40 +639,49 @@ export async function getIndexStatusSummary(
       manifestStatus: loadResult.status,
       manifestEntries: 0,
       upToDateFiles: 0,
-      pendingFiles: workspaceFiles.length,
+      pendingFiles: 0,
       rebuildRequired: storeCount > 0,
       storeChunkCount: storeCount,
       manifestExpectedChunks: 0,
     };
   }
 
-  const currentPaths = new Set(workspaceFiles.map((file) => file.normalizedPath));
   let upToDateFiles = 0;
   let pendingFiles = 0;
+  let manifestExpectedChunks = 0;
 
-  for (const file of workspaceFiles) {
-    const previous = manifest.files[file.normalizedPath];
-    if (file.isEmpty || file.isTooSmall) {
-      if (previous) pendingFiles++;
-      continue;
+  if (!skipScan) {
+    const workspaceFiles = await scanWorkspaceFiles(cwd, config, undefined, manifest);
+    const currentPaths = new Set(workspaceFiles.map((file) => file.normalizedPath));
+
+    for (const file of workspaceFiles) {
+      const previous = manifest.files[file.normalizedPath];
+      if (file.isEmpty || file.isTooSmall) {
+        if (previous) pendingFiles++;
+        continue;
+      }
+
+      if (previous && previous.hash === file.hash) {
+        upToDateFiles++;
+      } else {
+        pendingFiles++;
+      }
     }
 
-    if (previous && previous.hash === file.hash) {
-      upToDateFiles++;
-    } else {
-      pendingFiles++;
+    for (const indexedPath of Object.keys(manifest.files)) {
+      if (!currentPaths.has(indexedPath)) {
+        pendingFiles++;
+      }
     }
+
+    manifestExpectedChunks = Object.values(manifest.files).reduce(
+      (sum, entry) => sum + entry.chunkCount, 0
+    );
+  } else {
+    manifestExpectedChunks = Object.values(manifest.files).reduce(
+      (sum, entry) => sum + entry.chunkCount, 0
+    );
   }
-
-  for (const indexedPath of Object.keys(manifest.files)) {
-    if (!currentPaths.has(indexedPath)) {
-      pendingFiles++;
-    }
-  }
-
-  const manifestExpectedChunks = Object.values(manifest.files).reduce(
-    (sum, entry) => sum + entry.chunkCount, 0
-  );
 
   return {
     manifestStatus: loadResult.status,

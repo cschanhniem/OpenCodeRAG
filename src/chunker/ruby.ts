@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Tree-sitter based Ruby chunker splitting by method and singleton method definitions.
+ */
 import { TreeSitterChunker } from "./base.js";
 
 /**

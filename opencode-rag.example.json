@@ -58,14 +58,8 @@
     "autoIndex": {
       "enabled": false,
       "debounceMs": 2000,
-      "intervalMs": 300000
-    },
-    "autoInject": {
-      "enabled": true,
-      "minScore": 0.75,
-      "maxChunks": 10,
-      "maxTokens": 3000,
-      "contentType": "file_paths"
+      "intervalMs": 300000,
+      "watcher": "chokidar"
     }
   },
   "imageDescription": {
@@ -74,7 +68,7 @@
     "model": "minicpm-v4.6:latest",
     "baseUrl": "http://127.0.0.1:11434/api",
     "timeoutMs": 60000,
-    "prompt": "Describe this image precisely and concisely: what it shows, any text content, layout, colors, objects, and purpose. Maximum 40 words. Start with \"Image of ...\" and always mention that this is an image file.",
+    "prompt": "Describe this image 10-20 comma-separated keywords.",
     "think": true,
     "numCtx": 4096,
     "resizeMaxDimension": 1024
@@ -87,7 +81,7 @@
     "think": false,
     "numCtx": 4096,
     "timeoutMs": 60000,
-    "systemPrompt": "Describe code precise and concise in 2 sentences. Maximum 20 words. Focus on functionality and purpose.",
+    "systemPrompt": "Describe this code in 10-20 comma-separated keywords, focus on functionality and purpose.",
     "batchConcurrency": 3,
     "retryMax": 3,
     "retryBaseDelayMs": 1000
@@ -96,7 +90,7 @@
     "enabled": false,
     "autoStart": true,
     "batchSize": 5,
-    "systemPrompt": "You are a code documentation expert.  Your task is to document an existing, undocumented codebase.\n\n## Instructions\n\nFor each file you process:\n\n1. **Read the full file** to understand its structure and logic.\n2. **Document every public symbol**: classes, interfaces, types, methods, functions, properties, and exported constants.\n3. **Use the codebase's existing style** — look at neighboring files for conventions (JSDoc, TSDoc, etc.).\n4. **Write descriptions that explain *what* and *why*, not *how*** — the code already shows *how*.\n5. **Include `@param`** (with types and descriptions), **`@returns`**, and **`@throws`** where applicable.\n6. **Do NOT change any implementation code** — only add/update doc comments.\n7. **Do NOT add comments that restate the obvious** (e.g., `// increment i` on `i++`).\n8. **For private/internal symbols**, add concise inline comments only when the logic is non-obvious.\n9. **Preserve any existing comments** — update them only if they are incorrect.\n\n## Output format\n\nReturn your changes as a list of file paths with the full new content of the comment block for each modified symbol. Do NOT output the entire file unless asked."
+    "systemPrompt": "You are a code documentation expert. Your task is to document an existing, undocumented codebase.\n\n## Instructions\n\nFor each file you process:\n\n1. **Read the full file** to understand its structure and logic.\n2. **Document every public symbol**: classes, interfaces, types, methods, functions, properties, and exported constants.\n3. **Use the codebase's existing style** — look at neighboring files for conventions (JSDoc, TSDoc, etc.).\n4. **Write descriptions that explain *what* and *why*, not *how*** — the code already shows *how*.\n5. **Include `@param`** (with types and descriptions), **`@returns`**, and **`@throws`** where applicable.\n6. **Do NOT change any implementation code** — only add/update doc comments.\n7. **Do NOT add comments that restate the obvious** (e.g., `// increment i` on `i++`).\n8. **For private/internal symbols**, add concise inline comments only when the logic is non-obvious.\n9. **Preserve any existing comments** — update them only if they are incorrect.\n\n## Output format\n\nReturn your changes as a list of file paths with the full new content of the comment block for each modified symbol. Do NOT output the entire file unless asked."
   },
   "mcp": {
     "enabled": true
@@ -113,7 +107,7 @@
     "chunksKeybinding": "ctrl+alt+enter"
   },
   "logging": {
-    "level": "info",
+    "level": "none",
     "logFilePath": "./.opencode/opencode-rag.log"
   }
 }

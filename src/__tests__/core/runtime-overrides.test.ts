@@ -1,14 +1,15 @@
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { writeFileSync, readFileSync, unlinkSync, mkdirSync, existsSync } from "node:fs";
+import { writeFileSync, readFileSync, unlinkSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   loadRuntimeOverrides,
   saveRuntimeOverride,
   applyRuntimeOverrides,
+  type RuntimeOverrides,
 } from "../../core/runtime-overrides.js";
-import { DEFAULT_CONFIG } from "../../core/config.js";
+import { DEFAULT_CONFIG, type RagConfig } from "../../core/config.js";
 
 describe("loadRuntimeOverrides", () => {
   let tmpDir: string;
@@ -87,31 +88,39 @@ describe("saveRuntimeOverride", () => {
     assert.equal(result.retrieval?.topK, 20);
   });
 
-  it("handles deep nested paths", () => {
-    saveRuntimeOverride(tmpDir, ["openCode", "autoIndex", "enabled"], false);
-    saveRuntimeOverride(tmpDir, ["openCode", "autoInject", "minScore"], 0.8);
-    const result = loadRuntimeOverrides(tmpDir);
-    assert.equal(result.openCode?.autoIndex?.enabled, false);
-    assert.equal(result.openCode?.autoInject?.minScore, 0.8);
-  });
+  const valueTypeCases: {
+    name: string;
+    path: string[];
+    value: boolean | number | string;
+    assert: (result: RuntimeOverrides) => void;
+  }[] = [
+    {
+      name: "boolean values",
+      path: ["description", "enabled"],
+      value: false as boolean,
+      assert: (r) => assert.equal(r.description?.enabled, false),
+    },
+    {
+      name: "string values",
+      path: ["embedding", "model"],
+      value: "nomic-embed-text",
+      assert: (r) => assert.equal(r.embedding?.model, "nomic-embed-text"),
+    },
+    {
+      name: "string enum values",
+      path: ["embedding", "provider"],
+      value: "openai",
+      assert: (r) => assert.equal(r.embedding?.provider, "openai"),
+    },
+  ];
 
-  it("handles boolean values", () => {
-    saveRuntimeOverride(tmpDir, ["description", "enabled"], false);
-    const result = loadRuntimeOverrides(tmpDir);
-    assert.equal(result.description?.enabled, false);
-  });
-
-  it("handles string values", () => {
-    saveRuntimeOverride(tmpDir, ["embedding", "model"], "nomic-embed-text");
-    const result = loadRuntimeOverrides(tmpDir);
-    assert.equal(result.embedding?.model, "nomic-embed-text");
-  });
-
-  it("handles string enum values", () => {
-    saveRuntimeOverride(tmpDir, ["embedding", "provider"], "openai");
-    const result = loadRuntimeOverrides(tmpDir);
-    assert.equal(result.embedding?.provider, "openai");
-  });
+  for (const { name, path, value, assert: assertion } of valueTypeCases) {
+    it(`handles ${name}`, () => {
+      saveRuntimeOverride(tmpDir, path, value);
+      const result = loadRuntimeOverrides(tmpDir);
+      assertion(result);
+    });
+  }
 
   it("overwrites string value with another string", () => {
     saveRuntimeOverride(tmpDir, ["embedding", "baseUrl"], "http://localhost:11434/api");
@@ -129,6 +138,14 @@ describe("saveRuntimeOverride", () => {
     assert.equal(result.embedding?.model, "text-embedding-3-small");
     assert.equal(result.description?.enabled, false);
   });
+
+  it("handles deep nested paths", () => {
+    saveRuntimeOverride(tmpDir, ["openCode", "autoIndex", "enabled"], false);
+    saveRuntimeOverride(tmpDir, ["openCode", "autoIndex", "debounceMs"], 5000);
+    const result = loadRuntimeOverrides(tmpDir);
+    assert.equal(result.openCode?.autoIndex?.enabled, false);
+    assert.equal(result.openCode?.autoIndex?.debounceMs, 5000);
+  });
 });
 
 describe("applyRuntimeOverrides", () => {
@@ -143,93 +160,122 @@ describe("applyRuntimeOverrides", () => {
     assert.equal(result.retrieval.minScore, DEFAULT_CONFIG.retrieval.minScore);
   });
 
-  it("applies retrieval topK override", () => {
-    const result = applyRuntimeOverrides(DEFAULT_CONFIG, {
-      retrieval: { topK: 25 },
-    });
-    assert.equal(result.retrieval.topK, 25);
-    assert.equal(result.retrieval.minScore, DEFAULT_CONFIG.retrieval.minScore);
-  });
+  const singleOverrideCases: {
+    label: string;
+    overrides: RuntimeOverrides;
+    assert: (result: RagConfig) => void;
+  }[] = [
+    {
+      label: "retrieval topK",
+      overrides: { retrieval: { topK: 25 } },
+      assert: (r) => {
+        assert.equal(r.retrieval.topK, 25);
+        assert.equal(r.retrieval.minScore, DEFAULT_CONFIG.retrieval.minScore);
+      },
+    },
+    {
+      label: "retrieval minScore",
+      overrides: { retrieval: { minScore: 0.8 } },
+      assert: (r) => assert.equal(r.retrieval.minScore, 0.8),
+    },
+    {
+      label: "hybridSearch.enabled",
+      overrides: { retrieval: { hybridSearch: { enabled: false } } },
+      assert: (r) => assert.equal(r.retrieval.hybridSearch?.enabled, false),
+    },
+    {
+      label: "hybridSearch.keywordWeight",
+      overrides: { retrieval: { hybridSearch: { keywordWeight: 0.6 } } },
+      assert: (r) => assert.equal(r.retrieval.hybridSearch?.keywordWeight, 0.6),
+    },
+    {
+      label: "autoIndex.enabled",
+      overrides: { openCode: { autoIndex: { enabled: false } } },
+      assert: (r) => assert.equal(r.openCode.autoIndex?.enabled, false),
+    },
+    {
+      label: "autoIndex.debounceMs",
+      overrides: { openCode: { autoIndex: { debounceMs: 5000 } } },
+      assert: (r) => assert.equal(r.openCode.autoIndex?.debounceMs, 5000),
+    },
+    {
+      label: "autoIndex.watcher",
+      overrides: { openCode: { autoIndex: { watcher: "git" } } },
+      assert: (r) => assert.equal(r.openCode.autoIndex?.watcher, "git"),
+    },
+    {
+      label: "description.enabled",
+      overrides: { description: { enabled: false } },
+      assert: (r) => assert.equal(r.description?.enabled, false),
+    },
+    {
+      label: "embedding.provider",
+      overrides: { embedding: { provider: "openai" } },
+      assert: (r) => assert.equal(r.embedding.provider, "openai"),
+    },
+    {
+      label: "embedding.model",
+      overrides: { embedding: { model: "text-embedding-3-small" } },
+      assert: (r) => assert.equal(r.embedding.model, "text-embedding-3-small"),
+    },
+    {
+      label: "embedding.baseUrl",
+      overrides: { embedding: { baseUrl: "https://custom.api.com/v1" } },
+      assert: (r) => assert.equal(r.embedding.baseUrl, "https://custom.api.com/v1"),
+    },
+    {
+      label: "description.provider",
+      overrides: { description: { provider: "openai" } },
+      assert: (r) => assert.equal(r.description?.provider, "openai"),
+    },
+    {
+      label: "description.model",
+      overrides: { description: { model: "gpt-4o-mini" } },
+      assert: (r) => assert.equal(r.description?.model, "gpt-4o-mini"),
+    },
+    {
+      label: "description.baseUrl",
+      overrides: { description: { baseUrl: "https://custom.api.com/v1" } },
+      assert: (r) => assert.equal(r.description?.baseUrl, "https://custom.api.com/v1"),
+    },
+    {
+      label: "all embedding fields simultaneously",
+      overrides: {
+        embedding: { provider: "openai", model: "text-embedding-3-small", baseUrl: "https://api.openai.com/v1" },
+      },
+      assert: (r) => {
+        assert.equal(r.embedding.provider, "openai");
+        assert.equal(r.embedding.model, "text-embedding-3-small");
+        assert.equal(r.embedding.baseUrl, "https://api.openai.com/v1");
+      },
+    },
+    {
+      label: "description provider, model, enabled together",
+      overrides: { description: { provider: "openai", model: "gpt-4o-mini", enabled: true } },
+      assert: (r) => {
+        assert.equal(r.description?.provider, "openai");
+        assert.equal(r.description?.model, "gpt-4o-mini");
+        assert.equal(r.description?.enabled, true);
+      },
+    },
+  ];
 
-  it("applies retrieval minScore override", () => {
-    const result = applyRuntimeOverrides(DEFAULT_CONFIG, {
-      retrieval: { minScore: 0.8 },
+  for (const { label, overrides, assert: assertion } of singleOverrideCases) {
+    it(`applies ${label} override`, () => {
+      const result = applyRuntimeOverrides(DEFAULT_CONFIG, overrides);
+      assertion(result);
     });
-    assert.equal(result.retrieval.minScore, 0.8);
-  });
-
-  it("applies hybridSearch.enabled override", () => {
-    const result = applyRuntimeOverrides(DEFAULT_CONFIG, {
-      retrieval: { hybridSearch: { enabled: false } },
-    });
-    assert.equal(result.retrieval.hybridSearch?.enabled, false);
-  });
-
-  it("applies hybridSearch.keywordWeight override", () => {
-    const result = applyRuntimeOverrides(DEFAULT_CONFIG, {
-      retrieval: { hybridSearch: { keywordWeight: 0.6 } },
-    });
-    assert.equal(result.retrieval.hybridSearch?.keywordWeight, 0.6);
-  });
-
-  it("applies autoIndex.enabled override", () => {
-    const result = applyRuntimeOverrides(DEFAULT_CONFIG, {
-      openCode: { autoIndex: { enabled: false } },
-    });
-    assert.equal(result.openCode.autoIndex?.enabled, false);
-  });
-
-  it("applies autoIndex.debounceMs override", () => {
-    const result = applyRuntimeOverrides(DEFAULT_CONFIG, {
-      openCode: { autoIndex: { debounceMs: 5000 } },
-    });
-    assert.equal(result.openCode.autoIndex?.debounceMs, 5000);
-  });
-
-  it("applies autoInject.enabled override", () => {
-    const result = applyRuntimeOverrides(DEFAULT_CONFIG, {
-      openCode: { autoInject: { enabled: false } },
-    });
-    assert.equal(result.openCode.autoInject?.enabled, false);
-  });
-
-  it("applies autoInject.minScore override", () => {
-    const result = applyRuntimeOverrides(DEFAULT_CONFIG, {
-      openCode: { autoInject: { minScore: 0.9 } },
-    });
-    assert.equal(result.openCode.autoInject?.minScore, 0.9);
-  });
-
-  it("applies autoInject.maxChunks override", () => {
-    const result = applyRuntimeOverrides(DEFAULT_CONFIG, {
-      openCode: { autoInject: { maxChunks: 5 } },
-    });
-    assert.equal(result.openCode.autoInject?.maxChunks, 5);
-  });
-
-  it("applies autoInject.contentType override", () => {
-    const result = applyRuntimeOverrides(DEFAULT_CONFIG, {
-      openCode: { autoInject: { contentType: "chunks" } },
-    });
-    assert.equal(result.openCode.autoInject?.contentType, "chunks");
-  });
-
-  it("applies description.enabled override", () => {
-    const result = applyRuntimeOverrides(DEFAULT_CONFIG, {
-      description: { enabled: false },
-    });
-    assert.equal(result.description?.enabled, false);
-  });
+  }
 
   it("applies multiple overrides simultaneously", () => {
     const result = applyRuntimeOverrides(DEFAULT_CONFIG, {
       retrieval: { topK: 15, minScore: 0.6 },
-      openCode: { autoInject: { enabled: false } },
+      openCode: { autoIndex: { enabled: false } },
     });
     assert.equal(result.retrieval.topK, 15);
     assert.equal(result.retrieval.minScore, 0.6);
-    assert.equal(result.openCode.autoInject?.enabled, false);
-    assert.equal(result.openCode.autoInject?.maxChunks, 10);
+    assert.equal(result.openCode.autoIndex?.enabled, false);
+    assert.equal(result.openCode.autoIndex?.debounceMs, 2000);
   });
 
   it("does not mutate the original config", () => {
@@ -256,66 +302,6 @@ describe("applyRuntimeOverrides", () => {
       description: { enabled: false },
     });
     assert.equal(result.description?.enabled, false);
-  });
-
-  it("applies embedding.provider override", () => {
-    const result = applyRuntimeOverrides(DEFAULT_CONFIG, {
-      embedding: { provider: "openai" },
-    });
-    assert.equal(result.embedding.provider, "openai");
-  });
-
-  it("applies embedding.model override", () => {
-    const result = applyRuntimeOverrides(DEFAULT_CONFIG, {
-      embedding: { model: "text-embedding-3-small" },
-    });
-    assert.equal(result.embedding.model, "text-embedding-3-small");
-  });
-
-  it("applies embedding.baseUrl override", () => {
-    const result = applyRuntimeOverrides(DEFAULT_CONFIG, {
-      embedding: { baseUrl: "https://custom.api.com/v1" },
-    });
-    assert.equal(result.embedding.baseUrl, "https://custom.api.com/v1");
-  });
-
-  it("applies all embedding overrides simultaneously", () => {
-    const result = applyRuntimeOverrides(DEFAULT_CONFIG, {
-      embedding: { provider: "openai", model: "text-embedding-3-small", baseUrl: "https://api.openai.com/v1" },
-    });
-    assert.equal(result.embedding.provider, "openai");
-    assert.equal(result.embedding.model, "text-embedding-3-small");
-    assert.equal(result.embedding.baseUrl, "https://api.openai.com/v1");
-  });
-
-  it("applies description.provider override", () => {
-    const result = applyRuntimeOverrides(DEFAULT_CONFIG, {
-      description: { provider: "openai" },
-    });
-    assert.equal(result.description?.provider, "openai");
-  });
-
-  it("applies description.model override", () => {
-    const result = applyRuntimeOverrides(DEFAULT_CONFIG, {
-      description: { model: "gpt-4o-mini" },
-    });
-    assert.equal(result.description?.model, "gpt-4o-mini");
-  });
-
-  it("applies description.baseUrl override", () => {
-    const result = applyRuntimeOverrides(DEFAULT_CONFIG, {
-      description: { baseUrl: "https://custom.api.com/v1" },
-    });
-    assert.equal(result.description?.baseUrl, "https://custom.api.com/v1");
-  });
-
-  it("applies description.provider and model together with enabled", () => {
-    const result = applyRuntimeOverrides(DEFAULT_CONFIG, {
-      description: { provider: "openai", model: "gpt-4o-mini", enabled: true },
-    });
-    assert.equal(result.description?.provider, "openai");
-    assert.equal(result.description?.model, "gpt-4o-mini");
-    assert.equal(result.description?.enabled, true);
   });
 
 });

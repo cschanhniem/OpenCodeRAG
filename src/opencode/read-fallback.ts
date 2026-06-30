@@ -1,3 +1,7 @@
+/**
+ * @fileoverview Provides fallback error messages and no-results behavior dispatch for the read tool.
+ */
+
 import type { ReadNoResultsBehavior } from "../core/config.js";
 
 /**

@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Low-level HTTP client with raw TCP/TLS sockets, connection pooling, proxy support, and redirect following.
+ */
 import net from "node:net";
 import tls from "node:tls";
 import type { ProxyConfig } from "../core/config.js";
@@ -70,6 +73,7 @@ function releaseConnection(socket: net.Socket | tls.TLSSocket, host: string, por
   pool.push({ socket, idleTimer });
 }
 
+/** Destroy all pooled TCP/TLS sockets and clear the connection pool. */
 function destroyAllPooledConnections(): void {
   for (const pool of connectionPool.values()) {
     for (const entry of pool) {
@@ -293,7 +297,6 @@ async function sendRawHttpRequest(
   timeoutMs: number,
   redirectCount: number
 ): Promise<HttpResponseLike> {
-  const payload = JSON.stringify(body);
   const requestBuffer = buildRequestPayload(body, headers, url);
   const port = url.port ? Number(url.port) : url.protocol === "https:" ? 443 : 80;
   const isHttps = url.protocol === "https:";

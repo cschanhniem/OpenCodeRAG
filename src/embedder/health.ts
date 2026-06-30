@@ -1,3 +1,6 @@
+/**
+ * @fileoverview Provider health checks (embedding, description, image description) and Ollama model pull utility.
+ */
 import type { RagConfig } from "../core/config.js";
 import type { ProxyConfig } from "../core/config.js";
 import { postJson } from "./http.js";
@@ -58,7 +61,7 @@ async function checkEmbeddingModel(config: RagConfig, timeoutMs: number): Promis
 }
 
 /** Dispatch the description-model check to the correct provider-specific handler. */
-async function checkDescriptionModel(config: RagConfig, timeoutMs: number): Promise<HealthCheckResult> {
+async function checkDescriptionModel(config: RagConfig, _timeoutMs: number): Promise<HealthCheckResult> {
   const desc = config.description;
   if (!desc) {
     return { provider: "unknown", model: "unknown", type: "description", status: "error", error: "Description config is undefined" };
@@ -83,7 +86,7 @@ async function checkDescriptionModel(config: RagConfig, timeoutMs: number): Prom
 }
 
 /** Dispatch the image-description model check to the correct provider-specific handler. */
-async function checkImageDescriptionModel(config: RagConfig, timeoutMs: number): Promise<HealthCheckResult> {
+async function checkImageDescriptionModel(config: RagConfig, _timeoutMs: number): Promise<HealthCheckResult> {
   const img = config.imageDescription;
   if (!img) {
     return { provider: "unknown", model: "unknown", type: "image_description", status: "error", error: "Image description config is undefined" };
@@ -199,7 +202,7 @@ async function checkOpenAiEmbed(
   model: string,
   apiKey?: string,
   timeoutMs?: number,
-  proxy?: RagConfig["embedding"]["proxy"]
+  _proxy?: RagConfig["embedding"]["proxy"]
 ): Promise<HealthCheckResult> {
   if (!apiKey) {
     return { provider: "openai", model, type: "embedding", status: "error", error: "No API key configured" };
@@ -234,7 +237,7 @@ async function checkOpenAiChat(
   model: string,
   apiKey?: string,
   timeoutMs?: number,
-  proxy?: { url?: string; username?: string; password?: string; noProxy?: string },
+  _proxy?: { url?: string; username?: string; password?: string; noProxy?: string },
   type: "description" | "image_description" = "description"
 ): Promise<HealthCheckResult> {
   if (!apiKey) {

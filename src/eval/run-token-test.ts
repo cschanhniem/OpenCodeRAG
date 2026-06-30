@@ -1,4 +1,7 @@
 /**
+ * @fileoverview Integration test that runs real RAG queries against an indexed codebase and produces a token usage report.
+ */
+/**
  * Integration test: Run real RAG pipeline against indexed codebase
  * and produce a token usage report.
  *
@@ -7,7 +10,7 @@
 
 import { writeFileSync } from "node:fs";
 import path from "node:path";
-import { loadConfig, DEFAULT_CONFIG, resolveLogConfig } from "../core/config.js";
+import { loadConfig, DEFAULT_CONFIG } from "../core/config.js";
 import { createEmbedder } from "../embedder/factory.js";
 import { createVectorStore } from "../vectorstore/factory.js";
 import { retrieve } from "../retriever/retriever.js";
@@ -23,7 +26,7 @@ const TOKENIZER = tokenizerMethod();
 
 const QUERIES = [
   "How does the retrieval pipeline work end-to-end?",
-  "How does the plugin auto-inject context into messages?",
+  "How does the plugin interact with chat messages?",
   "How does the keyword index combine with vector search?",
   "Where is the embedder factory defined?",
   "Where is the LanceDB store implementation?",
@@ -42,34 +45,6 @@ function getConfig() {
   cfg = applyRuntimeOverrides(cfg, overrides);
   resolveApiKey(cfg, WORKTREE);
   return cfg;
-}
-
-function formatAutoInjectContext(results: SearchResult[], worktree: string, maxTokens: number, maxChunks: number): string {
-  if (results.length === 0) return "";
-  const sorted = [...results].sort((a, b) => b.score - a.score);
-  const included = sorted.slice(0, maxChunks);
-  const buildString = (items: SearchResult[]): string => {
-    const first = items[0]!;
-    const last = items[items.length - 1]!;
-    const uniqueFiles = new Set(items.map((r) => r.chunk.metadata.filePath));
-    const lines: string[] = [];
-    lines.push(`\n**Auto-retrieved code context** _(context: ${items.length} chunk${items.length === 1 ? "" : "s"}, ${uniqueFiles.size} file${uniqueFiles.size === 1 ? "" : "s"}, relevance ${last.score.toFixed(2)}–${first.score.toFixed(2)})_\n`);
-    lines.push("---\n");
-    for (const r of items) {
-      const m = r.chunk.metadata;
-      const relPath = path.relative(worktree, m.filePath).replace(/\\/g, "/");
-      lines.push(`[${relPath}:${m.startLine}-${m.endLine}] (${m.language}, score: ${r.score.toFixed(2)})`);
-      if (r.chunk.description) lines.push(`> ${r.chunk.description}`);
-      lines.push("```" + m.language);
-      lines.push(r.chunk.content);
-      lines.push("```\n");
-    }
-    lines.push("---");
-    return lines.join("\n");
-  };
-  let formatted = buildString(included);
-  while (countTokens(formatted) > maxTokens && included.length > 1) { included.pop(); formatted = buildString(included); }
-  return formatted;
 }
 
 function formatFileList(results: SearchResult[], worktree: string, maxFiles = 10): string {
@@ -106,7 +81,7 @@ async function main() {
   console.log(`  Indexed chunks: ${indexedCount}`);
   console.log(`  Embedding model: ${cfg.embedding.provider}/${cfg.embedding.model}`);
   console.log(`  Retrieval: topK=${cfg.retrieval.topK}, minScore=${cfg.retrieval.minScore}, hybrid=${cfg.retrieval.hybridSearch?.enabled}`);
-  console.log(`  Auto-inject: minScore=${cfg.openCode.autoInject?.minScore ?? 0.85}, maxChunks=${cfg.openCode.autoInject?.maxChunks ?? 5}, maxTokens=${cfg.openCode.autoInject?.maxTokens ?? 3000}\n`);
+  console.log(`\n`);
 
   const results: {
     query: string;
@@ -128,17 +103,14 @@ async function main() {
     });
 
     const inputTokens = countTokens(query);
-    const minScore = cfg.openCode.autoInject?.minScore ?? 0.85;
-    const maxChunks = cfg.openCode.autoInject?.maxChunks ?? 5;
-    const maxTokens = cfg.openCode.autoInject?.maxTokens ?? 3000;
+    const minScore = 0.85;
     const highConfidence = searchResults.filter((r) => r.score >= minScore);
 
     let ragOnText = "";
     let contentType = "none";
     if (highConfidence.length > 0) {
-      ragOnText = formatAutoInjectContext(highConfidence, WORKTREE, maxTokens, maxChunks);
-      contentType = "chunks";
-      if (ragOnText.length === 0) { ragOnText = formatFileList(highConfidence, WORKTREE, cfg.retrieval.topK); contentType = "file_paths"; }
+      ragOnText = formatFileList(highConfidence, WORKTREE, cfg.retrieval.topK);
+      contentType = "file_paths";
     }
 
     const contextTokens = countTokens(ragOnText);
@@ -160,9 +132,7 @@ async function main() {
   const thresholdResults: { threshold: number; injected: number; avgContext: number; totalContext: number }[] = [];
 
   for (const threshold of thresholds) {
-    let totalCtx = 0;
-    let injected = 0;
-    for (const r of results) {
+    for (const _r of results) {
       // Re-run filtering with this threshold
       // We stored the original search results — re-filter
     }
@@ -180,7 +150,7 @@ async function main() {
       });
       const highConf = searchResults.filter((r) => r.score >= threshold);
       if (highConf.length > 0) {
-        const text = formatAutoInjectContext(highConf, WORKTREE, cfg.openCode.autoInject?.maxTokens ?? 2000, cfg.openCode.autoInject?.maxChunks ?? 5);
+        const text = formatFileList(highConf, WORKTREE, cfg.retrieval.topK);
         const tokens = countTokens(text);
         tTotalCtx += tokens;
         tInjected++;
@@ -193,9 +163,6 @@ async function main() {
       totalContext: tTotalCtx,
     });
   }
-
-  // Find best threshold
-  const bestThreshold = thresholdResults.find((t) => t.injected > 0 && t.totalContext > 0);
 
   console.log("\n  Threshold analysis:");
   for (const t of thresholdResults) {
@@ -224,7 +191,6 @@ async function main() {
   report.push(`**Embedding model:** ${cfg.embedding.provider}/${cfg.embedding.model}`);
   report.push(`**Tokenizer:** ${TOKENIZER === "tiktoken" ? "tiktoken cl100k_base (BPE)" : "heuristic (characters / 4)"}`);
   report.push(`**Retrieval:** topK=${cfg.retrieval.topK}, minScore=${cfg.retrieval.minScore}, hybrid=${cfg.retrieval.hybridSearch?.enabled ?? false}`);
-  report.push(`**Auto-inject:** minScore=${cfg.openCode.autoInject?.minScore ?? 0.85}, maxChunks=${cfg.openCode.autoInject?.maxChunks ?? 5}, maxTokens=${cfg.openCode.autoInject?.maxTokens ?? 3000}`);
   report.push("");
 
   report.push("## Summary\n");

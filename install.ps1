@@ -54,14 +54,6 @@ function cleanup_tgz {
     Remove-Item -Path "$RUNTIME_DIR\$PLUGIN_NAME-*.tgz" -Force -ErrorAction SilentlyContinue
 }
 
-function remove_plugin_dir {
-    param([string]$dir)
-    $pluginDir = Join-Path (Join-Path $dir "node_modules") $PLUGIN_NAME
-    if (Test-Path -LiteralPath $pluginDir) {
-        Remove-Item -LiteralPath $pluginDir -Recurse -Force -ErrorAction SilentlyContinue
-    }
-}
-
 function remove_from_config {
     foreach ($cfg in @("opencode.jsonc", "opencode.json")) {
         $cfgpath = Join-Path $GLOBAL_CONFIG $cfg
@@ -81,6 +73,34 @@ function remove_from_config {
     }
 }
 
+function warn_if_opencode_running {
+    $procs = @(Get-Process -Name "opencode" -ErrorAction SilentlyContinue)
+    if ($procs.Count -eq 0) { return }
+    Write-Host ""
+    Write-Host "WARNING: OpenCode is currently running ($($procs.Count) process(es))." -ForegroundColor Yellow
+    foreach ($p in $procs) {
+        Write-Host "  PID $($p.Id) - started $($p.StartTime.ToString('yyyy-MM-dd HH:mm:ss'))" -ForegroundColor Yellow
+    }
+    Write-Host ""
+    Write-Host "  OpenCode may have native modules (sharp/libvips) locked, " -ForegroundColor Yellow -NoNewline
+    Write-Host "which will cause npm install to fail with EBUSY." -ForegroundColor Yellow
+    Write-Host ""
+    $choice = $host.UI.PromptForChoice(
+        "OpenCode is still running",
+        "Terminate all OpenCode processes before installing? Unsaved work may be lost.",
+        @(
+            [System.Management.Automation.Host.ChoiceDescription]::new("&Kill processes", "Terminate all OpenCode instances and continue")
+            [System.Management.Automation.Host.ChoiceDescription]::new("&Cancel install", "Abort — close OpenCode manually, then re-run")
+        ),
+        1
+    )
+    if ($choice -eq 1) { die "Installation aborted. Close all OpenCode instances and re-run install.ps1" }
+    info "Terminating OpenCode process(es)..."
+    $procs | Stop-Process -Force
+    Start-Sleep -Seconds 2
+    info "OpenCode terminated."
+}
+
 # --- preflight checks ---
 
 if (-not (Get-Command npm -ErrorAction SilentlyContinue)) { die "npm is required but was not found in PATH" }
@@ -97,7 +117,9 @@ if ($args[0] -eq "uninstall") {
     Remove-Item -Path "$CLI_BIN_DIR\opencode-rag.sh" -Force -ErrorAction SilentlyContinue
 
     info "Removing from OpenCode runtime ($RUNTIME_DIR)..."
-    remove_plugin_dir $RUNTIME_DIR
+    Remove-Item -LiteralPath "$RUNTIME_DIR\node_modules" -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath "$RUNTIME_DIR\package.json" -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath "$RUNTIME_DIR\.bundle-version" -Force -ErrorAction SilentlyContinue
 
     info "Removing .tgz package files..."
     cleanup_tgz
@@ -121,48 +143,97 @@ if ($args[0] -eq "uninstall") {
     exit 0
 }
 
+# --- ignore optional ---
+if ($args[0] -eq "ignore-optional") {
+    step "Installing $PLUGIN_NAME with --ignore-optional (skipping optional native deps)..."
+    Push-Location $RUNTIME_DIR
+    if (-not (Test-Path "package.json")) {
+        @{private = $true; type = "module"} | ConvertTo-Json | Set-Content "package.json"
+    }
+    $installOutput = cmd /c "npm install $PLUGIN_NAME --no-package-lock --legacy-peer-deps --ignore-optional 2>&1"
+    if ($LASTEXITCODE -ne 0) { Pop-Location; die "npm install failed: $installOutput" }
+    Pop-Location
+    step "Installed $PLUGIN_NAME with --ignore-optional. Restart OpenCode if it is running."
+    exit 0
+}
+
 # --- install ---
 
-Set-Location $REPO_ROOT
-
-step "Building $PLUGIN_NAME..."
-& cmd /c "npm run build"
-if ($LASTEXITCODE -ne 0) { die "npm run build failed" }
-
-step "Installing into OpenCode runtime ($RUNTIME_DIR)..."
-New-Item -ItemType Directory -Path $RUNTIME_DIR -Force | Out-Null
-
-# Pack the package into a .tgz
-$version = get_plugin_version
-$tgzName = "$PLUGIN_NAME-$version.tgz"
-$tgzPath = Join-Path $RUNTIME_DIR $tgzName
-Remove-Item -Path $tgzPath -Force -ErrorAction SilentlyContinue
-
-$packOutput = & cmd /c "npm pack --pack-destination `"$RUNTIME_DIR`" 2>&1"
-if ($LASTEXITCODE -ne 0) { die "npm pack failed: $packOutput" }
-
-if (-not (Test-Path -LiteralPath $tgzPath -PathType Leaf)) {
-    $tgzName = ($packOutput | Select-Object -Last 1).Trim()
-    $tgzPath = Join-Path $RUNTIME_DIR $tgzName
-}
-
-# Install the plugin from .tgz via npm — resolves all dependencies
-Push-Location $RUNTIME_DIR
-if (-not (Test-Path "package.json")) {
-    @{private = $true; type = "module"} | ConvertTo-Json | Set-Content "package.json"
-}
-$installOutput = & cmd /c "npm install `"$tgzPath`" --no-package-lock --ignore-scripts --silent 2>&1"
-if ($LASTEXITCODE -ne 0) {
-    Pop-Location
-    die "npm install from .tgz failed: $installOutput"
-}
-Pop-Location
+Push-Location $REPO_ROOT
 
 $pluginDir = "$RUNTIME_DIR\node_modules\$PLUGIN_NAME"
-if (Test-Path -LiteralPath "$pluginDir\dist") {
-    ok "$pluginDir (installed from $tgzName via npm)"
+$versionFile = Join-Path $RUNTIME_DIR ".bundle-version"
+
+# Rebuild if the bundle marker doesn't exist or if any dist file is newer (source code changed)
+$distFiles = @(Get-ChildItem -LiteralPath "$REPO_ROOT\dist" -Recurse -File -ErrorAction SilentlyContinue)
+$newestDist = if ($distFiles.Count -gt 0) { ($distFiles | Sort-Object LastWriteTime -Descending)[0].LastWriteTime } else { [datetime]"1970-01-01" }
+$bundleTime = (Get-Item $versionFile -ErrorAction SilentlyContinue).LastWriteTime
+if (-not $bundleTime) { $bundleTime = [datetime]"1970-01-01" }
+$sourceChanged = ($newestDist -gt $bundleTime) -or ($distFiles.Count -gt 0 -and $bundleTime -eq [datetime]"1970-01-01")
+
+$runtimeReady = (Test-Path -LiteralPath "$pluginDir\dist\cli.js") -and
+                (Test-Path -LiteralPath "$RUNTIME_DIR\node_modules\commander") -and
+                (Test-Path -LiteralPath "$RUNTIME_DIR\node_modules\@opencode-ai\plugin\package.json") -and
+                -not $sourceChanged
+
+if ($runtimeReady) {
+    step "Runtime already up-to-date at $RUNTIME_DIR"
+    ok "Plugin + dependencies already installed"
 } else {
-    fail_msg "$pluginDir"; die "Failed to install plugin — dist/ not found"
+    step "Building $PLUGIN_NAME..."
+    npm run build
+    if ($LASTEXITCODE -ne 0) { Pop-Location; die "npm run build failed" }
+
+    step "Installing $PLUGIN_NAME into global runtime ($RUNTIME_DIR)..."
+    New-Item -ItemType Directory -Path $RUNTIME_DIR -Force | Out-Null
+
+    # Pack plugin (dist/ + wasm/ + package.json, ~13 MB, no node_modules)
+    $version = get_plugin_version
+    $tgzName = "$PLUGIN_NAME-$version.tgz"
+    $tgzPath = Join-Path $REPO_ROOT $tgzName
+    Remove-Item -Path $tgzPath -Force -ErrorAction SilentlyContinue
+    $null = cmd /c "npm pack --pack-destination `"$REPO_ROOT`" 2>&1"
+    if ($LASTEXITCODE -ne 0) { Pop-Location; die "npm pack failed" }
+
+    # Move .tgz to runtime dir
+    Move-Item -LiteralPath $tgzPath -Destination $RUNTIME_DIR -Force
+
+    # Warn about running OpenCode (native module locking) and clean stale modules
+    warn_if_opencode_running
+    if (Test-Path -LiteralPath "$RUNTIME_DIR\node_modules\opencode-rag-plugin") {
+        info "Removing stale node_modules to prevent DLL lock conflicts..."
+        Remove-Item -LiteralPath "$RUNTIME_DIR\node_modules\opencode-rag-plugin" -Recurse -Force -ErrorAction SilentlyContinue
+        if (Test-Path -LiteralPath "$RUNTIME_DIR\node_modules\opencode-rag-plugin") {
+            Start-Sleep -Seconds 2
+            Remove-Item -LiteralPath "$RUNTIME_DIR\node_modules\opencode-rag-plugin" -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        if (Test-Path -LiteralPath "$RUNTIME_DIR\node_modules\opencode-rag-plugin") {
+            die "Could not remove stale node_modules even after terminating OpenCode. Close any process locking $RUNTIME_DIR\node_modules\opencode-rag-plugin and re-run."
+        }
+        ok "node_modules"
+    }
+
+    # Install from .tgz — resolves all required dependencies (commander, picocolors,
+    # sharp, lancedb, etc.) with prebuilt binaries via npm.
+
+    Push-Location $RUNTIME_DIR
+    if (-not (Test-Path "package.json")) {
+        @{private = $true; type = "module"} | ConvertTo-Json | Set-Content "package.json"
+    }
+    $installOutput = cmd /c "npm install $tgzName --no-package-lock --legacy-peer-deps 2>&1"
+    if ($LASTEXITCODE -ne 0) { Pop-Location; Pop-Location; die "npm install from .tgz failed: $installOutput" }
+
+    # Install @opencode-ai/plugin (peer dep, pure JS, always succeeds)
+    $null = cmd /c "npm install @opencode-ai/plugin --no-save 2>&1"
+
+    Pop-Location
+
+    if (-not (Test-Path -LiteralPath "$pluginDir\dist")) {
+        Pop-Location; fail_msg "$pluginDir"; die "Failed to install plugin — dist/ not found"
+    }
+    ok "$pluginDir (installed from $tgzName via npm)"
+    $version = get_plugin_version
+    Set-Content -Path $versionFile -Value $version
 }
 
 step "Making CLI available on PATH..."
@@ -179,15 +250,20 @@ if ($pathUpdated) { info "Added $CLI_BIN_DIR to your user PATH" }
 step "Verifying installation..."
 $verified = $true
 
-if (Test-Path -LiteralPath "$pluginDir\dist") { ok "Runtime package (installed)" } else { fail_msg "Runtime package"; $verified = $false }
-
+if (Test-Path -LiteralPath "$pluginDir\dist") { ok "Runtime plugin (installed via npm)" } else { fail_msg "Runtime plugin"; $verified = $false }
 if (Test-Path -LiteralPath "$CLI_BIN_DIR\opencode-rag.ps1") { ok "CLI wrapper" } else { fail_msg "CLI wrapper"; $verified = $false }
 
-# --- workspace init ---
+# --- CLI smoke test ---
 
-step "Initializing workspace for OpenCodeRAG..."
-& node "$pluginDir\dist\cli.js" init --skip-health-check --skip-install
-if ($LASTEXITCODE -eq 0) { ok "Workspace config files" } else { Write-Host "  init command completed with warnings, continuing..." -ForegroundColor Yellow }
+step "Verifying CLI works..."
+$cliOutput = & "$CLI_BIN_DIR\opencode-rag.ps1" --help 2>&1
+if ($LASTEXITCODE -eq 0 -and $cliOutput -match "opencode-rag") {
+  ok "CLI help loads successfully"
+} else {
+  fail_msg "CLI smoke test"; $verified = $false
+}
+
+Pop-Location
 
 # --- done ---
 
@@ -196,12 +272,12 @@ if ($verified) { Write-Host "Installation complete!" -ForegroundColor Green } el
 
 Write-Host ""
 Write-Host "What to do next:"
-Write-Host "  1. Restart OpenCode if it is running."
-Write-Host "  2. Run opencode-rag index in this workspace to index its files."
-Write-Host "  3. OpenCode will automatically use the indexed data for context-aware queries."
-Write-Host "  (The workspace was already initialized by the install script.)"
+Write-Host "  1. Run opencode-rag init in each workspace you want to use with OpenCodeRAG."
+Write-Host "  2. Run opencode-rag index to index workspace files."
+Write-Host "  3. Restart OpenCode if it is running so it discovers the RAG tools."
+Write-Host "  4. OpenCode will automatically use the indexed data for context-aware queries."
 if ($pathUpdated) {
-    $hint = "  4. In your current PowerShell session run: " + '$env:Path += ' + $CLI_BIN_DIR
+    $hint = "  5. In your current PowerShell session run: " + '$env:Path += ' + $CLI_BIN_DIR
     Write-Host $hint
 }
 Write-Host ""
