@@ -136,6 +136,7 @@ export async function scanWorkspaceFiles(
   logger?: Logger,
   manifest?: FileManifest,
   filterPaths?: string[],
+  injectedVisionProvider?: ImageVisionProvider,
 ): Promise<WorkspaceFile[]> {
   const extensions = new Set(config.indexing.includeExtensions);
 
@@ -147,7 +148,7 @@ export async function scanWorkspaceFiles(
     for (const ext of imageExtractor.SUPPORTED_IMAGE_EXTENSIONS) {
       extensions.add(ext.toLowerCase());
     }
-    imageVisionProvider = createImageVisionProvider(imageCfg);
+    imageVisionProvider = injectedVisionProvider ?? createImageVisionProvider(imageCfg);
     imagePrompt = imageCfg.prompt;
     imageResizeMaxDimension = imageCfg.resizeMaxDimension;
   }

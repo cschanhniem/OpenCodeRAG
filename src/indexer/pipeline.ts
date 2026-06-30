@@ -15,6 +15,7 @@ import type {
   KeywordIndex,
   VectorStore,
 } from "../core/interfaces.js";
+import type { ImageVisionProvider } from "../chunker/image.js";
 import { embedBatch } from "../embedder/factory.js";
 import { createVectorStore } from "../vectorstore/factory.js";
 import { swapStoreDirectories } from "../vectorstore/lancedb.js";
@@ -62,6 +63,11 @@ export interface RunIndexPassOptions {
    * entries are removed from the index without comparing against the scanned set.
    */
   deletedPaths?: string[];
+  /**
+   * Optional injected image vision provider for testing. When omitted, the
+   * provider is created from the imageDescription config as usual.
+   */
+  imageVisionProvider?: ImageVisionProvider;
 }
 
 /** Minimal logger interface for indexing pipeline diagnostics. */
@@ -221,6 +227,7 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
     logger,
     options.force ? undefined : manifest,
     filterPaths,
+    options.imageVisionProvider,
   );
 
   const scanSec = ((Date.now() - scanStart) / 1000).toFixed(1);

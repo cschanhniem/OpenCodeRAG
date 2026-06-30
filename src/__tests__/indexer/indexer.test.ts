@@ -12,6 +12,7 @@ import {
   runIndexPass,
 } from "../../indexer.js";
 import type { Chunk, DescriptionProvider, EmbeddingProvider } from "../../core/interfaces.js";
+import type { ImageVisionProvider } from "../../chunker/image.js";
 import { LanceDbStore } from "../../vectorstore/lancedb.js";
 
 class TestEmbedder implements EmbeddingProvider {
@@ -679,5 +680,71 @@ describe("indexer", () => {
       assert.ok(entry);
       assert.notEqual(entry.descriptionFailed, true);
     });
+  });
+
+  it("re-extracts the same image after Ctrl+C — vision LLM calls are not cached", async () => {
+    const imgDir = path.join(workspaceDir, "assets");
+    await fs.mkdir(imgDir, { recursive: true });
+    const imgPath = path.join(imgDir, "screenshot.png");
+    await fs.writeFile(imgPath, "fake-png-content");
+
+    let visionCallCount = 0;
+    const mockVisionProvider: ImageVisionProvider = {
+      async describeImage(): Promise<string> {
+        visionCallCount++;
+        return "a blue login screen with email and password fields";
+      },
+    };
+
+    const imgConfig: RagConfig = {
+      ...testConfig(),
+      indexing: {
+        ...testConfig().indexing,
+        includeExtensions: [".png", ".ts"],
+      },
+      imageDescription: {
+        enabled: true,
+        provider: "ollama",
+        model: "minicpm-v4.6",
+        baseUrl: "http://127.0.0.1:11434/api",
+        timeoutMs: 60000,
+        prompt: "Describe this image 10-20 comma-separated keywords.",
+      },
+    };
+
+    const abortController = new AbortController();
+    abortController.abort();
+
+    await runIndexPass({
+      cwd: workspaceDir,
+      storePath: storeDir,
+      config: imgConfig,
+      store,
+      embedder,
+      abortSignal: abortController.signal,
+      imageVisionProvider: mockVisionProvider,
+    });
+
+    const manifestAfterAbort = await loadManifest(storeDir);
+    assert.equal(Object.keys(manifestAfterAbort.manifest.files).length, 0,
+      "No manifest entries after aborted pass — nothing was stored");
+
+    const callsAfterFirst = visionCallCount;
+    assert.equal(callsAfterFirst, 1, "Vision LLM should have been called during the scan phase");
+
+    await runIndexPass({
+      cwd: workspaceDir,
+      storePath: storeDir,
+      config: imgConfig,
+      store,
+      embedder,
+      imageVisionProvider: mockVisionProvider,
+    });
+
+    // The bug: vision LLM is called AGAIN because the image description
+    // was only held in memory during the first run and lost after Ctrl+C.
+    assert.equal(visionCallCount, callsAfterFirst + 1,
+      "BUG: Image was re-extracted after interrupt — the vision LLM result from the " +
+      "first run was not persisted. On resume the scan re-called the vision model.");
   });
 });
