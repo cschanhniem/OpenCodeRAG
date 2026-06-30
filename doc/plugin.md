@@ -91,9 +91,22 @@ Returns the pre-generated natural-language description for an indexed image file
 
 **Returns:** Markdown block with file path and the stored description text.
 
-### 2. `chat.message` Hook — Auto-Injection (Removed)
+### 2. `chat.message` Hook — Hotkey-Activated Injection
 
-Automatic context injection has been removed. Use the hotkeys **Ctrl+Enter** (file list) or **Ctrl+Alt+Enter** (code chunks) to manually inject RAG context on demand.
+The plugin captures `message.part.updated` events to accumulate the **last assistant message's text**. When you trigger injection via hotkey, the search query combines:
+
+```
+[Last assistant response]
+[Current user prompt]
+```
+
+This 2-message query provides the embedding model with conversation context for more relevant code retrieval. On the first turn (no prior assistant message), only the user prompt is used.
+
+RAG context is **appended directly to the user's message text** (not pushed as a separate part), matching the `/doc` handler pattern that avoids duplication.
+
+Use the hotkeys:
+- **Ctrl+Enter** — Injects a file suggestion list
+- **Ctrl+Alt+Enter** — Injects full code chunks
 
 ### 3. Agent Skill Discovery
 
@@ -274,7 +287,7 @@ The TUI plugin (`src/tui.ts`) registers a settings panel in the OpenCode sidebar
 | **Ctrl+Alt+Enter** | Retrieve and append full code chunks to the prompt |
 | **Ctrl+Shift+R** | Open the settings dialog |
 
-Both shortcuts read the current prompt text as the search query. If the prompt is empty, a toast reminds you to type first — no dialogs are opened. Keybindings are configurable in the settings menu under "Keybindings".
+Both shortcuts read the current prompt text combined with the previous assistant response (if any) as the search query. If the prompt is empty, a toast reminds you to type first — no dialogs are opened. Keybindings are configurable in the settings menu under "Keybindings".
 
 ## Plugin Troubleshooting
 

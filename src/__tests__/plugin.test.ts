@@ -507,4 +507,145 @@ describe("ragPlugin", () => {
     assert.match(guidance, /find_usages.*before editing/i);
   });
 
+  it("uses combined assistant+user query for hotkey injection", async () => {
+    const tmpDir = mkdtempSync(path.join(tmpdir(), "opencode-rag-test-"));
+    try {
+      const results = [
+        makeResult("c1", "/p/src/auth.ts", 10, 25, "typescript", "export function login() {}", 0.95),
+      ];
+      const { dependencies, getSeen } = makeDependencies(results, 1);
+      const hooks = createRagHooks({
+        cfg: makeConfig({
+          openCode: { enabled: true, maxContextChunks: 5 },
+          retrieval: { topK: 7, minScore: 0 },
+        }),
+        storePath: tmpDir,
+        logFilePath: path.join(tmpDir, "opencode-rag.log"),
+        store: { ...populatedStore, search: async () => results, count: async () => 1 },
+        dependencies,
+        worktree: testWorktree,
+      });
+
+      const eventHook = hooks.event;
+      assert.ok(eventHook);
+
+      await eventHook({ event: { type: "message.updated", properties: { info: { role: "assistant", sessionID: "session-test", id: "assist-1" } } } as never });
+      await eventHook({ event: { type: "message.part.updated", properties: { part: { type: "text", sessionID: "session-test", messageID: "assist-1" }, delta: "The relevant code is in " } } as never });
+      await eventHook({ event: { type: "message.part.updated", properties: { part: { type: "text", sessionID: "session-test", messageID: "assist-1" }, delta: "auth.ts" } } as never });
+
+      writeFileSync(path.join(tmpDir, ".pending-injection"), "files", "utf-8");
+
+      const chatMessageHook = hooks["chat.message"];
+      assert.ok(chatMessageHook);
+
+      const output = {
+        message: { id: "msg-1", role: "user", sessionID: "session-test", parts: [{ type: "text", text: "show me auth" }] },
+        parts: [{ type: "text", text: "show me auth", id: "prt-1", messageID: "msg-1", sessionID: "session-test" }],
+      };
+      await chatMessageHook({ sessionID: "session-test" } as never, output as never);
+
+      const seen = getSeen();
+      assert.match(seen.query, /The relevant code is in auth\.ts/);
+      assert.match(seen.query, /show me auth/);
+      assert.equal(output.parts.length, 1, "should NOT push a new part");
+      const resultText = (output.parts[0] as Record<string, unknown>).text as string;
+      assert.match(resultText, /show me auth/);
+      assert.match(resultText, /Relevant files:/);
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("uses only user text for injection when no prior assistant message exists", async () => {
+    const tmpDir = mkdtempSync(path.join(tmpdir(), "opencode-rag-test-"));
+    try {
+      const results = [
+        makeResult("c1", "/p/src/auth.ts", 10, 25, "typescript", "export function login() {}", 0.95),
+      ];
+      const { dependencies, getSeen } = makeDependencies(results, 1);
+      const hooks = createRagHooks({
+        cfg: makeConfig({
+          openCode: { enabled: true, maxContextChunks: 5 },
+          retrieval: { topK: 7, minScore: 0 },
+        }),
+        storePath: tmpDir,
+        logFilePath: path.join(tmpDir, "opencode-rag.log"),
+        store: { ...populatedStore, search: async () => results, count: async () => 1 },
+        dependencies,
+        worktree: testWorktree,
+      });
+
+      writeFileSync(path.join(tmpDir, ".pending-injection"), "files", "utf-8");
+
+      const chatMessageHook = hooks["chat.message"];
+      assert.ok(chatMessageHook);
+
+      const output = {
+        message: { id: "msg-1", role: "user", sessionID: "session-no-assist", parts: [{ type: "text", text: "show me auth" }] },
+        parts: [{ type: "text", text: "show me auth", id: "prt-1", messageID: "msg-1", sessionID: "session-no-assist" }],
+      };
+      await chatMessageHook({ sessionID: "session-no-assist" } as never, output as never);
+
+      const seen = getSeen();
+      assert.equal(seen.query, "show me auth");
+      assert.equal(output.parts.length, 1);
+      const resultText = (output.parts[0] as Record<string, unknown>).text as string;
+      assert.match(resultText, /show me auth/);
+      assert.match(resultText, /Relevant files:/);
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("assembles assistant text from multiple part deltas and resets on new assistant message", async () => {
+    const tmpDir = mkdtempSync(path.join(tmpdir(), "opencode-rag-test-"));
+    try {
+      const results = [
+        makeResult("c1", "/p/src/auth.ts", 10, 25, "typescript", "export function login() {}", 0.95),
+      ];
+      const { dependencies, getSeen } = makeDependencies(results, 1);
+      const hooks = createRagHooks({
+        cfg: makeConfig({
+          openCode: { enabled: true, maxContextChunks: 5 },
+          retrieval: { topK: 7, minScore: 0 },
+        }),
+        storePath: tmpDir,
+        logFilePath: path.join(tmpDir, "opencode-rag.log"),
+        store: { ...populatedStore, search: async () => results, count: async () => 1 },
+        dependencies,
+        worktree: testWorktree,
+      });
+
+      const eventHook = hooks.event;
+      assert.ok(eventHook);
+
+      await eventHook({ event: { type: "message.updated", properties: { info: { role: "assistant", sessionID: "session-delta", id: "assist-msg" } } } as never });
+      await eventHook({ event: { type: "message.part.updated", properties: { part: { type: "text", sessionID: "session-delta", messageID: "assist-msg" }, delta: "Look at " } } as never });
+      await eventHook({ event: { type: "message.part.updated", properties: { part: { type: "text", sessionID: "session-delta", messageID: "assist-msg" }, delta: "the " } } as never });
+      await eventHook({ event: { type: "message.part.updated", properties: { part: { type: "text", sessionID: "session-delta", messageID: "assist-msg" }, delta: "config file." } } as never });
+
+      await eventHook({ event: { type: "message.updated", properties: { info: { role: "assistant", sessionID: "session-delta", id: "assist-msg-2" } } } as never });
+      await eventHook({ event: { type: "message.part.updated", properties: { part: { type: "text", sessionID: "session-delta", messageID: "assist-msg-2" }, delta: "The answer " } } as never });
+      await eventHook({ event: { type: "message.part.updated", properties: { part: { type: "text", sessionID: "session-delta", messageID: "assist-msg-2" }, delta: "is 42." } } as never });
+
+      writeFileSync(path.join(tmpDir, ".pending-injection"), "files", "utf-8");
+
+      const chatMessageHook = hooks["chat.message"];
+      assert.ok(chatMessageHook);
+
+      const output = {
+        message: { id: "msg-1", role: "user", sessionID: "session-delta", parts: [{ type: "text", text: "what is the meaning" }] },
+        parts: [{ type: "text", text: "what is the meaning", id: "prt-1", messageID: "msg-1", sessionID: "session-delta" }],
+      };
+      await chatMessageHook({ sessionID: "session-delta" } as never, output as never);
+
+      const seen = getSeen();
+      assert.match(seen.query, /The answer is 42\./);
+      assert.match(seen.query, /what is the meaning/);
+      assert.doesNotMatch(seen.query, /Look at/);
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
 });

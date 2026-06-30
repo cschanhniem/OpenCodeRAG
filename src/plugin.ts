@@ -25,7 +25,6 @@ import {
 } from "./opencode/tools.js";
 import { resolveApiKey } from "./core/resolve-api-key.js";
 import { consumePendingRagInjection } from "./core/rag-injection-flag.js";
-import { uuid } from "./chunker/uuid.js";
 import { loadDocProgress, markSubdirectoryDocumented } from "./core/doc-progress.js";
 import { loadManifest } from "./core/manifest.js";
 import { createSessionLogger, type SessionLogger } from "./eval/session-logger.js";
@@ -503,8 +502,9 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
   // Session-level caches for lazy retrieval
   const sessionLastMessage = new Map<string, string>();
   const sessionRetrievalCache = new Map<string, { messageText: string; rawResults: SearchResult[] }>();
-
-
+  // Track the current assistant message text per session for 2-message search queries.
+  const sessionAssistantMessageId = new Map<string, string>();
+  const sessionAssistantText = new Map<string, string>();
 
   // Evaluation session logger — captures OpenCode events for analysis
   const sessionLogger: SessionLogger = createSessionLogger(options.storePath);
@@ -709,6 +709,45 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
   return {
     async event({ event }) {
       sessionLogger.onEvent(event as Parameters<typeof sessionLogger.onEvent>[0]);
+
+      // Accumulate the most recent assistant message's text via streaming deltas.
+      // Used to build the 2-message retrieval query in chat.message.
+      try {
+        if (event.type === "message.updated") {
+          const info = (event as Record<string, unknown>).properties as
+            | Record<string, unknown>
+            | undefined;
+          const msgInfo = info?.info as Record<string, unknown> | undefined;
+          if (
+            msgInfo?.role === "assistant" &&
+            typeof msgInfo.sessionID === "string" &&
+            typeof msgInfo.id === "string"
+          ) {
+            sessionAssistantMessageId.set(msgInfo.sessionID, msgInfo.id);
+            sessionAssistantText.set(msgInfo.sessionID, "");
+          }
+        } else if (event.type === "message.part.updated") {
+          const props = (event as Record<string, unknown>).properties as
+            | Record<string, unknown>
+            | undefined;
+          const part = props?.part as Record<string, unknown> | undefined;
+          const delta = props?.delta;
+          if (
+            part?.type === "text" &&
+            typeof part.sessionID === "string" &&
+            typeof part.messageID === "string" &&
+            typeof delta === "string"
+          ) {
+            const assistantMsgId = sessionAssistantMessageId.get(part.sessionID);
+            if (assistantMsgId && part.messageID === assistantMsgId) {
+              const existing = sessionAssistantText.get(part.sessionID) ?? "";
+              sessionAssistantText.set(part.sessionID, existing + delta);
+            }
+          }
+        }
+      } catch {
+        // Non-critical — must never throw
+      }
     },
     tool: tools,
     async "experimental.chat.system.transform"(_input, output) {
@@ -888,7 +927,13 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
           const effectiveCfg = getEffectiveCfg();
           const hybridCfg = effectiveCfg.retrieval.hybridSearch;
           const retrievalStart = Date.now();
-          const results = await dependencies.retrieve(text, embedder, store, {
+
+          // Build 2-message query: previous assistant response + current user prompt.
+          // Falls back to user-only text on the first turn (no prior assistant message).
+          const assistantText = sessionAssistantText.get(input.sessionID);
+          const searchQuery = assistantText ? assistantText + "\n" + text : text;
+
+          const results = await dependencies.retrieve(searchQuery, embedder, store, {
             topK: effectiveCfg.retrieval.topK,
             minScore: 0,
             keywordIndex,
@@ -914,32 +959,16 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
               const parts = output?.parts ?? (output?.message as Record<string, unknown>)?.parts;
               if (Array.isArray(parts) && parts.length > 0) {
                 const first = parts[0] as Record<string, unknown>;
-                const messageID = (first?.messageID as string)
-                  ?? ((output?.message as Record<string, unknown>)?.id as string)
-                  ?? input.messageID
-                  ?? `msg-${Date.now()}`;
-                const sessionID = (first?.sessionID as string) ?? input.sessionID;
-
-                const ragPart = {
-                  id: `prt_${uuid()}`,
-                  sessionID,
-                  messageID,
-                  type: "text",
-                  text: ragContext,
-                  metadata: {
-                    source: "opencode-rag",
-                    injectionType: pendingInjection,
-                    retrievalTimeMs,
-                    resultCount: results.length,
-                    timestamp: Date.now(),
-                  },
-                } as typeof parts[number];
-
-                parts.push(ragPart);
+                if (typeof first.text === "string") {
+                  // Append RAG context directly to the user's text part instead of
+                  // pushing a new part. Matches the /doc handler pattern — avoids the
+                  // duplicate-output bug caused by parts.push() in some render paths.
+                  parts[0] = { ...first, text: first.text + "\n\n" + ragContext } as typeof parts[0];
+                }
 
                 appendDebugLog(options.logFilePath, {
                   scope: "chat.message",
-                  message: `pushed RAG part (id=${ragPart.id}, parts.length=${parts.length})`,
+                  message: `injected ${pendingInjection} context into parts[0].text (text.length=${ragContext.length})`,
                 });
               }
             }
