@@ -27,7 +27,7 @@ opencode-rag query "authentication middleware"
 
 **Prerequisites:** Node.js v22+, [Ollama](https://ollama.ai) (default) or other LLM-hosters (OpenAI-, Google- or Anthropic-compatible).
 
-> **Contributors / developers:** Clone the repo and use `npm install --legacy-peer-deps; npm run build; opencode-rag setup --force` — see [Development docs](doc/development.md).
+> **Contributors / developers:** Clone the repo and use `npm install --legacy-peer-deps; npm run build` — see [Development docs](doc/development.md).
 
 ## Key Features
 
