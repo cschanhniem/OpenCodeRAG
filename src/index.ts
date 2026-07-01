@@ -16,6 +16,7 @@ export { loadConfig, DEFAULT_CONFIG } from "./core/config.js";
 export { createBackgroundIndexer } from "./watcher.js";
 export { createWatchIgnore } from "./indexer.js";
 export { ImageChunker, createImageVisionProvider, getMimeType, SUPPORTED_IMAGE_EXTENSIONS } from "./chunker/image.js";
+export { DescriptionCache } from "./core/desc-cache.js";
 export type { RagConfig, DescriptionConfig, ImageDescriptionConfig } from "./core/config.js";
 export type { Chunk, SearchResult, OptimizedSearchResult, Chunker, DescriptionProvider, EmbeddingProvider, VectorStore } from "./core/interfaces.js";
 export type { ContextOptimizationConfig, ContextOptimizationOptions } from "./retriever/context-optimizer.js";

@@ -682,7 +682,7 @@ describe("indexer", () => {
     });
   });
 
-  it("re-extracts the same image after Ctrl+C — vision LLM calls are not cached", async () => {
+  it("reuses cached image description after Ctrl+C — vision LLM call is not repeated", async () => {
     const imgDir = path.join(workspaceDir, "assets");
     await fs.mkdir(imgDir, { recursive: true });
     const imgPath = path.join(imgDir, "screenshot.png");
@@ -729,8 +729,7 @@ describe("indexer", () => {
     assert.equal(Object.keys(manifestAfterAbort.manifest.files).length, 0,
       "No manifest entries after aborted pass — nothing was stored");
 
-    const callsAfterFirst = visionCallCount;
-    assert.equal(callsAfterFirst, 1, "Vision LLM should have been called during the scan phase");
+    assert.equal(visionCallCount, 1, "Vision LLM should have been called once during scan");
 
     await runIndexPass({
       cwd: workspaceDir,
@@ -741,10 +740,10 @@ describe("indexer", () => {
       imageVisionProvider: mockVisionProvider,
     });
 
-    // The bug: vision LLM is called AGAIN because the image description
-    // was only held in memory during the first run and lost after Ctrl+C.
-    assert.equal(visionCallCount, callsAfterFirst + 1,
-      "BUG: Image was re-extracted after interrupt — the vision LLM result from the " +
-      "first run was not persisted. On resume the scan re-called the vision model.");
+    // After the fix: image description is persisted to the description cache,
+    // so the second run reuses the cached description without calling vision again.
+    assert.equal(visionCallCount, 1,
+      "Image description should be reused from cache — vision LLM should " +
+      "NOT be called again on the second run after Ctrl+C");
   });
 });

@@ -6,7 +6,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import pLimit from "p-limit";
 import type { RagConfig } from "../core/config.js";
-import { computeFileHash, normalizeFilePath, type FileManifest } from "../core/manifest.js";
+import { computeFileHash, computeDescriptionConfigHash, normalizeFilePath, type FileManifest } from "../core/manifest.js";
+import { DescriptionCache } from "../core/desc-cache.js";
 import {
   createImageVisionProvider,
   type ImageVisionProvider,
@@ -129,6 +130,9 @@ async function dispatchExtraction(
  * Scan the workspace directory for indexable files, reading content or dispatching
  * binary extraction (PDF, DOCX, DOC, Excel, images). Respects the file manifest
  * for incremental re-indexing by skipping unchanged files.
+ *
+ * @param descCache - Optional persistent description cache. When set, image
+ *   descriptions are cached and reused across sessions (survives aborted runs).
  */
 export async function scanWorkspaceFiles(
   cwd: string,
@@ -137,6 +141,7 @@ export async function scanWorkspaceFiles(
   manifest?: FileManifest,
   filterPaths?: string[],
   injectedVisionProvider?: ImageVisionProvider,
+  descCache?: DescriptionCache,
 ): Promise<WorkspaceFile[]> {
   const extensions = new Set(config.indexing.includeExtensions);
 
@@ -194,6 +199,11 @@ export async function scanWorkspaceFiles(
   const textLimit = pLimit(scanConcurrency);
   const imageLimit = pLimit(1);
 
+  // Compute a hash of the image description config — used to build cache keys.
+  const imageDescConfigHash = config.imageDescription?.enabled
+    ? computeDescriptionConfigHash(config) ?? ""
+    : "";
+
   let completed = 0;
 
   async function processFile(filePath: string): Promise<WorkspaceFile> {
@@ -232,12 +242,52 @@ export async function scanWorkspaceFiles(
       isImage;
 
     logger?.info(`Reading: ${filePath}`);
+
+    const buffer = isBinary ? await fs.readFile(filePath) : Buffer.alloc(0);
+
+    // For images, check the persistent description cache before calling the vision provider
+    if (isImage && descCache && imageDescConfigHash) {
+      const imageBytesHash = computeFileHash(buffer.toString("base64"));
+      const cacheKey = DescriptionCache.imageKey(imageBytesHash, imageDescConfigHash);
+      const cachedDesc = descCache.get(cacheKey);
+      if (cachedDesc) {
+        logger?.info(`  Using cached image description: ${filePath}`);
+        const content = cachedDesc;
+        let fileMtime: number | undefined;
+        let fileSize: number | undefined;
+        try {
+          const stat = await fs.stat(filePath);
+          fileMtime = stat.mtimeMs;
+          fileSize = stat.size;
+        } catch { /* best-effort stat */ }
+        completed++;
+        return {
+          filePath,
+          normalizedPath,
+          content,
+          hash: computeFileHash(content),
+          isEmpty: false,
+          isTooSmall: false,
+          extractionStatus: "ok" as const,
+          mtime: fileMtime,
+          size: fileSize,
+        } satisfies WorkspaceFile;
+      }
+    }
+
     if (isImage) {
       logger?.info(`  Describing image: ${filePath}`);
     }
 
-    const buffer = isBinary ? await fs.readFile(filePath) : Buffer.alloc(0);
     const result = await dispatchExtraction(filePath, buffer, imageVisionProvider, imagePrompt, imageResizeMaxDimension);
+
+    // Cache the image description for future runs
+    if (isImage && result.ok && descCache && imageDescConfigHash) {
+      const imageBytesHash = computeFileHash(buffer.toString("base64"));
+      const cacheKey = DescriptionCache.imageKey(imageBytesHash, imageDescConfigHash);
+      descCache.set(cacheKey, result.content);
+      await descCache.save();
+    }
 
     if (!result.ok) {
       logger?.warn(`  ${filePath} (extraction failed: ${result.error})`);

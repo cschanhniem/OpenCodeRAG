@@ -14,6 +14,8 @@ export class XmlChunker extends TreeSitterChunker {
   readonly nodeTypes = new Set([
     "element",
   ]);
+  /** Limit to prevent tree-sitter from hanging on large SVG/XML files. */
+  maxContentBytes = 1_048_576;
 }
 
 /** Default singleton instance of {@link XmlChunker}. */

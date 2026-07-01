@@ -153,6 +153,7 @@ export async function prepareFile(
     embedding: { documentPrefix?: string };
     chunking?: { nodeTypes?: Record<string, string[]> };
     description?: { maxContentChars?: number };
+    indexing?: { maxSvgSizeBytes?: number };
   },
   keywordIndex: KeywordIndex | undefined,
   descriptionProvider: DescriptionProvider | undefined,
@@ -216,7 +217,9 @@ export async function prepareFile(
       },
     }];
   } else {
-    chunks = await chunkFile(file.filePath, file.content, config.chunking?.nodeTypes).catch((err) => {
+    chunks = await chunkFile(file.filePath, file.content, config.chunking?.nodeTypes, {
+      maxSvgSizeBytes: config.indexing?.maxSvgSizeBytes,
+    }).catch((err) => {
       logger.warn(`  ${fileLabel} (chunking failed: ${(err as Error).message})`);
       return null;
     });
@@ -388,7 +391,7 @@ export async function processFile(
   previous: ManifestFile | undefined,
   config: {
     embedding: { documentPrefix?: string };
-    indexing: { embedBatchSize: number; embedConcurrency?: number };
+    indexing: { embedBatchSize: number; embedConcurrency?: number; maxSvgSizeBytes?: number };
     chunking?: { nodeTypes?: Record<string, string[]> };
     description?: { maxContentChars?: number };
   },

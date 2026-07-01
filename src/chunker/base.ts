@@ -15,6 +15,14 @@ export abstract class TreeSitterChunker implements Chunker {
 
   readonly wasmFilePath?: string;
 
+  /**
+   * Maximum content length in bytes before chunking is skipped.
+   * Tree-sitter can hang on very large files (especially SVGs).
+   * Set to 0 or negative for no limit.
+   * @default 0 (no limit)
+   */
+  maxContentBytes = 0;
+
   private parser: Parser | null = null;
   private parserPromise: Promise<Parser> | undefined;
 
@@ -25,6 +33,9 @@ export abstract class TreeSitterChunker implements Chunker {
       get fileExtensions() { return original.fileExtensions; },
       async chunk(filePath: string, content: string): Promise<Chunk[]> {
         if (content.trim().length === 0) return [];
+        if (original.maxContentBytes > 0 && Buffer.byteLength(content, "utf-8") > original.maxContentBytes) {
+          throw new Error(`File exceeds ${original.maxContentBytes} byte limit for ${original.language} chunker`);
+        }
         const parser = await original.getParser();
         const tree = parser.parse(content);
         if (!tree) return [];
@@ -63,6 +74,10 @@ export abstract class TreeSitterChunker implements Chunker {
 
   async chunk(filePath: string, content: string): Promise<Chunk[]> {
     if (content.trim().length === 0) return [];
+
+    if (this.maxContentBytes > 0 && Buffer.byteLength(content, "utf-8") > this.maxContentBytes) {
+      throw new Error(`File exceeds ${this.maxContentBytes} byte limit for ${this.language} chunker`);
+    }
 
     const parser = await this.getParser();
     const tree = parser.parse(content);
