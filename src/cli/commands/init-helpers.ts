@@ -14,6 +14,7 @@ import {
   rmSync,
   symlinkSync,
 } from "node:fs";
+import { execSync } from "node:child_process";
 import { DEFAULT_CONFIG } from "../../core/config.js";
 import { c } from "../format.js";
 import {
@@ -331,9 +332,48 @@ export async function installPluginFromGlobal(
   const workspaceTarget = path.join(opencodeDir, "node_modules", packageName);
 
   if (!existsSync(globalPluginDir)) {
+    // Fallback: try the global npm prefix
+    let globalRoot: string;
+    try {
+      globalRoot = execSync("npm root -g", { encoding: "utf-8", timeout: 10_000 }).trim();
+    } catch {
+      throw new Error(
+        `Global plugin cache not found at ${globalPluginDir}. ` +
+        "Run 'opencode-rag setup' or install globally with 'npm install -g opencode-rag-plugin' first.",
+      );
+    }
+    const globalNpmPluginDir = path.join(globalRoot, packageName);
+    if (existsSync(globalNpmPluginDir) && existsSync(path.join(globalNpmPluginDir, "dist", "cli.js"))) {
+      console.log(`  ${c.created("Found:")} ${packageName} in global npm prefix, linking...`);
+      if (existsSync(workspaceTarget)) {
+        rmSync(workspaceTarget, { recursive: true, force: true });
+      }
+      mkdirSync(path.dirname(workspaceTarget), { recursive: true });
+      createJunction(globalNpmPluginDir, workspaceTarget);
+      const cliEntry = path.join(workspaceTarget, "dist", "cli.js");
+      if (existsSync(cliEntry)) {
+        console.log(`  ${c.success("Linked:")} ${packageName} from global npm`);
+        // Also link @opencode-ai/plugin from global npm
+        const globalSdkDir = path.join(globalRoot, "@opencode-ai", "plugin");
+        const workspaceSdkDir = path.join(opencodeDir, "node_modules", "@opencode-ai", "plugin");
+        if (existsSync(globalSdkDir) && !existsSync(workspaceSdkDir)) {
+          mkdirSync(path.dirname(workspaceSdkDir), { recursive: true });
+          try {
+            createJunction(globalSdkDir, workspaceSdkDir);
+          } catch {
+            const { cpSync } = await import("node:fs") as typeof import("node:fs");
+            cpSync(globalSdkDir, workspaceSdkDir, { recursive: true });
+          }
+        }
+        console.log(`  ${c.success("Linked:")} @opencode-ai/plugin from global npm`);
+        return;
+      }
+      // Junction failed or incomplete — fall through to error
+      rmSync(workspaceTarget, { recursive: true, force: true });
+    }
     throw new Error(
       `Global plugin cache not found at ${globalPluginDir}. ` +
-        "Run 'install.sh compile' / 'install.ps1 compile' first.",
+      "Run 'opencode-rag setup' or install globally with 'npm install -g opencode-rag-plugin' first.",
     );
   }
 

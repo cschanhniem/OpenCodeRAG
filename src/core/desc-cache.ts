@@ -27,7 +27,7 @@ export class DescriptionCache {
   private cacheDir: string;
   private dirty = false;
   private savePromise: Promise<void> = Promise.resolve();
-  private loadPromise: Promise<void> = Promise.resolve();
+  private loadPromise: Promise<void> | null = null;
 
   constructor(cacheDir: string) {
     this.cacheDir = cacheDir;
@@ -43,6 +43,7 @@ export class DescriptionCache {
         const parsed = JSON.parse(raw) as CacheData;
         if (parsed.version === CACHE_VERSION && parsed.entries) {
           this.cache = parsed;
+          this.dirty = false;
         }
       } catch {
         // Cache file missing or corrupt — start fresh

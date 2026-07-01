@@ -26,7 +26,7 @@ import {
   registerInitCommand,
   registerUiCommand,
   registerMcpCommand,
-  registerUpdateCommand,
+  registerSetupCommand,
   registerEvalSessionsCommand,
   registerEvalAnalyzeCommand,
   registerEvalCompareCommand,
@@ -58,7 +58,7 @@ registerDumpCommand(program);
 registerDescribeImageCommand(program);
 registerUiCommand(program);
 registerMcpCommand(program);
-registerUpdateCommand(program);
+registerSetupCommand(program);
 registerEvalSessionsCommand(program);
 registerEvalAnalyzeCommand(program);
 registerEvalCompareCommand(program);

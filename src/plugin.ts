@@ -29,7 +29,7 @@ import { loadDocProgress, markSubdirectoryDocumented } from "./core/doc-progress
 import { loadManifest } from "./core/manifest.js";
 import { createSessionLogger, type SessionLogger } from "./eval/session-logger.js";
 import { countTokens } from "./eval/token-counter.js";
-import { checkForUpdate, type UpdateInfo } from "./updater.js";
+import { checkForUpdate, type UpdateInfo } from "./core/version-check.js";
 import { existsSync, readFileSync, unlinkSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -794,7 +794,7 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
       if (updateInfo) {
         output.system.unshift(
           `OpenCodeRAG update available: ${updateInfo.currentVersion} → ${updateInfo.latestVersion}. ` +
-          `Run \`opencode-rag update\` to install.`,
+          `Run \`npm update -g opencode-rag-plugin && opencode-rag setup\` to install.`,
         );
       }
 

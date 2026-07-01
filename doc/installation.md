@@ -30,28 +30,48 @@ OpenCodeRAG uses three models:
 
 ## Install
 
+### Quick install (recommended)
+
 ```bash
-# Clone the repository
-git clone https://github.com/your-org/OpenCodeRAG.git
-cd OpenCodeRAG
+# Install globally via npm
+npm install -g opencode-rag-plugin
 
-# Install dependencies
-npm install --legacy-peer-deps
+# Set up the OpenCode runtime
+opencode-rag setup
 
-# Install RAG tools globally
-./install.sh          # Linux/macOS
-.\install.ps1         # Windows
+# Initialize in your project
+cd /path/to/your/project
+opencode-rag init
 ```
 
-> The install scripts compile TypeScript to JS (`npm run build`), pack the plugin via `npm pack`, and install from the `.tgz` archive — creating filesystem links (junctions/symlinks) for global CLI access. Tree-sitter grammars ship as pre-built WASM files (bundled in `wasm/` and `@vscode/tree-sitter-wasm`). Native dependencies (`sharp`, `@lancedb/lancedb`) use pre-built platform binaries. The `opencode-rag` CLI command is globally available via `~/.local/bin/` (Linux/macOS) or `~\.opencode\bin\` (Windows). The plugin itself is workspace-local — OpenCode loads it from `.opencode/plugins/`. Data (vector store, manifest) lives in the workspace.
->
-> **Windows users:** The `canvas` native module (used for PDF DOMMatrix). It requires the [GTK for Windows Runtime](https://github.com/tschoonj/GTK-for-Windows-Runtime-Environment-Installer) to compile. If GTK is not installed, the install script can skip `canvas` via `.\install.ps1 ignore-optional` and PDF text extraction still works via the built-in polyfill (`@thednp/dommatrix`) module (just a little bit slower).
+Tree-sitter grammars ship as pre-built WASM files (bundled in `wasm/` and `@vscode/tree-sitter-wasm`). Native dependencies (`sharp`, `@lancedb/lancedb`) use pre-built platform binaries. The plugin is workspace-local — OpenCode loads it from `.opencode/plugins/`. Data (vector store, manifest) lives in the workspace.
+
+### Installing without network (air-gapped)
+
+Download the package tarball from the [GitHub Releases](https://github.com/MrDoe/OpenCodeRAG/releases) page and run:
+
+```bash
+npm install -g ./opencode-rag-plugin-<version>.tgz
+opencode-rag setup
+```
+
+### Installing from source (contributors/developers)
+
+```bash
+git clone https://github.com/MrDoe/OpenCodeRAG.git
+cd OpenCodeRAG
+npm install --legacy-peer-deps
+npm run build
+opencode-rag setup --force
+```
+
+> **Note:** `--legacy-peer-deps` is only needed when developing in the cloned repo (where `@opencode-ai/plugin` is both a dev and peer dependency). End users installing via `npm install -g` never need this flag.
 
 ### Uninstall
 
 ```bash
-./install.sh uninstall (Linux)
-.\install.ps1 uninstall (Windows)
+opencode-rag setup --uninstall
+npm uninstall -g opencode-rag-plugin
 ```
 
 This removes all copies and config entries of OpenCodeRAG.

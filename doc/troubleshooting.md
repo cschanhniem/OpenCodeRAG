@@ -46,7 +46,12 @@ Both should be `"function"`.
 
 **Symptom:** `@lancedb/lancedb` throws errors about missing native binary or peer dependency.
 
-**Fix:**
+**Fix (end users):**
+```bash
+npm install -g opencode-rag-plugin
+```
+
+**Fix (developers of the plugin):**
 ```bash
 npm install --legacy-peer-deps
 ```
@@ -61,7 +66,7 @@ Ensure `apache-arrow` is installed — it's a peer dependency.
 ```bash
 set NODE_TLS_REJECT_UNAUTHORIZED=0   # Windows
 export NODE_TLS_REJECT_UNAUTHORIZED=0  # Linux/macOS
-npm install --legacy-peer-deps
+npm install -g opencode-rag-plugin
 ```
 
 ### Proxy Issues with OpenCode
