@@ -459,10 +459,12 @@ export class LanceDbStore implements VectorStore {
    * @param newPath - Optional new filesystem path for the LanceDB database.
    */
   async reopen(newPath?: string): Promise<void> {
-    if (newPath) this.dbPath = newPath;
+    await this.table?.close();
+    await this.db?.close();
     this.table = null;
     this.db = null;
     this.tableInit = null;
+    if (newPath) this.dbPath = newPath;
   }
 
   /** Close the database connection and release resources. */
@@ -478,6 +480,7 @@ export class LanceDbStore implements VectorStore {
    * Falls back to deleting the database directory if dropTable fails.
    */
   async clear(): Promise<void> {
+    await this.table?.close();
     this.table = null;
     try {
       const db = await this.getDb();
@@ -485,7 +488,10 @@ export class LanceDbStore implements VectorStore {
       if (tableNames.includes(TABLE_NAME)) {
         await db.dropTable(TABLE_NAME);
       }
+      await this.db?.close();
+      this.db = null;
     } catch {
+      await this.db?.close();
       this.db = null;
       try {
         await fs.rm(this.dbPath, { recursive: true, force: true });

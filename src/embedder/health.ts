@@ -481,6 +481,7 @@ export async function pullOllamaModels(
           }
         }
       } finally {
+        try { await reader.cancel(); } catch {}
         reader.releaseLock();
       }
     } catch (err) {

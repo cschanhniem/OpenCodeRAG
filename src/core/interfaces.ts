@@ -95,6 +95,8 @@ export interface EmbeddingProvider {
 
 /** In-memory TF-IDF inverted index for keyword-based search alongside vector search. */
 export interface KeywordIndex {
+  /** Release resources and free memory. */
+  close(): void;
   /** Index a set of chunks by tokenizing their content. */
   addChunks(chunks: Chunk[]): void;
   /** Remove all entries for a given file path from the index. */

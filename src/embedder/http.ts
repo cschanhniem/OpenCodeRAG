@@ -486,7 +486,8 @@ export async function postJson(
   body: unknown,
   headers: Record<string, string>,
   timeoutMs: number,
-  proxy?: ProxyConfig
+  proxy?: ProxyConfig,
+  signal?: AbortSignal,
 ): Promise<HttpResponseLike> {
   const url = new URL(urlString);
 
@@ -496,7 +497,7 @@ export async function postJson(
     return directRequest(url, body, headers, timeoutMs);
   }
 
-  return postJsonViaFetch(urlString, body, headers, timeoutMs, proxy);
+  return postJsonViaFetch(urlString, body, headers, timeoutMs, proxy, signal);
 }
 
 /** Send JSON via the global `fetch` API with proxy environment variable overrides. */
@@ -505,7 +506,8 @@ async function postJsonViaFetch(
   body: unknown,
   headers: Record<string, string>,
   timeoutMs: number,
-  proxy: ProxyConfig
+  proxy?: ProxyConfig,
+  signal?: AbortSignal,
 ): Promise<HttpResponseLike> {
   const authHeader = buildProxyAuthHeader(proxy);
   const envOverride = applyProxyEnv(proxy);
@@ -530,6 +532,8 @@ async function postJsonViaFetch(
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const onAbort = () => { controller.abort(); clearTimeout(timeout); };
+    signal?.addEventListener("abort", onAbort, { once: true });
 
     try {
       const response = await fetch(urlString, {
@@ -542,6 +546,7 @@ async function postJsonViaFetch(
       return response as unknown as HttpResponseLike;
     } finally {
       clearTimeout(timeout);
+      signal?.removeEventListener("abort", onAbort);
     }
   } finally {
     if (envOverride) {

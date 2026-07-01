@@ -56,6 +56,36 @@ This workspace has OpenCodeRAG indexed for semantic code and image search. Use t
 - If no results appear, the workspace may not be indexed yet — run `opencode-rag index`
 - Image descriptions are generated at index time using the configured vision provider; ensure `imageDescription` is configured in `opencode-rag.json` if your project includes images
 
+## Memory Leak Prevention
+
+Code changes that create or hold resources MUST follow these rules:
+
+### Resource lifecycle
+
+- **close() every open resource** — LanceDB connections, keyword indexes, HTTP pool sockets, file handles, readable streams. Every `new` / `create` / `open` must have a matching `close()` / `destroy()` / `cancel()`.
+- **Use `try/finally`** for cleanup — never rely on process exit. The public API (`src/api.ts`) sets the pattern: work in `try`, close in `finally`.
+- **Signal handlers must use `process.once()`** not `process.on()` and must be removed with `removeListener` when no longer needed.
+
+### In-memory data structures
+
+- **Map/Set growth must be bounded** — every unbounded `Map<string, T>` or `Set<T>` is a leak waiting to happen. Apply max-size eviction (LRU or FIFO), TTL, or explicit lifecycle cleanup.
+  - Session maps: max 50 entries
+  - Config caches: clean up on workspace reload
+  - Progress reporters: clear between passes
+- **Module-level state must be cleaned up** — config caches, connection pools, pending notifications. If it lives at module scope, it needs a delete path.
+
+### HTTP & network
+
+- **AbortSignal parameters must be wired through** — never prefix with `_` to ignore. Pass to `fetch` / `postJson` so the caller can cancel.
+- **ReadableStream readers must cancel before releaseLock** — `reader.cancel()` ensures the underlying HTTP connection is released.
+
+### Verification
+
+Before merging any change that touches resource lifecycle:
+1. `npm run typecheck` (must pass)
+2. `npm test` (all unit tests must pass)
+3. Trace every `new` to its matching `close` — if there isn't one, the change is incomplete.
+
 ## Testing
 
 - `npm test` — runs all tests except integration tests (~5s)

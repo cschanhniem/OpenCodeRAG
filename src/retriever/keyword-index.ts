@@ -185,6 +185,11 @@ export class KeywordIndex {
     });
   }
 
+  close(): void {
+    this.invertedIndex.clear();
+    this.chunkMap.clear();
+  }
+
   clear(): void {
     this.invertedIndex.clear();
     this.chunkMap.clear();

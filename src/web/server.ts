@@ -109,7 +109,11 @@ export async function startWebUi(
         port,
         close: () =>
           new Promise<void>((resolveClose) => {
-            server.close(() => resolveClose());
+            server.close(() => {
+              store.close().catch(() => {});
+              keywordIndex.close();
+              resolveClose();
+            });
           }),
       });
     });

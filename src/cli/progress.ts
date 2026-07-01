@@ -76,6 +76,7 @@ export class LineProgressReporter implements IndexProgress {
   }
 
   done(): void {
-    // All lines are emitted on each event — nothing to flush.
+    this.entries.clear();
+    this.failed.clear();
   }
 }

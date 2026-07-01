@@ -29,6 +29,8 @@ export interface RagReadToolOptions {
   sessionRetrievalCache?: Map<string, { messageText: string; rawResults: SearchResult[] }>;
   /** Optional keyword index for hybrid search. */
   keywordIndex?: KeywordIndex;
+  /** Maximum number of sessions to retain in the retrieval cache. */
+  maxSessionCacheSize?: number;
 }
 
 /**
@@ -99,6 +101,11 @@ export function createRagReadTool(
               } else {
                 const retrievalQuery = buildSessionQuery(messageText, resolvedPath, normalized);
                 rawResults = await retrieve(retrievalQuery, embedder, store, { topK: retrievalTopK, keywordIndex, queryPrefix: config.embedding.queryPrefix });
+                const maxSize = options.maxSessionCacheSize ?? 50;
+                if (!sessionRetrievalCache.has(sessionID) && sessionRetrievalCache.size >= maxSize) {
+                  const oldest = sessionRetrievalCache.keys().next().value;
+                  if (oldest !== undefined) sessionRetrievalCache.delete(oldest);
+                }
                 sessionRetrievalCache.set(sessionID, { messageText, rawResults });
               }
             } else {

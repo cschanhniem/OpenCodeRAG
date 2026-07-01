@@ -147,6 +147,8 @@ export async function createMcpServer(options?: McpServerOptions): Promise<RagMc
     server,
     close: async () => {
       await server.close();
+      await ctx.store.close();
+      ctx.keywordIndex.close();
     },
   };
 }
