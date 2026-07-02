@@ -67,7 +67,7 @@ export function registerStatusCommand(program: Command): void {
       try {
         const cwd = process.cwd();
         let logFilePath = path.resolve(cwd, ".opencode", "opencode-rag.log");
-        const ctx = await resolveCliContext(options, logFilePath, { skipProbe: true, skipKeywordIndex: true });
+        const ctx = await resolveCliContext(options, logFilePath, { skipProbe: true });
         const { config, store, storePath, keywordIndex } = ctx;
         logFilePath = ctx.logFilePath;
 
@@ -97,7 +97,30 @@ export function registerStatusCommand(program: Command): void {
         logCliInfo(logFilePath, "status", `${c.label("Pending files:")}     ${c.num(summary.pendingFiles)}`);
         logCliInfo(logFilePath, "status", `${c.label("Indexed chunks:")}    ${c.num(summary.storeChunkCount)}`);
         logCliInfo(logFilePath, "status", `${c.label("Expected chunks:")}   ${c.num(summary.manifestExpectedChunks)}`);
-        logCliInfo(logFilePath, "status", `${c.label("Watch mode:")}        ${c.dim("off")}`);
+        // Read watcher status from the background auto-indexer
+        const watcherStatusPath = path.join(storePath, "watcher-status.json");
+        let watchModeDisplay: string;
+        if (fs.existsSync(watcherStatusPath)) {
+          try {
+            const raw = fs.readFileSync(watcherStatusPath, "utf-8");
+            const ws = JSON.parse(raw) as { running?: boolean; lastRunAt?: number };
+            if (ws.lastRunAt) {
+              const lastRun = formatTimestamp(ws.lastRunAt);
+              watchModeDisplay = ws.running
+                ? c.enabled("active") + c.dim(" (last run: " + lastRun + ")")
+                : c.enabled("on") + c.dim(" (last run: " + lastRun + ")");
+            } else {
+              watchModeDisplay = c.enabled("on");
+            }
+          } catch {
+            watchModeDisplay = c.enabled("on") + c.dim(" (status unknown)");
+          }
+        } else if (config.openCode.autoIndex?.enabled) {
+          watchModeDisplay = c.enabled("enabled (config)");
+        } else {
+          watchModeDisplay = c.dim("off");
+        }
+        logCliInfo(logFilePath, "status", `${c.label("Watch mode:")}        ${watchModeDisplay}`);
         const kiCount = config.retrieval.hybridSearch?.enabled
           ? keywordIndex?.count() ?? 0
           : 0;
