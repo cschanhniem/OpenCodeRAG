@@ -207,6 +207,7 @@ export async function handleSearchSemantic(
     minScore: cfg.retrieval.minScore,
     keywordIndex,
     keywordWeight: cfg.retrieval.hybridSearch?.keywordWeight,
+    hybridEnabled: cfg.retrieval.hybridSearch?.enabled,
     queryPrefix: cfg.embedding.queryPrefix,
   };
 

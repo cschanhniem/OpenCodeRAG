@@ -14,6 +14,8 @@ export interface RetrieveOptions {
   minScore?: number;
   keywordIndex?: KeywordIndex;
   keywordWeight?: number;
+  /** Whether hybrid search is enabled. When false, keyword index is ignored. */
+  hybridEnabled?: boolean;
   queryPrefix?: string;
   explain?: boolean;
 }
@@ -55,7 +57,7 @@ export async function retrieve(
     const vectorResults = await store.search(embedding as number[], topK * FETCH_OVERFETCH_FACTOR);
 
     let keywordResults: SearchResult[] = [];
-    if (options.keywordIndex) {
+    if (options.keywordIndex && options.hybridEnabled !== false) {
       keywordResults = options.keywordIndex.search(query, topK * FETCH_OVERFETCH_FACTOR);
     }
 
@@ -79,6 +81,7 @@ export async function retrieve(
     }
 
     const kwTopScore = keywordResults.length > 0 ? keywordResults[0]!.score : 1;
+    const vTopScore = vectorResults.length > 0 ? vectorResults[0]!.score : 1;
 
     const combined = new Map<string, {
       chunk: SearchResult["chunk"];
@@ -120,10 +123,11 @@ export async function retrieve(
       .map((entry) => {
         const hasVector = entry.vScore > 0;
         const hasKeyword = entry.kScore > 0;
+        const normV = vTopScore > 0 ? entry.vScore / vTopScore : 0;
         const score = hasVector && hasKeyword
-          ? (1 - kw) * entry.vScore + kw * entry.kScore
+          ? (1 - kw) * normV + kw * entry.kScore
           : hasVector
-            ? entry.vScore
+            ? (1 - kw) * normV
             : entry.kScore * 0.9;
         const result: SearchResult = {
           chunk: entry.chunk,
@@ -133,7 +137,7 @@ export async function retrieve(
         if (options.explain) {
           const explanation: SearchExplanation = {
             scoreBreakdown: {
-              vectorScore: entry.vScore,
+              vectorScore: normV,
               keywordScore: entry.kScore,
               rawVectorScore: entry.rawVScore,
               rawKeywordScore: entry.rawKScore,

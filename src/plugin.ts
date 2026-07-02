@@ -328,10 +328,11 @@ async function retrieveContext(
   keywordIndex?: KeywordIndex,
   keywordWeight?: number,
   queryPrefix?: string,
-  explain = false
+  explain = false,
+  hybridEnabled?: boolean
 ): Promise<SearchResult[]> {
   if (query.trim().length === 0) return [];
-  return retrieveFn(query, embedder, store, { topK, minScore, keywordIndex, keywordWeight, queryPrefix, explain });
+  return retrieveFn(query, embedder, store, { topK, minScore, keywordIndex, keywordWeight, hybridEnabled, queryPrefix, explain });
 }
 
 /**
@@ -353,9 +354,10 @@ async function loadRetrievedResults(
 ): Promise<SearchResult[]> {
   const minScore = cfg.retrieval.minScore;
   const kw = cfg.retrieval.hybridSearch?.keywordWeight;
-  const primaryResults = await retrieveContext(query, embedder, store, topK, retrieveFn, minScore, keywordIndex, kw, queryPrefix, explain);
+  const hybridEnabled = cfg.retrieval.hybridSearch?.enabled;
+  const primaryResults = await retrieveContext(query, embedder, store, topK, retrieveFn, minScore, keywordIndex, kw, queryPrefix, explain, hybridEnabled);
   const extraResults = extraQuery
-    ? await retrieveContext(extraQuery, embedder, store, topK, retrieveFn, minScore, keywordIndex, kw, queryPrefix, explain)
+    ? await retrieveContext(extraQuery, embedder, store, topK, retrieveFn, minScore, keywordIndex, kw, queryPrefix, explain, hybridEnabled)
     : [];
 
   const optCfg = cfg.retrieval.contextOptimization ?? DEFAULT_CONTEXT_OPTIMIZATION;

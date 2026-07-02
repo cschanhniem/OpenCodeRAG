@@ -96,6 +96,7 @@ export async function search(
       minScore: options.minScore ?? ctx.config.retrieval.minScore,
       keywordIndex: ctx.keywordIndex,
       keywordWeight: options.keywordWeight ?? ctx.config.retrieval.hybridSearch?.keywordWeight ?? 0.4,
+      hybridEnabled: ctx.config.retrieval.hybridSearch?.enabled,
       queryPrefix: ctx.config.embedding.queryPrefix,
       explain: options.explain,
     } satisfies RetrieveOptions);

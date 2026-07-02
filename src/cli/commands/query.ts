@@ -59,6 +59,7 @@ export function registerQueryCommand(program: Command): void {
           minScore,
           keywordIndex,
           keywordWeight: hybridCfg?.keywordWeight,
+          hybridEnabled: hybridCfg?.enabled,
           queryPrefix: config.embedding.queryPrefix,
           explain: options.explain ?? false,
         });

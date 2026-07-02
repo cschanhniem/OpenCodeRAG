@@ -212,6 +212,49 @@ describe("retrieve", () => {
       const results = await retrieve("test", embedder, store, { keywordIndex: ki, minScore: 0.5 });
       assert.equal(results.length, 0);
     });
+
+    it("skips keyword search when hybridEnabled is false", async () => {
+      const embedder = makeEmbedder([[0.1, 0.2, 0.3]]);
+      const store = makeStore([
+        { score: 0.8, chunk: { id: "a", content: "apple banana", metadata: { filePath: "a.ts", startLine: 1, endLine: 2, language: "ts" } } },
+        { score: 0.5, chunk: { id: "b", content: "unrelated content", metadata: { filePath: "b.ts", startLine: 1, endLine: 2, language: "ts" } } },
+      ]);
+      const ki = makeKeywordIndex([
+        { score: 0, chunk: { id: "c", content: "apple banana cherry", metadata: { filePath: "c.ts", startLine: 1, endLine: 2, language: "ts" } } },
+      ]);
+      const results = await retrieve("apple banana", embedder, store, {
+        keywordIndex: ki,
+        keywordWeight: 0.4,
+        hybridEnabled: false,
+        minScore: 0,
+      });
+      // Only vector results returned, keyword chunk "c" is not in results
+      assert.equal(results.length, 2);
+      assert.ok(!results.some((r) => r.chunk.id === "c"));
+    });
+
+    it("normalizes vector scores in hybrid fusion", async () => {
+      const embedder = makeEmbedder([[0.1, 0.2, 0.3]]);
+      const store = makeStore([
+        { score: 0.8, chunk: { id: "a", content: "apple banana", metadata: { filePath: "a.ts", startLine: 1, endLine: 2, language: "ts" } } },
+        { score: 0.4, chunk: { id: "b", content: "apple", metadata: { filePath: "b.ts", startLine: 1, endLine: 2, language: "ts" } } },
+      ]);
+      const ki = makeKeywordIndex([
+        { score: 0, chunk: { id: "a", content: "apple banana", metadata: { filePath: "a.ts", startLine: 1, endLine: 2, language: "ts" } } },
+      ]);
+      const results = await retrieve("apple banana", embedder, store, {
+        keywordIndex: ki,
+        keywordWeight: 0.4,
+        minScore: 0,
+      });
+      assert.equal(results.length, 2);
+      // Chunk "a" is hybrid: (1-0.4)*normV + 0.4*kScore
+      // vTopScore = 0.8, normV(a) = 0.8/0.8 = 1.0, score = 0.6*1.0 + 0.4*kScore
+      // Chunk "b" is vector-only: (1-0.4)*normV(b) = 0.6*(0.4/0.8) = 0.3
+      const chunkA = results.find((r) => r.chunk.id === "a");
+      assert.notEqual(chunkA, undefined);
+      assert.ok(chunkA!.score > 0.3, "hybrid result should rank above vector-only");
+    });
   });
 
   describe("explain", () => {
@@ -272,7 +315,9 @@ describe("retrieve", () => {
       assert.notEqual(chunkA, undefined);
       const exp = chunkA!.explanation;
       assert.notEqual(exp, undefined);
-      assert.equal(exp!.scoreBreakdown.vectorScore, 0.8);
+      // vectorScore is now normalized by vTopScore (0.8/0.8 = 1.0)
+      assert.equal(exp!.scoreBreakdown.vectorScore, 1.0);
+      assert.equal(exp!.scoreBreakdown.rawVectorScore, 0.8);
       assert.equal(exp!.scoreBreakdown.keywordWeight, 0.4);
       assert.ok(typeof exp!.scoreBreakdown.keywordScore === "number");
       assert.ok(typeof exp!.scoreBreakdown.rawKeywordScore === "number");
