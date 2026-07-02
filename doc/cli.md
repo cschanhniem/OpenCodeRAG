@@ -179,38 +179,46 @@ opencode-rag clear [options]
 
 Uses `store.dropDatabase()` for a clean slate, also clears the keyword index and manifest.
 
-### `update`
+### `setup`
 
-Check for and install OpenCodeRAG updates from GitHub.
+Set up the OpenCodeRAG runtime at `~/.opencode/` so OpenCode can discover the plugin.
 
 ```bash
-opencode-rag update [options]
+opencode-rag setup [options]
 ```
 
 **Options:**
 | Flag | Default | Description |
 |---|---|---|
-| `--check` | `false` | Only check for updates, don't install |
-| `-y, --yes` | `false` | Skip confirmation prompt |
-| `-v, --verbose` | `false` | Show build/install output |
+| `--check` | `false` | Check whether the runtime is correctly installed |
+| `-f, --force` | `false` | Force re-setup even if up-to-date |
+| `--uninstall` | `false` | Remove the runtime and cleanup |
 
 **How it works:**
-1. Checks GitHub Releases API for the latest version
-2. Compares against the current `package.json` version
-3. If an update is available, prompts for confirmation (unless `--yes`)
-4. Runs `git pull`, `npm run build`, `npm pack`, and `npm install` to apply the update
-5. Preserves the vector index (`rag_db/`) across updates
+1. Detects the globally-installed package (`npm install -g opencode-rag-plugin`)
+2. Creates a junction/symlink at `~/.opencode/node_modules/opencode-rag-plugin` pointing to the global npm prefix
+3. Also links `@opencode-ai/plugin` for OpenCode compatibility
+4. Writes a version marker (`.bundle-version`)
+5. Verifies the installation
+
+No `npm install` into `~/.opencode/` is needed — the junction-links resolve transparently through Node.js.
+
+**Updating:** After `npm update -g opencode-rag-plugin`, run `opencode-rag setup` to sync the runtime.
 
 **Examples:**
 ```bash
-# Check for updates only
-opencode-rag update --check
+# Set up the runtime (after global install)
+opencode-rag setup
 
-# Install update with confirmation
-opencode-rag update
+# Re-sync after update
+npm update -g opencode-rag-plugin
+opencode-rag setup
 
-# Install update without confirmation
-opencode-rag update --yes
+# Check status only
+opencode-rag setup --check
+
+# Remove the runtime
+opencode-rag setup --uninstall
 ```
 
 ## Examples

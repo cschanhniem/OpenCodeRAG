@@ -7,9 +7,12 @@
 
 import type { Command } from "commander";
 import path from "node:path";
+import os from "node:os";
 import fs from "node:fs";
 import { c, resolveCliContext, cleanupContext, logCliError, logCliInfo, formatTimestamp } from "../format.js";
 import { getIndexStatusSummary } from "../../indexer.js";
+import { getPackageMetadata } from "../helpers.js";
+import { checkForUpdate } from "../../core/version-check.js";
 import type { CliOptions } from "../types.js";
 
 /**
@@ -131,6 +134,36 @@ export function registerStatusCommand(program: Command): void {
         if (summary.storeChunkCount > 0 && summary.manifestExpectedChunks > 0 && summary.storeChunkCount < summary.manifestExpectedChunks * 0.5) {
           logCliInfo(logFilePath, "status", `${c.label("Data loss detected:")} ${c.warn("yes")} — store has fewer chunks than expected. Run 'opencode-rag index' to rebuild.`);
         }
+
+        // Version & runtime status
+        const pkg = getPackageMetadata();
+        logCliInfo(logFilePath, "status", `${c.label("Plugin version:")}    ${c.value(pkg.version)}`);
+
+        const versionFilePath = path.join(os.homedir(), ".opencode", ".bundle-version");
+        const runtimeDir = path.join(os.homedir(), ".opencode", "node_modules", "opencode-rag-plugin", "dist");
+        const runtimeOk = fs.existsSync(runtimeDir);
+        if (!runtimeOk) {
+          logCliInfo(logFilePath, "status", `${c.label("Runtime:")}           ${c.warn("not set up — run `opencode-rag setup`")}`);
+        } else {
+          try {
+            const installedVersion = fs.readFileSync(versionFilePath, "utf-8").trim();
+            if (installedVersion !== pkg.version) {
+              logCliInfo(logFilePath, "status", `${c.label("Runtime version:")}   ${c.warn(installedVersion)} ${c.dim("(sync with `opencode-rag setup`)")}`);
+            } else {
+              logCliInfo(logFilePath, "status", `${c.label("Runtime:")}           ${c.success("up-to-date")}`);
+            }
+          } catch {
+            logCliInfo(logFilePath, "status", `${c.label("Runtime:")}           ${c.warn("version unknown — run `opencode-rag setup`")}`);
+          }
+        }
+
+        // Async GitHub update check (fire-and-forget, 5s timeout)
+        checkForUpdate(pkg.version).then((info) => {
+          if (info.updateAvailable) {
+            process.stdout.write(`  ${c.label("Update:")}            ${c.warn(`v${info.latestVersion} available — npm update -g opencode-rag-plugin`)}\n`);
+          }
+        }).catch(() => { /* ignore network errors */ });
+
         await cleanupContext(ctx);
       } catch (err) {
         const message = (err as Error).message || String(err);

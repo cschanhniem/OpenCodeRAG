@@ -23,7 +23,7 @@
 - [x] Image description via vision LLMs — `describe_image` tool in OpenCode plugin, MCP server, and CLI; 4 vision providers (Ollama, OpenAI, Anthropic, Gemini); image resizing via sharp; image chunking with searchable vector chunks
 - [x] Evaluation framework — session event capture, token usage analysis, RAG impact measurement, cross-session comparison (`eval:sessions`, `eval:analyze`, `eval:compare` commands)
 - [x] Multi-provider description generation — Anthropic Claude, Google Gemini, and OpenAI-compatible providers with batch description support
-- [x] Self-updater — check/install updates from GitHub Releases (`opencode-rag update`)
+- [x] Self-updater via npm — check/install updates via `npm update -g opencode-rag-plugin`
 - [x] Provider health checking — validates all configured providers (embedding, description, image_description) at startup
 - [x] Enhanced CLI — 16 commands: `index`, `query`, `show`, `dump`, `status`, `init`, `clear`, `list`, `eval`, `describe-image`, `mcp`, `ui`, `update`, plus progress tracking
 - [x] Pluggable chunker loading — dynamic import of custom chunker modules from config

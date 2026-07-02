@@ -42,6 +42,8 @@ export interface WorkerResult {
   hadChunks: boolean;
   /** Whether description generation failed for this file. */
   descriptionFailed?: boolean;
+  /** Hash of the description config used when generating descriptions for this file. */
+  descHash?: string;
 }
 
 /** Intermediate result after chunking a file but before embedding/storing. */
@@ -70,6 +72,8 @@ export interface PreparedFile {
   docPrefix?: string;
   /** Whether the source file is an image. */
   isImageFile?: boolean;
+  /** Hash of the description config used when generating descriptions. */
+  descHash?: string;
 }
 
 /**
@@ -117,6 +121,7 @@ interface ManifestFile {
   hash: string;
   chunkCount: number;
   indexedAt?: number;
+  descHash?: string;
 }
 
 /**
@@ -134,6 +139,10 @@ interface ManifestFile {
  * @param deferDescriptions   - When true, skip description generation and build
  *                              fallback descriptions instead; descriptions are
  *                              expected to be generated in a later global pass.
+ * @param descHash            - Hash of the current description config. When the file
+ *                              is unchanged and `previous.descHash === descHash`,
+ *                              descriptions are skipped entirely (they already exist
+ *                              in the vector store from a prior run).
  * @returns A prepared file descriptor ready for embedding and storage.
  */
 export async function prepareFile(
@@ -144,11 +153,13 @@ export async function prepareFile(
     embedding: { documentPrefix?: string };
     chunking?: { nodeTypes?: Record<string, string[]> };
     description?: { maxContentChars?: number };
+    indexing?: { maxSvgSizeBytes?: number };
   },
   keywordIndex: KeywordIndex | undefined,
   descriptionProvider: DescriptionProvider | undefined,
   logger: Logger,
   deferDescriptions?: boolean,
+  descHash?: string,
 ): Promise<PreparedFile> {
   const fileLabel = path.relative(cwd, file.filePath).replace(/\\/g, "/");
 
@@ -175,14 +186,18 @@ export async function prepareFile(
   }
 
   if (previous && previous.hash === file.hash) {
-    return {
-      normalizedPath: file.normalizedPath, hash: file.hash, fileLabel,
-      isModified: false,
-      earlyResult: {
-        normalizedPath: file.normalizedPath, hash: file.hash, chunkCount: 0, fileLabel,
-        isNew: false, isModified: false, isUnchanged: true, isEmpty: false, isTooSmall: false, isRemoved: false, hadChunks: false,
-      },
-    };
+    if (!descHash || previous.descHash === descHash) {
+      return {
+        normalizedPath: file.normalizedPath, hash: file.hash, fileLabel,
+        isModified: false,
+        earlyResult: {
+          normalizedPath: file.normalizedPath, hash: file.hash, chunkCount: 0, fileLabel,
+          isNew: false, isModified: false, isUnchanged: true, isEmpty: false, isTooSmall: false, isRemoved: false, hadChunks: false,
+        },
+      };
+    }
+    // File content is unchanged but description config changed — fall through to re-describe
+    logger.debug(`  ${fileLabel} (unchanged but descHash differs — re-describing)`);
   }
 
   const isModified = !!previous;
@@ -202,7 +217,9 @@ export async function prepareFile(
       },
     }];
   } else {
-    chunks = await chunkFile(file.filePath, file.content, config.chunking?.nodeTypes).catch((err) => {
+    chunks = await chunkFile(file.filePath, file.content, config.chunking?.nodeTypes, {
+      maxSvgSizeBytes: config.indexing?.maxSvgSizeBytes,
+    }).catch((err) => {
       logger.warn(`  ${fileLabel} (chunking failed: ${(err as Error).message})`);
       return null;
     });
@@ -255,6 +272,7 @@ export async function prepareFile(
       metaHeader,
       docPrefix,
       isImageFile: isImage,
+      descHash,
     };
   }
 
@@ -292,6 +310,7 @@ export async function prepareFile(
     chunks,
     textToEmbed,
     descriptionFailed,
+    descHash,
   };
 }
 
@@ -346,6 +365,7 @@ export async function storeFileChunks(
     isRemoved: false,
     hadChunks: prep.chunks.length > 0,
     descriptionFailed: prep.descriptionFailed,
+    descHash: prep.descHash,
   };
 }
 
@@ -371,7 +391,7 @@ export async function processFile(
   previous: ManifestFile | undefined,
   config: {
     embedding: { documentPrefix?: string };
-    indexing: { embedBatchSize: number; embedConcurrency?: number };
+    indexing: { embedBatchSize: number; embedConcurrency?: number; maxSvgSizeBytes?: number };
     chunking?: { nodeTypes?: Record<string, string[]> };
     description?: { maxContentChars?: number };
   },
@@ -380,8 +400,9 @@ export async function processFile(
   embedder: EmbeddingProvider,
   descriptionProvider: DescriptionProvider | undefined,
   logger: Logger,
+  descHash?: string,
 ): Promise<WorkerResult> {
-  const prep = await prepareFile(file, cwd, previous, config, keywordIndex, descriptionProvider, logger);
+  const prep = await prepareFile(file, cwd, previous, config, keywordIndex, descriptionProvider, logger, false, descHash);
 
   if (prep.earlyResult) {
     if ((prep.earlyResult.isEmpty || prep.earlyResult.isTooSmall) && prep.earlyResult.isRemoved) {

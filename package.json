@@ -38,6 +38,7 @@
   "files": [
     "dist",
     "wasm",
+    "scripts/postinstall-setup.js",
     "README.md",
     "LICENSE"
   ],
@@ -47,11 +48,12 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "build:ui": "node scripts/build-ui-css.js",
-    "postbuild": "node -e \"const fs=require('fs'),path=require('path');fs.mkdirSync('dist/types',{recursive:true});fs.copyFileSync('src/types/opencode-plugin.d.ts','dist/types/opencode-plugin.d.ts');const uiDir=path.join('dist','web','ui');fs.mkdirSync(uiDir,{recursive:true});fs.copyFileSync('src/web/ui/index.html',path.join(uiDir,'index.html'));['app.css','github-dark.css','highlight.min.js'].forEach(f=>{const src=path.join('src/web/ui',f);if(fs.existsSync(src))fs.copyFileSync(src,path.join(uiDir,f));});\"",
+    "postinstall": "node scripts/postinstall-setup.js",
+    "postbuild": "node scripts/postbuild.js",
     "prepublishOnly": "npm run build",
     "typecheck": "tsc --noEmit",
-    "test": "node -e \"const {spawnSync}=require('node:child_process');const {globSync}=require('node:fs');const testFiles=globSync('src/**/*.test.ts').filter(f=>!f.includes('integration.test.ts')&&f!=='src/__tests__/plugin.test.ts'&&f!=='src/__tests__/watcher/integration.test.ts');if(testFiles.length===0){console.log('No test files found under src; skipping npm test.');process.exit(0);}const result=spawnSync(process.execPath,['--import','tsx','--test','--test-force-exit',...testFiles],{stdio:'inherit'});process.exit(typeof result.status==='number'?result.status:1);\"",
-    "test:integration": "node -e \"const {spawnSync}=require('node:child_process');const testFiles=['src/__tests__/integration.test.ts','src/__tests__/plugin.test.ts','src/__tests__/watcher/integration.test.ts'];const result=spawnSync(process.execPath,['--import','tsx','--test','--test-force-exit',...testFiles],{stdio:'inherit'});process.exit(typeof result.status==='number'?result.status:1);\"",
+    "test": "node -e \"const {spawnSync}=require('node:child_process');const {globSync}=require('node:fs');const testFiles=globSync('src/**/*.test.ts').filter(f=>!f.includes('integration.test.ts')&&f!=='src/__tests__/plugin.test.ts'&&f!=='src/__tests__/watcher/integration.test.ts');if(testFiles.length===0){console.log('No test files found under src; skipping npm test.');process.exit(0);}const result=spawnSync(process.execPath,['--import','tsx','--test',...testFiles],{stdio:'inherit'});process.exit(typeof result.status==='number'?result.status:1);\"",
+    "test:integration": "node -e \"const {spawnSync}=require('node:child_process');const testFiles=['src/__tests__/integration.test.ts','src/__tests__/plugin.test.ts','src/__tests__/watcher/integration.test.ts'];const result=spawnSync(process.execPath,['--import','tsx','--test',...testFiles],{stdio:'inherit'});process.exit(typeof result.status==='number'?result.status:1);\"",
     "cli": "tsx src/cli/index.ts",
     "release:patch": "node ./scripts/release-patch.js",
     "release:minor": "node ./scripts/release-minor.js"

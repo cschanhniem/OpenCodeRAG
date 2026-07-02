@@ -12,6 +12,7 @@ import {
   runIndexPass,
 } from "../../indexer.js";
 import type { Chunk, DescriptionProvider, EmbeddingProvider } from "../../core/interfaces.js";
+import type { ImageVisionProvider } from "../../chunker/image.js";
 import { LanceDbStore } from "../../vectorstore/lancedb.js";
 
 class TestEmbedder implements EmbeddingProvider {
@@ -565,6 +566,61 @@ describe("indexer", () => {
       assert.equal(entry.descriptionFailed, true);
     });
 
+    it("skips description generation for unchanged files with matching descHash", async () => {
+      await writeFile(path.join(workspaceDir, "src", "skip.ts"), "function skipDesc() { return 1; }\n");
+
+      let descCallCount = 0;
+      const descProvider: DescriptionProvider = {
+        async generateDescription(): Promise<string> {
+          descCallCount++;
+          return "A skip function.";
+        },
+        async generateBatchDescriptions(chunks: Chunk[]): Promise<Map<string, string>> {
+          descCallCount += chunks.length;
+          const result = new Map<string, string>();
+          for (const chunk of chunks) {
+            result.set(chunk.id, "A skip function.");
+          }
+          return result;
+        },
+      };
+
+      // First pass: file is new, descriptions should be generated
+      await runIndexPass({
+        cwd: workspaceDir,
+        storePath: storeDir,
+        config: testConfig(),
+        store,
+        embedder,
+        descriptionProvider: descProvider,
+      });
+      assert.ok(descCallCount > 0, "Descriptions should have been generated on first pass");
+
+      // Check that descHash is stored in the manifest
+      const manifestAfterFirst = await loadManifest(storeDir);
+      const filePath = normalizeFilePath(path.join(workspaceDir, "src", "skip.ts"));
+      const entry = manifestAfterFirst.manifest.files[filePath];
+      assert.ok(entry, "File should be in manifest");
+      assert.ok(entry.descHash, "descHash should be stored in manifest");
+
+      // Record the call count so far
+      const callsBeforeSecondPass = descCallCount;
+
+      // Second pass: file content is unchanged, descriptions should be skipped
+      const stats = await runIndexPass({
+        cwd: workspaceDir,
+        storePath: storeDir,
+        config: testConfig(),
+        store,
+        embedder,
+        descriptionProvider: descProvider,
+      });
+
+      assert.equal(stats.unchangedFiles, 1);
+      // descCallCount should not have increased
+      assert.equal(descCallCount, callsBeforeSecondPass, "Descriptions should not be re-generated for unchanged file");
+    });
+
     it("reindexes description-failed files on the next run", async () => {
       const filePath = path.join(workspaceDir, "src", "retry.ts");
       await writeFile(filePath, "function retry() { return 1; }\n");
@@ -624,5 +680,70 @@ describe("indexer", () => {
       assert.ok(entry);
       assert.notEqual(entry.descriptionFailed, true);
     });
+  });
+
+  it("reuses cached image description after Ctrl+C — vision LLM call is not repeated", async () => {
+    const imgDir = path.join(workspaceDir, "assets");
+    await fs.mkdir(imgDir, { recursive: true });
+    const imgPath = path.join(imgDir, "screenshot.png");
+    await fs.writeFile(imgPath, "fake-png-content");
+
+    let visionCallCount = 0;
+    const mockVisionProvider: ImageVisionProvider = {
+      async describeImage(): Promise<string> {
+        visionCallCount++;
+        return "a blue login screen with email and password fields";
+      },
+    };
+
+    const imgConfig: RagConfig = {
+      ...testConfig(),
+      indexing: {
+        ...testConfig().indexing,
+        includeExtensions: [".png", ".ts"],
+      },
+      imageDescription: {
+        enabled: true,
+        provider: "ollama",
+        model: "minicpm-v4.6",
+        baseUrl: "http://127.0.0.1:11434/api",
+        timeoutMs: 60000,
+        prompt: "Describe this image 10-20 comma-separated keywords.",
+      },
+    };
+
+    const abortController = new AbortController();
+    abortController.abort();
+
+    await runIndexPass({
+      cwd: workspaceDir,
+      storePath: storeDir,
+      config: imgConfig,
+      store,
+      embedder,
+      abortSignal: abortController.signal,
+      imageVisionProvider: mockVisionProvider,
+    });
+
+    const manifestAfterAbort = await loadManifest(storeDir);
+    assert.equal(Object.keys(manifestAfterAbort.manifest.files).length, 0,
+      "No manifest entries after aborted pass — nothing was stored");
+
+    assert.equal(visionCallCount, 1, "Vision LLM should have been called once during scan");
+
+    await runIndexPass({
+      cwd: workspaceDir,
+      storePath: storeDir,
+      config: imgConfig,
+      store,
+      embedder,
+      imageVisionProvider: mockVisionProvider,
+    });
+
+    // After the fix: image description is persisted to the description cache,
+    // so the second run reuses the cached description without calling vision again.
+    assert.equal(visionCallCount, 1,
+      "Image description should be reused from cache — vision LLM should " +
+      "NOT be called again on the second run after Ctrl+C");
   });
 });

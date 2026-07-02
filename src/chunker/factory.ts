@@ -203,6 +203,20 @@ function splitOversized(chunks: Chunk[], filePath: string): Chunk[] {
   return result;
 }
 
+/** Apply config overrides to a chunker before it's used. */
+function applyChunkerConfig(
+  chunker: Chunker,
+  _filePath: string,
+  options?: { maxSvgSizeBytes?: number },
+): void {
+  if (options?.maxSvgSizeBytes && chunker instanceof TreeSitterChunker) {
+    const ext = _filePath.toLowerCase();
+    if (ext.endsWith(".svg") || ext.endsWith(".xml") || ext.endsWith(".csproj")) {
+      chunker.maxContentBytes = options.maxSvgSizeBytes;
+    }
+  }
+}
+
 /**
  * Chunk a file by looking up its registered chunker, applying node-type
  * overrides if provided, and splitting oversized chunks to stay within
@@ -212,12 +226,14 @@ function splitOversized(chunks: Chunk[], filePath: string): Chunk[] {
  * @param content - The full text content of the file.
  * @param nodeTypesOverrides - Optional language-specific node type overrides
  *   for tree-sitter based chunkers.
+ * @param options - Optional chunking options (maxSvgSizeBytes, etc.).
  * @returns An array of chunks for the file.
  */
 export async function chunkFile(
   filePath: string,
   content: string,
-  nodeTypesOverrides?: Record<string, string[]>
+  nodeTypesOverrides?: Record<string, string[]>,
+  options?: { maxSvgSizeBytes?: number },
 ): Promise<Chunk[]> {
   let chunker = getChunker(filePath);
 
@@ -227,6 +243,8 @@ export async function chunkFile(
       chunker = chunker.withNodeTypes(new Set(overrideTypes));
     }
   }
+
+  applyChunkerConfig(chunker, filePath, options);
 
   const chunks = await chunker.chunk(filePath, content);
 

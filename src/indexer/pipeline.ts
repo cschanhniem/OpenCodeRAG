@@ -6,7 +6,8 @@ import path from "node:path";
 import pLimit from "p-limit";
 import { scanWorkspaceFiles } from "../content/reader.js";
 import type { RagConfig } from "../core/config.js";
-import { loadManifest, saveManifest, normalizeFilePath } from "../core/manifest.js";
+import { loadManifest, saveManifest, normalizeFilePath, computeDescriptionConfigHash } from "../core/manifest.js";
+import { DescriptionCache } from "../core/desc-cache.js";
 import type {
   Chunk,
   DescriptionProvider,
@@ -15,6 +16,7 @@ import type {
   KeywordIndex,
   VectorStore,
 } from "../core/interfaces.js";
+import type { ImageVisionProvider } from "../chunker/image.js";
 import { embedBatch } from "../embedder/factory.js";
 import { createVectorStore } from "../vectorstore/factory.js";
 import { swapStoreDirectories } from "../vectorstore/lancedb.js";
@@ -62,6 +64,11 @@ export interface RunIndexPassOptions {
    * entries are removed from the index without comparing against the scanned set.
    */
   deletedPaths?: string[];
+  /**
+   * Optional injected image vision provider for testing. When omitted, the
+   * provider is created from the imageDescription config as usual.
+   */
+  imageVisionProvider?: ImageVisionProvider;
 }
 
 /** Minimal logger interface for indexing pipeline diagnostics. */
@@ -156,6 +163,12 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
     logger.debug("Force mode: ignoring manifest");
   }
 
+  // Compute a hash of the current description config — used to skip re-description
+  // when neither the file content nor the description config has changed.
+  const descHash = options.descriptionProvider
+    ? computeDescriptionConfigHash(options.config)
+    : undefined;
+
   // Clear files that had description failures so they are fully re-indexed
   const descFailedPaths = Object.keys(manifest.files).filter(
     (p) => manifest.files[p]?.descriptionFailed,
@@ -166,6 +179,41 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
       delete manifest.files[p];
     }
   }
+
+  // Persistent description cache — survives aborted runs so that descriptions
+  // generated before an abort are reused on the next run.
+  const descCachePath = options.storePath;
+  const descCache = new DescriptionCache(descCachePath);
+  await descCache.load();
+
+  // Resume-on-interrupt: detect manifest entries that are inconsistent with
+  // the vector store (e.g. indexing was aborted before all chunks were stored,
+  // or a full rebuild was aborted leaving a stale manifest pointing to old data).
+  // These entries are removed so they will be re-processed in this pass.
+  if (!options.force && manifestStatus === "ok" && Object.keys(manifest.files).length > 0) {
+    try {
+      const storedPaths = await options.store.getFilePaths();
+      const storedSet = new Set(storedPaths);
+      let removedCount = 0;
+      for (const [p, entry] of Object.entries(manifest.files)) {
+        // Path missing from store entirely (aborted before store finished)
+        if (entry.chunkCount > 0 && !storedSet.has(p)) {
+          delete manifest.files[p];
+          removedCount++;
+        }
+      }
+      if (removedCount > 0) {
+        logger.info(`  ${removedCount} file(s) in manifest but missing from store — re-indexing (resume after interruption)`);
+      }
+    } catch {
+      logger.debug("  Could not check store paths for resume — proceeding without");
+    }
+  }
+
+  // Clear files where the stored descHash doesn't match current descHash and the
+  // file content IS different — these would be caught by hash comparison below but
+  // this pre-clear ensures the description cache is consulted during re-description.
+  // (Files with same hash but different descHash already fall through in prepareFile.)
 
   let filterPaths: string[] | undefined;
   let gitDeletedPaths: string[] = [];
@@ -193,6 +241,8 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
     logger,
     options.force ? undefined : manifest,
     filterPaths,
+    options.imageVisionProvider,
+    descCache,
   );
 
   const scanSec = ((Date.now() - scanStart) / 1000).toFixed(1);
@@ -328,6 +378,7 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
           options.descriptionProvider,
           logger,
           deferDescriptions,
+          descHash,
         );
 
         if (prep.earlyResult && isActive) {
@@ -366,7 +417,54 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
         options.progress?.finishStage(prep.fileLabel);
       }
 
-      if (allChunks.length > 0) {
+      if (allChunks.length > 0 && descHash) {
+        // Check description cache first — reuse cached descriptions for unchanged chunks
+        const cacheHits: Array<{ chunk: Chunk; desc: string }> = [];
+        const cacheMisses: Chunk[] = [];
+        for (const chunk of allChunks) {
+          const cacheKey = DescriptionCache.codeKey(chunk.content, descHash);
+          const cached = descCache.get(cacheKey);
+          if (cached) {
+            cacheHits.push({ chunk, desc: cached });
+          } else {
+            cacheMisses.push(chunk);
+          }
+        }
+
+        if (cacheHits.length > 0) {
+          logger.debug(`  Using ${cacheHits.length} cached descriptions`);
+          for (const { chunk, desc } of cacheHits) {
+            chunk.description = desc;
+          }
+        }
+
+        if (cacheMisses.length > 0) {
+          try {
+            const batchResult = await options.descriptionProvider!.generateBatchDescriptions(cacheMisses, logger);
+            const newCacheEntries: Array<[string, string]> = [];
+            for (const chunk of cacheMisses) {
+              const desc = batchResult.get(chunk.id);
+              if (desc && desc.trim().length > 0) {
+                chunk.description = desc;
+                const cacheKey = DescriptionCache.codeKey(chunk.content, descHash);
+                newCacheEntries.push([cacheKey, desc]);
+              }
+            }
+            if (newCacheEntries.length > 0) {
+              descCache.setMany(newCacheEntries);
+              await descCache.save();
+            }
+          } catch (err) {
+            logger.warn(`  Global description generation failed: ${(err as Error).message}`);
+            for (const prep of deferredPreps) {
+              if (prep.chunks!.some((c) => c.metadata.contentType !== "image")) {
+                prep.descriptionFailed = true;
+              }
+            }
+          }
+        }
+      } else if (allChunks.length > 0) {
+        // No descHash available (no description provider) — still generate descriptions
         try {
           const batchResult = await options.descriptionProvider!.generateBatchDescriptions(allChunks, logger);
           for (const chunk of allChunks) {
@@ -410,10 +508,13 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
   // Serialised manifest-save queue — prevents concurrent write races and acts
   // as a checkpoint for Ctrl+C resilience.  Each worker appends to this chain
   // after a successful store, so previously completed files are never lost.
+  // During a temp-store rebuild, saves go to the temp path so the real
+  // manifest stays consistent with the real store if the process is aborted.
+  const manifestTargetPath = (): string => tempStorePath ?? options.storePath;
   let manifestSaveChain = Promise.resolve<void>(undefined);
   function enqueueManifestSave(): void {
     manifestSaveChain = manifestSaveChain.then(() =>
-      saveManifest(options.storePath, manifest),
+      saveManifest(manifestTargetPath(), manifest),
     );
   }
 
@@ -483,7 +584,15 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
         // ── Update manifest in-memory and enqueue an atomic save ──
         if (result.chunkCount > 0 && !result.isRemoved) {
           const meta = fileMeta.get(result.normalizedPath);
-          manifest.files[result.normalizedPath] = {
+          const entry: {
+            hash: string;
+            chunkCount: number;
+            indexedAt: number;
+            mtime?: number;
+            size?: number;
+            descriptionFailed?: boolean;
+            descHash?: string;
+          } = {
             hash: result.hash,
             chunkCount: result.chunkCount,
             indexedAt: Date.now(),
@@ -491,6 +600,10 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
             size: meta?.size,
             descriptionFailed: result.descriptionFailed,
           };
+          if (result.descHash) {
+            entry.descHash = result.descHash;
+          }
+          manifest.files[result.normalizedPath] = entry as import("../core/manifest.js").ManifestEntry;
           enqueueManifestSave();
         } else if (result.isRemoved) {
           delete manifest.files[result.normalizedPath];
@@ -550,10 +663,17 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
         try { await fs.rm(tempStorePath, { recursive: true, force: true }); } catch {}
       }
     } else {
-      // Aborted — discard temp, keep original data intact
+      // Aborted — discard temp, keep original data intact.
+      // Do NOT save the manifest to the real path — the in-memory manifest
+      // was cleared at rebuild start and only partially rebuilt.  The old
+      // manifest on disk (at the real path) is still consistent with the
+      // old store data.
       effectiveStore.close().catch(() => {});
       try { await fs.rm(tempStorePath, { recursive: true, force: true }); } catch {}
       logger.debug("Index pass cancelled; discarded temporary store.");
+      // Skip final manifest/keyword save since we want the old state preserved
+      await descCache.save();
+      return stats;
     }
   }
 
@@ -561,6 +681,9 @@ async function runIndexPassInner(options: RunIndexPassOptions, logger: Logger): 
   // a successful swap this points to the new data; after an abort it's the old).
   await saveManifest(options.storePath, manifest);
   await options.keywordIndex?.save(options.storePath);
+
+  // Persist description cache
+  await descCache.save();
 
   // Count from the store — after a successful swap, the original handle has
   // been reopened pointing to the new directory.

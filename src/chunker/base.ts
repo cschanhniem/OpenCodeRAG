@@ -15,8 +15,13 @@ export abstract class TreeSitterChunker implements Chunker {
 
   readonly wasmFilePath?: string;
 
-  private parser: Parser | null = null;
-  private parserPromise: Promise<Parser> | undefined;
+  /**
+   * Maximum content length in bytes before chunking is skipped.
+   * Tree-sitter can hang on very large files (especially SVGs).
+   * Set to 0 or negative for no limit.
+   * @default 0 (no limit)
+   */
+  maxContentBytes = 0;
 
   withNodeTypes(types: Set<string>): Chunker {
     const original = this;
@@ -25,10 +30,15 @@ export abstract class TreeSitterChunker implements Chunker {
       get fileExtensions() { return original.fileExtensions; },
       async chunk(filePath: string, content: string): Promise<Chunk[]> {
         if (content.trim().length === 0) return [];
-        const parser = await original.getParser();
+        if (original.maxContentBytes > 0 && Buffer.byteLength(content, "utf-8") > original.maxContentBytes) {
+          throw new Error(`File exceeds ${original.maxContentBytes} byte limit for ${original.language} chunker`);
+        }
+        const parser = await original._createParser();
         const tree = parser.parse(content);
-        if (!tree) return [];
+        if (!tree) { parser.delete(); return []; }
         const nodes = walkTree(tree.rootNode, types, content);
+        tree.delete();
+        parser.delete();
         return nodes.map((node: AstNode) => ({
           id: uuid(),
           content: node.text,
@@ -44,32 +54,29 @@ export abstract class TreeSitterChunker implements Chunker {
     };
   }
 
-  private getParser(): Promise<Parser> {
-    if (this.parser) return Promise.resolve(this.parser);
-    if (!this.parserPromise) {
-      this.parserPromise = (async () => {
-        const lang = this.wasmFilePath
-          ? await loadLanguageFromPath(this.grammarName, this.wasmFilePath)
-          : await loadLanguage(this.grammarName);
-        const parser = new Parser();
-        parser.setLanguage(lang);
-        this.parser = parser;
-        this.parserPromise = undefined;
-        return parser;
-      })();
-    }
-    return this.parserPromise;
+  private async _createParser(): Promise<Parser> {
+    const lang = this.wasmFilePath
+      ? await loadLanguageFromPath(this.grammarName, this.wasmFilePath)
+      : await loadLanguage(this.grammarName);
+    const parser = new Parser();
+    parser.setLanguage(lang);
+    return parser;
   }
 
   async chunk(filePath: string, content: string): Promise<Chunk[]> {
     if (content.trim().length === 0) return [];
 
-    const parser = await this.getParser();
+    if (this.maxContentBytes > 0 && Buffer.byteLength(content, "utf-8") > this.maxContentBytes) {
+      throw new Error(`File exceeds ${this.maxContentBytes} byte limit for ${this.language} chunker`);
+    }
+
+    const parser = await this._createParser();
     const tree = parser.parse(content);
-    if (!tree) return [];
+    if (!tree) { parser.delete(); return []; }
 
     const nodes = walkTree(tree.rootNode, this.nodeTypes, content);
-
+    tree.delete();
+    parser.delete();
     return nodes.map((node: AstNode) => ({
       id: uuid(),
       content: node.text,

@@ -95,6 +95,8 @@ export interface EmbeddingProvider {
 
 /** In-memory TF-IDF inverted index for keyword-based search alongside vector search. */
 export interface KeywordIndex {
+  /** Release resources and free memory. */
+  close(): void;
   /** Index a set of chunks by tokenizing their content. */
   addChunks(chunks: Chunk[]): void;
   /** Remove all entries for a given file path from the index. */
@@ -123,6 +125,8 @@ export interface VectorStore {
   clear(): Promise<void>;
   /** Delete all chunks associated with a specific file path. */
   deleteByFilePath(filePath: string): Promise<void>;
+  /** Return all unique file paths currently stored in the index. */
+  getFilePaths(): Promise<string[]>;
   /** Release any held resources and close the store. */
   close(): Promise<void>;
 }

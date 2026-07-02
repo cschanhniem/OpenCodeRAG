@@ -63,6 +63,7 @@ function makeEmptyStore(): VectorStore {
     clear: async () => {},
     deleteByFilePath: async () => {},
     close: async () => {},
+    getFilePaths: async () => [],
   };
 }
 
@@ -74,6 +75,7 @@ function makeStore(count: number, searchResults: SearchResult[]): VectorStore {
     clear: async () => {},
     deleteByFilePath: async () => {},
     close: async () => {},
+    getFilePaths: async () => [],
   };
 }
 
@@ -109,6 +111,7 @@ function makeKeywordIndex(results: SearchResult[]): KeywordIndex {
     clear: () => {},
     count: () => results.length,
     save: async () => {},
+    close: () => {},
     getMatchedTerms: (_query: string, _chunkId: string) => [],
   };
 }

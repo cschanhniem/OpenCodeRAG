@@ -29,7 +29,7 @@ import {
   logIndexSummary,
   formatDuration,
 } from "../format.js";
-import { TerminalProgressTable } from "../progress.js";
+import { LineProgressReporter } from "../progress.js";
 import type { CliOptions } from "../types.js";
 
 /**
@@ -120,7 +120,7 @@ export function registerIndexCommand(program: Command): void {
         }
 
         logCliInfo(logFilePath, "index", `${c.label("Scanning:")} ${c.file(cwd)}`);
-        const progress = new TerminalProgressTable(process.stdout);
+        const progress = new LineProgressReporter(process.stdout);
         const runPass = async (
           watchTriggered: boolean = false,
           abortSignal?: AbortSignal,

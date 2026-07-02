@@ -1,64 +1,51 @@
 ---
 name: opencode-rag
-description: Semantic code & image retrieval via OpenCodeRAG — vector search, file skeletons, symbol usage lookup, and image description lookup for this workspace
+description: Local-first RAG plugin for semantic code search — tree-sitter chunking, LanceDB, hybrid retrieval
 ---
 
-## OpenCodeRAG Tools
+## Code Navigation
 
-This workspace has OpenCodeRAG indexed for semantic code and image search. Use these tools BEFORE planning, editing, or answering code questions.
+ALWAYS use OpenCodeRAG tools before reading or editing:
+- **Search first** — `search_semantic(query)` instead of grep/glob
+- **Skeleton before read** — `get_file_skeleton(filePath)` then read specific lines
+- **Usages before edit** — `find_usages(symbolName)` before modifying any symbol
+- **Images via describe** — `describe_image(filePath)` — never read raw bytes
 
-### Decision tree — ALWAYS follow this order
+If no results, run `opencode-rag index`.
 
-1. User mentions code behavior/architecture → `search_semantic(query)`
-2. User mentions a file path → `get_file_skeleton(filePath)` THEN `read` on specific lines
-3. User mentions a function/class/variable to edit → `find_usages(symbolName)` THEN `search_semantic` THEN `edit`
-4. User asks a code question → `search_semantic` to gather context before answering
-5. User asks about an image or visual asset → `describe_image(filePath)` to retrieve its generated description, then optionally `search_semantic` for related code
+## Architecture
 
-### When to use each tool
+Entry points: `src/index.ts` (library), `src/plugin-entry.ts` (OpenCode plugin), `src/cli.ts` (CLI), `src/tui.ts` (TUI), `src/web/server.ts` (Web UI).
 
-| Tool | Use when | Example |
-|------|----------|---------|
-| `search_semantic` | Any code search — find relevant code by meaning or keyword | `"authentication middleware"` |
-| `get_file_skeleton` | You have a file path but need to orient before reading | `"src/plugin.ts"` |
-| `find_usages` | Before editing any function, class, or variable — check all call sites | `"createRagHooks"` |
-| `describe_image` | When the user refers to an image or asks "what's in this screenshot/diagram?" | `"assets/login-screen.png"` |
+Core modules: `src/core/` (config, interfaces, manifest), `src/chunker/` (AST chunking), `src/embedder/` (Ollama/OpenAI/Cohere), `src/describer/` (LLM descriptions), `src/retriever/` (vector + keyword hybrid), `src/vectorstore/` (LanceDB), `src/opencode/` (plugin integration).
 
-### Workflow
+Full architecture: [doc/architecture.md](doc/architecture.md).
 
-1. **Skeleton first** — call `get_file_skeleton(filePath)` to see structure
-2. **Find usages** — call `find_usages(symbolName)` before modifying any symbol
-3. **Search** — call `search_semantic(query)` to find relevant code
-4. **Describe images** — call `describe_image(filePath)` when context involves an image file
-5. **Read** — use the `read` tool on specific line ranges identified above
-6. **Edit** — now you have full context to make safe changes
+## Known Gotchas
 
-### Anti-patterns — NEVER do these
+- **npm install**: use `--legacy-peer-deps` (LanceDB peer dep conflicts)
+- **LanceDB types**: cast through `unknown` — `rows as unknown as Record<string, unknown>[]`
+- **tree-sitter**: WASM-only (no native). `Parser` is a class, `Language` is top-level, use `Node` not `SyntaxNode`
+- **Plugin types**: `@opencode-ai/plugin` lives in `.opencode/node_modules/`, declared locally in `src/types/opencode-plugin.d.ts`
+- **Config loading**: `loadConfig()` deep-merges per section (not recursive). CLI auto-detects `./opencode-rag.json` and `./.opencode/rag.json`
+- **Ollama responses**: may return `{ embedding: number[] }` or `{ embeddings: number[][] }` — both accepted
 
-- Reading full files without calling `get_file_skeleton` first (wastes tokens)
-- Editing a function without calling `find_usages` first (breaks call sites)
-- Answering code questions without calling `search_semantic` first (you guess at behavior)
-- Using `grep`/`glob` when `search_semantic` would find the answer faster
-- Treating image files as text — use `describe_image` instead of reading raw bytes
+## Resource Lifecycle
 
-### Parameters
+Every `new`/`create`/`open` MUST have a matching `close()`/`destroy()`/`cancel()`:
+- Use `try/finally` for cleanup (see `src/api.ts` for the pattern)
+- Signal handlers: `process.once()`, remove with `removeListener`
+- Map/Set growth must be bounded (session maps: max 50, config caches: clean on workspace reload)
+- AbortSignal parameters: always wire through, never prefix with `_`
+- ReadableStream readers: `reader.cancel()` before `releaseLock()`
 
-- `search_semantic`: `query` (req), `pathHints?`, `languageHints?`, `topK?`
-- `get_file_skeleton`: `filePath` (req)
-- `find_usages`: `symbolName` (req), `pathHint?`, `topK?`
-- `describe_image`: `filePath` (req)
+## Testing & Build
 
-### Tips
+- `npm test` — unit tests only (Node.js built-in `node:test`, ~5s)
+- `npm run test:integration` — integration tests (30s+, spawns opencode)
+- `npm run typecheck` — `tsc --noEmit`
+- `npm run build` — `tsc -p tsconfig.build.json`
 
-- Use `pathHints` to narrow searches to specific directories
-- Use `languageHints` to filter by file type
-- `find_usages` is essential before refactoring — it shows every reference
-- If no results appear, the workspace may not be indexed yet — run `opencode-rag index`
-- Image descriptions are generated at index time using the configured vision provider; ensure `imageDescription` is configured in `opencode-rag.json` if your project includes images
+## Release
 
-## Testing
-
-- `npm test` — runs all tests except integration tests (~5s)
-- `npm run test:integration` — runs integration tests (30s+, spawns opencode)
-- `npm run typecheck` — type-checks all source files
-- `npm run build` — compiles TypeScript
+`npm run release:patch` — bumps version, builds, tests, tags, publishes (dry-run via `--dry`).

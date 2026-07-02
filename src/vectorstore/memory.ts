@@ -35,6 +35,11 @@ export class InMemoryVectorStore implements VectorStore {
     this.chunks = [];
   }
 
+  async getFilePaths(): Promise<string[]> {
+    const paths = new Set(this.chunks.map((c) => c.metadata.filePath));
+    return Array.from(paths);
+  }
+
   /**
    * Remove all chunks associated with a given file path.
    * @param filePath - The file path whose chunks should be removed.

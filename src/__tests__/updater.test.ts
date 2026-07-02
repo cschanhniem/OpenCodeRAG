@@ -1,19 +1,8 @@
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import {
-  getCurrentVersion,
-  checkForUpdate,
-} from "../updater.js";
+import { checkForUpdate } from "../core/version-check.js";
 
-describe("updater", () => {
-  describe("getCurrentVersion", () => {
-    it("returns a semver-like string", () => {
-      const version = getCurrentVersion();
-      assert.match(version, /^\d+\.\d+\.\d+/);
-    });
-  });
-
-  describe("checkForUpdate", () => {
+describe("checkForUpdate", () => {
     const originalFetch = globalThis.fetch;
 
     afterEach(() => {
@@ -94,4 +83,3 @@ describe("updater", () => {
       assert.equal(info.latestVersion, "3.2.1");
     });
   });
-});

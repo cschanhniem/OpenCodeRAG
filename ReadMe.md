@@ -11,12 +11,8 @@ You don't need a dedicated GPU to run smaller embedding LLMs, as these models ca
 ## Quick Start
 
 ```bash
-# 1. Clone and install
-git clone https://github.com/MrDoe/OpenCodeRAG.git
-cd OpenCodeRAG
-npm install --legacy-peer-deps
-npm run build
-./install.sh
+# 1. Install globally (automatically sets up the OpenCode runtime)
+npm install -g opencode-rag-plugin
 
 # 2. Initialize in your project
 cd /path/to/your/project
@@ -30,6 +26,8 @@ opencode-rag query "authentication middleware"
 ```
 
 **Prerequisites:** Node.js v22+, [Ollama](https://ollama.ai) (default) or other LLM-hosters (OpenAI-, Google- or Anthropic-compatible).
+
+> **Contributors / developers:** Clone the repo and use `npm install --legacy-peer-deps; npm run build` — see [Development docs](doc/development.md).
 
 ## Key Features
 

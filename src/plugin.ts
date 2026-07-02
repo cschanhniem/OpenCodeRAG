@@ -29,12 +29,16 @@ import { loadDocProgress, markSubdirectoryDocumented } from "./core/doc-progress
 import { loadManifest } from "./core/manifest.js";
 import { createSessionLogger, type SessionLogger } from "./eval/session-logger.js";
 import { countTokens } from "./eval/token-counter.js";
-import { checkForUpdate, type UpdateInfo } from "./updater.js";
+import { checkForUpdate, type UpdateInfo } from "./core/version-check.js";
+import { destroyAllPooledConnections } from "./embedder/http.js";
 import { existsSync, readFileSync, unlinkSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn, execSync } from "node:child_process";
 import { tmpdir } from "node:os";
+
+/** Maximum entries per session map before oldest entries are evicted. */
+const MAX_SESSION_MAP_SIZE = 50;
 
 /** Cache of loaded RAG configurations keyed by workspace directory. */
 const configCache = new Map<string, RagConfig>();
@@ -44,6 +48,19 @@ const backgroundIndexers = new Map<string, { close: () => Promise<void> }>();
 const mcpServers = new Map<string, { close: () => Promise<void> }>();
 /** Pending update notifications keyed by workspace directory. */
 const pendingUpdateInfo = new Map<string, UpdateInfo>();
+
+/** Set a bounded Map entry, evicting the oldest key if the map exceeds maximum size. */
+function boundedSet<V>(map: Map<string, V>, key: string, value: V, maxSize: number): void {
+  if (map.has(key)) {
+    map.set(key, value);
+    return;
+  }
+  if (map.size >= maxSize) {
+    const oldest = map.keys().next().value;
+    if (oldest !== undefined) map.delete(oldest);
+  }
+  map.set(key, value);
+}
 
 /** Name of the semantic search tool as exposed to the LLM. */
 const CONTEXT_TOOL_NAME = "search_semantic";
@@ -490,13 +507,21 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
   let cachedOverrides = loadRuntimeOverrides(options.storePath);
   let overridesLastCheck = 0;
   const OVERRIDES_TTL_MS = Number(process.env.OPENCODE_RAG_OVERRIDES_TTL_MS) || 3600000;
+  let lastEffectiveCfg: RagConfig | null = null;
+  let lastEffectiveCfgTime = 0;
 
   function getEffectiveCfg(): RagConfig {
     if (Date.now() - overridesLastCheck > OVERRIDES_TTL_MS) {
       cachedOverrides = loadRuntimeOverrides(options.storePath);
       overridesLastCheck = Date.now();
+      lastEffectiveCfg = null;
     }
-    return applyRuntimeOverrides(options.cfg, cachedOverrides);
+    if (lastEffectiveCfg && Date.now() - lastEffectiveCfgTime < 1000) {
+      return lastEffectiveCfg;
+    }
+    lastEffectiveCfg = applyRuntimeOverrides(options.cfg, cachedOverrides);
+    lastEffectiveCfgTime = Date.now();
+    return lastEffectiveCfg;
   }
 
   // Session-level caches for lazy retrieval
@@ -692,6 +717,7 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
       sessionLastMessage,
       sessionRetrievalCache,
       keywordIndex,
+      maxSessionCacheSize: MAX_SESSION_MAP_SIZE,
     });
     tools["read"] = readTool;
     appendDebugLog(options.logFilePath, {
@@ -723,8 +749,8 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
             typeof msgInfo.sessionID === "string" &&
             typeof msgInfo.id === "string"
           ) {
-            sessionAssistantMessageId.set(msgInfo.sessionID, msgInfo.id);
-            sessionAssistantText.set(msgInfo.sessionID, "");
+            boundedSet(sessionAssistantMessageId, msgInfo.sessionID, msgInfo.id, MAX_SESSION_MAP_SIZE);
+            boundedSet(sessionAssistantText, msgInfo.sessionID, "", MAX_SESSION_MAP_SIZE);
           }
         } else if (event.type === "message.part.updated") {
           const props = (event as Record<string, unknown>).properties as
@@ -741,7 +767,7 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
             const assistantMsgId = sessionAssistantMessageId.get(part.sessionID);
             if (assistantMsgId && part.messageID === assistantMsgId) {
               const existing = sessionAssistantText.get(part.sessionID) ?? "";
-              sessionAssistantText.set(part.sessionID, existing + delta);
+              boundedSet(sessionAssistantText, part.sessionID, existing + delta, MAX_SESSION_MAP_SIZE);
             }
           }
         }
@@ -794,7 +820,7 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
       if (updateInfo) {
         output.system.unshift(
           `OpenCodeRAG update available: ${updateInfo.currentVersion} → ${updateInfo.latestVersion}. ` +
-          `Run \`opencode-rag update\` to install.`,
+          `Run \`npm update -g opencode-rag-plugin && opencode-rag setup\` to install.`,
         );
       }
 
@@ -819,7 +845,7 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
         });
         if (text.length === 0) return;
 
-        sessionLastMessage.set(input.sessionID, text);
+        boundedSet(sessionLastMessage, input.sessionID, text, MAX_SESSION_MAP_SIZE);
 
         // Handle /doc slash command
         if (text.startsWith("/doc")) {
@@ -1246,6 +1272,12 @@ export const ragPlugin: Plugin = async (
     }
     mcpServers.delete(input.directory);
   }
+
+  // Clean up stale config cache and pending update info for this directory
+  configCache.delete(input.directory);
+  pendingUpdateInfo.delete(input.directory);
+  // Clean up idle HTTP sockets from previous provider connections
+  destroyAllPooledConnections();
 
   appendDebugLog(logFilePath, {
     scope: "plugin",

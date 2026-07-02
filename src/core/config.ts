@@ -205,6 +205,12 @@ export interface RagConfig {
     ollamaMaxBatchSize?: number;
     /** Maximum concurrent description generation requests. */
     descriptionConcurrency?: number;
+    /**
+     * Maximum file size in bytes for SVG/XML files before chunking is skipped.
+     * Large SVGs can cause tree-sitter to hang. Set to 0 for no limit.
+     * @default 1_048_576 (1 MB)
+     */
+    maxSvgSizeBytes?: number;
   };
   /** Vector storage backend configuration. */
   vectorStore: {
@@ -383,6 +389,7 @@ export const DEFAULT_CONFIG: RagConfig = {
     embedConcurrency: 6,
     ollamaMaxBatchSize: 4000,
     descriptionConcurrency: 4,
+    maxSvgSizeBytes: 1_048_576,
   },
   vectorStore: {
     path: "./.opencode/rag_db",

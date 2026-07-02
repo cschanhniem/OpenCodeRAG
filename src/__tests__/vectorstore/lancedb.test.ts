@@ -347,6 +347,42 @@ describe("LanceDbStore (memory)", () => {
     const chunks = await store.getChunks(100, 10);
     assert.deepEqual(chunks, []);
   });
+
+  it("getFilePaths returns all unique file paths", async () => {
+    await store.clear();
+
+    await store.addChunks([
+      {
+        id: "gfp-1",
+        content: "a",
+        embedding: new Array(384).fill(0.1),
+        metadata: { filePath: "src/a.ts", startLine: 1, endLine: 1, language: "typescript" },
+      },
+      {
+        id: "gfp-2",
+        content: "b",
+        embedding: new Array(384).fill(0.2),
+        metadata: { filePath: "src/a.ts", startLine: 2, endLine: 2, language: "typescript" },
+      },
+      {
+        id: "gfp-3",
+        content: "c",
+        embedding: new Array(384).fill(0.3),
+        metadata: { filePath: "src/b.py", startLine: 1, endLine: 1, language: "python" },
+      },
+    ]);
+
+    const paths = await store.getFilePaths();
+    assert.equal(paths.length, 2);
+    assert.ok(paths.some((p) => p.includes("src/a.ts")));
+    assert.ok(paths.some((p) => p.includes("src/b.py")));
+  });
+
+  it("getFilePaths returns empty array on empty store", async () => {
+    await store.clear();
+    const paths = await store.getFilePaths();
+    assert.deepEqual(paths, []);
+  });
 });
 
 describe("LanceDbStore (disk corruption recovery)", () => {

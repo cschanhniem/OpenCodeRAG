@@ -281,7 +281,7 @@ Controls automatic update checking for OpenCodeRAG.
 |---|---|---|
 | `enabled` | `false` | Enable automatic update check on plugin startup |
 
-When enabled, the plugin checks GitHub Releases API for new versions on startup. If an update is available, a notification is added to the system prompt. You can then run `opencode-rag update` to install the update.
+When enabled, the plugin checks GitHub Releases API for new versions on startup. If an update is available, a notification is added to the system prompt. You can then run `npm update -g opencode-rag-plugin && opencode-rag setup` to install the update.
 
 ### `logging`
 

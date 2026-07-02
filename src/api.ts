@@ -10,6 +10,7 @@ import { optimizeContext, DEFAULT_CONTEXT_OPTIMIZATION } from "./retriever/conte
 import { runIndexPass, type IndexRunStats } from "./indexer.js";
 import { scanWorkspaceFiles, type WorkspaceFile } from "./content/reader.js";
 import type { SearchResult } from "./core/interfaces.js";
+import { destroyAllPooledConnections } from "./embedder/http.js";
 
 /** Options controlling a semantic search query. */
 export interface SearchOptions {
@@ -88,18 +89,24 @@ export async function search(
     configPath: options.configPath,
   });
 
-  const topK = options.topK ?? ctx.config.retrieval.topK;
-  const rawResults = await retrieve(query, ctx.embedder, ctx.store, {
-    topK,
-    minScore: options.minScore ?? ctx.config.retrieval.minScore,
-    keywordIndex: ctx.keywordIndex,
-    keywordWeight: options.keywordWeight ?? ctx.config.retrieval.hybridSearch?.keywordWeight ?? 0.4,
-    queryPrefix: ctx.config.embedding.queryPrefix,
-    explain: options.explain,
-  } satisfies RetrieveOptions);
+  try {
+    const topK = options.topK ?? ctx.config.retrieval.topK;
+    const rawResults = await retrieve(query, ctx.embedder, ctx.store, {
+      topK,
+      minScore: options.minScore ?? ctx.config.retrieval.minScore,
+      keywordIndex: ctx.keywordIndex,
+      keywordWeight: options.keywordWeight ?? ctx.config.retrieval.hybridSearch?.keywordWeight ?? 0.4,
+      queryPrefix: ctx.config.embedding.queryPrefix,
+      explain: options.explain,
+    } satisfies RetrieveOptions);
 
-  const optCfg = ctx.config.retrieval.contextOptimization ?? DEFAULT_CONTEXT_OPTIMIZATION;
-  return optimizeContext(rawResults, { topK, config: optCfg });
+    const optCfg = ctx.config.retrieval.contextOptimization ?? DEFAULT_CONTEXT_OPTIMIZATION;
+    return optimizeContext(rawResults, { topK, config: optCfg });
+  } finally {
+    await ctx.store.close();
+    ctx.keywordIndex.close();
+    destroyAllPooledConnections();
+  }
 }
 
 /**
@@ -120,22 +127,28 @@ export async function indexWorkspace(
     configPath: options.configPath,
   });
 
-  if (options.onProgress) {
-    options.onProgress(`Indexing ${workDir}...`);
+  try {
+    if (options.onProgress) {
+      options.onProgress(`Indexing ${workDir}...`);
+    }
+
+    const stats = await runIndexPass({
+      cwd: workDir,
+      storePath: ctx.storePath,
+      config: ctx.config,
+      store: ctx.store,
+      embedder: ctx.embedder,
+      force: options.force ?? false,
+      keywordIndex: ctx.keywordIndex,
+      descriptionProvider: ctx.descriptionProvider,
+    });
+
+    return stats;
+  } finally {
+    await ctx.store.close();
+    ctx.keywordIndex.close();
+    destroyAllPooledConnections();
   }
-
-  const stats = await runIndexPass({
-    cwd: workDir,
-    storePath: ctx.storePath,
-    config: ctx.config,
-    store: ctx.store,
-    embedder: ctx.embedder,
-    force: options.force ?? false,
-    keywordIndex: ctx.keywordIndex,
-    descriptionProvider: ctx.descriptionProvider,
-  });
-
-  return stats;
 }
 
 /**

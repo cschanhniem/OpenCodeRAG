@@ -138,7 +138,8 @@ async function extractSkeleton(
 
   const nodeTypes = new Set(config.nodeTypes);
   const astNodes: AstNode[] = walkTree(tree.rootNode, nodeTypes, content, 15);
-
+  tree.delete();
+  parser.delete();
   return astNodes.map((node) => ({
     type: node.type,
     name: extractNodeName(node.text, node.type),
